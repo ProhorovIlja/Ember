@@ -190,31 +190,34 @@ bool validSpeechWav(const QByteArray &wav) {
     if (u32(4) != quint32(wav.size() - 8)) return false;
     bool format = false, data = false;
     quint16 blockAlign = 0;
-    for (qsizetype pos = 12; pos + 8 <= wav.size();) {
+    qsizetype pos = 12;
+    for (; pos + 8 <= wav.size();) {
         const quint32 len = u32(pos + 4);
         const qsizetype start = pos + 8;
         if (len > quint32(wav.size() - start)) return false;
         const auto tag = wav.mid(pos, 4);
         if (tag == "fmt ") {
-            if (len < 16) return false;
+            if (format || len < 16) return false;
             const quint16 pcm = u16(start);
             const quint16 channels = u16(start + 2);
             const quint32 rate = u32(start + 4);
+            const quint32 bytesPerSecond = u32(start + 8);
             blockAlign = u16(start + 12);
             const quint16 bits = u16(start + 14);
             if (pcm != 1 || channels < 1 || channels > 2 ||
                 rate < 8000 || rate > 96000 || bits != 16 ||
-                blockAlign != channels * 2) return false;
+                blockAlign != channels * 2 ||
+                bytesPerSecond != rate * quint32(blockAlign)) return false;
             format = true;
         } else if (tag == "data") {
-            if (len == 0) return false;
+            if (!format || data || len == 0 || len % blockAlign) return false;
             data = true;
         }
         const qsizetype next = start + len + (len % 2);
         if (next <= pos || next > wav.size()) return false;
         pos = next;
     }
-    return format && data && blockAlign > 0;
+    return format && data && pos == wav.size();
 }
 QString speechFriendlyText(const QString &markdown) {
     if (markdown.size() > 16384) return {};
