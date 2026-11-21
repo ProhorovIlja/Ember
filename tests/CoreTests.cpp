@@ -237,6 +237,49 @@ private slots:
         QVERIFY(response.contains("int main()"));
         QVERIFY(EmberCore::speechFriendlyText(QString(16385, 'x')).isEmpty());
     }
+    void streamsOnlyCommittedSentencesWithoutRepeatingOrReadingCode() {
+        qsizetype cursor = 0;
+        QString draft = "Hello there. The second sentence is still";
+        QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false),
+                 QStringList({"Hello there."}));
+        QCOMPARE(cursor, qsizetype(12));
+        QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, false).isEmpty());
+        draft += " being generated. Third sentence";
+        QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false),
+                 QStringList({"The second sentence is still being generated."}));
+        QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false).size(), 0);
+        draft += " is now complete.";
+        QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, true),
+                 QStringList({"Third sentence is now complete."}));
+        QCOMPARE(cursor, qsizetype(draft.size()));
+        QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, true).isEmpty());
+
+        cursor = 0;
+        draft = "The sample follows.\\n```cpp\\nstd::cout << 1;";
+        QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false),
+                 QStringList({"The sample follows."}));
+        QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, false).isEmpty());
+        draft += "\\n```\\nAnd that concludes the example.";
+        const auto final = EmberCore::takeCommittedSpeech(draft, cursor, true);
+        QCOMPARE(final, QStringList({"The code example is in the text chat.",
+                                     "And that concludes the example."}));
+        QCOMPARE(cursor, qsizetype(draft.size()));
+    }
+    void boundsSpeechCommitsForUnpunctuatedLongTokens() {
+        qsizetype cursor = 0;
+        QString text = QString("spoken phrase ").repeated(36);
+        const auto pieces = EmberCore::takeCommittedSpeech(text, cursor, false);
+        QVERIFY(!pieces.isEmpty());
+        QVERIFY(cursor > 0 && cursor < text.size());
+        for (const QString &piece : pieces) QVERIFY(piece.size() <= 420);
+        const auto tail = EmberCore::takeCommittedSpeech(text, cursor, true);
+        QVERIFY(!tail.isEmpty());
+        QCOMPARE(cursor, qsizetype(text.size()));
+        cursor = -1;
+        QVERIFY(EmberCore::takeCommittedSpeech(text, cursor, true).isEmpty());
+        cursor = 0;
+        QVERIFY(EmberCore::takeCommittedSpeech(QString(16385, 'a'), cursor, true).isEmpty());
+    }
     void stopsPredominantlyRussianSynthesisForEnglishVoice() {
         QVERIFY(EmberCore::mostlyCyrillic(QString::fromUtf8(
             "Привет, сегодня у нас очень важная встреча, и мы поговорим об этом.")));
