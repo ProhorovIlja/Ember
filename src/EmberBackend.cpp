@@ -111,6 +111,12 @@ EmberBackend::EmberBackend(QObject *parent)
     }
     connect(&m_mediaPlayer, &QMediaPlayer::playbackStateChanged, this,
             [this](QMediaPlayer::PlaybackState state) {
+                if (state == QMediaPlayer::PlayingState && m_voiceTurnActive &&
+                    m_voiceFirstPlaybackMs < 0 && m_voiceTurnElapsed.isValid()) {
+                    m_voiceFirstPlaybackMs = m_voiceTurnElapsed.elapsed();
+                    m_voiceTurnActive = false;
+                    emit voiceTimingsChanged();
+                }
                 if (state == QMediaPlayer::StoppedState && m_speaking) {
                     setSpeaking(false);
                     if (m_speechSequence && !m_voiceQueue.isEmpty()) {
@@ -449,8 +455,11 @@ QString EmberBackend::voiceTimings() const {
         return value < 0 ? QString("not measured") :
             QString("%1 ms").arg(value);
     };
-    return QString("Last successful stages · STT %1   /   LLM %2   /   TTS chunk %3")
-        .arg(display(m_asrLastMs), display(m_llmLastMs), display(m_ttsLastMs));
+    return QString("Last voice/chat timings · STT %1 · LLM first token %2 · "
+                   "LLM complete %3 · TTS chunk %4 · mic release → playback %5")
+        .arg(display(m_asrLastMs), display(m_llmFirstTokenMs),
+             display(m_llmLastMs), display(m_ttsLastMs),
+             display(m_voiceFirstPlaybackMs));
 }
 void EmberBackend::setStatus(const QString &text) {
     if (m_status == text) return;
@@ -618,6 +627,8 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     QNetworkReply *reply = m_network.post(
         request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     m_llmElapsed.start();
+    m_llmFirstTokenMs = -1;
+    emit voiceTimingsChanged();
     m_reply = reply;
     auto receive = [this, reply]() {
         if (m_reply != reply || m_chatStreamDone || m_chatStreamInvalid) return;
@@ -629,6 +640,10 @@ void EmberBackend::submit(const QString &raw, bool voice) {
             return;
         }
         if (!tokens.text.isEmpty()) {
+            if (m_llmFirstTokenMs < 0 && m_llmElapsed.isValid()) {
+                m_llmFirstTokenMs = m_llmElapsed.elapsed();
+                emit voiceTimingsChanged();
+            }
             m_chatStreamText += tokens.text;
             if (!m_chatRenderTimer.isActive()) m_chatRenderTimer.start();
         }
@@ -795,6 +810,12 @@ void EmberBackend::stopRecording() {
         setStatus("Recording was too short to recognize.");
         return;
     }
+    if (!wasDictation) {
+        m_voiceTurnElapsed.start();
+        m_voiceTurnActive = true;
+        m_voiceFirstPlaybackMs = -1;
+        emit voiceTimingsChanged();
+    }
     m_transcriptionSize = recording.size();
     m_transcriptionOffset = 0;
     // Bound a single 25-second segment by the Core resampler's 32 MiB
@@ -869,6 +890,7 @@ void EmberBackend::transcribe() {
     m_whisper.start();
 }
 void EmberBackend::failTranscription(const QString &reason) {
+    m_voiceTurnActive = false;
     m_transcribingDictation = false;
     m_transcriptionSegments.clear();
     m_transcriptionSize = m_transcriptionOffset = m_transcriptionChunkSize = 0;
@@ -1040,6 +1062,7 @@ void EmberBackend::testVoice() {
     beginSpeech(m_voiceSample);
 }
 void EmberBackend::cancelWork() {
+    m_voiceTurnActive = false;
     m_speechSequence = false;
     m_voiceQueue.clear();
     if (m_reply) {
