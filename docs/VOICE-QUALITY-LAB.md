@@ -48,6 +48,10 @@ Set explicit resource budgets for 12 GB VRAM with an 8–9B Q4 GGUF, Qt UI, CUDA
 
 The resulting preference should be configurable: different voice families can win on different criteria, so assign a fast low-latency profile and a quality-first profile only after data supports the decision. Never overwrite licensed engine weights or assert that unrelated checkpoints can be merged losslessly.
 
+### Native live input monitor and optional pause-ending experiment
+
+A lightweight capture tap now computes scalar RMS/peak from the exact Windows PCM buffers written to the existing temporary disk-backed recording. The UI shows an input level while recording. The optional energy-based pause endpointer requires sustained input and a ~2.2 s quiet tail; it is off by default and does not claim Silero VAD, speaker separation, automatic echo rejection or confidence estimation. It must be assessed on real microphones for false-ends during dramatic pauses, quiet speech and loud background noise. The mandatory RU/EN hold-to-dictate path remains manual release and has no new timer.
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.

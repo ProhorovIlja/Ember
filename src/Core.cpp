@@ -15,6 +15,78 @@ bool captureAllowedWithInterruption(bool busy, bool listening,
                                     bool speechActive, bool recognitionActive) {
     return !listening && !recognitionActive && (!busy || speechActive);
 }
+AudioLevel pcmLevel(const char *data, qsizetype length, const QAudioFormat &format) {
+    AudioLevel out;
+    const int frameBytes = format.bytesPerFrame();
+    const int sampleBytes = format.bytesPerSample();
+    const int channels = format.channelCount();
+    if (!data || length <= 0 || length > 4 * 1024 * 1024 ||
+        !format.isValid() || frameBytes <= 0 || sampleBytes <= 0 ||
+        channels < 1 || channels > 8 || length % frameBytes != 0 ||
+        format.sampleRate() < 8000 || format.sampleRate() > 96000)
+        return out;
+    const qsizetype frames = length / frameBytes;
+    out.durationMs = int(std::max<qint64>(1, qint64(frames) * 1000 /
+                                          format.sampleRate()));
+    double sumSquares = 0.0, peak = 0.0;
+    for (qsizetype frame = 0; frame < frames; ++frame) {
+        for (int channel = 0; channel < channels; ++channel) {
+            const char *p = data + frame * frameBytes + channel * sampleBytes;
+            double value = 0.0;
+            switch (format.sampleFormat()) {
+            case QAudioFormat::UInt8:
+                value = (double(static_cast<quint8>(*p)) - 128.0) / 128.0;
+                break;
+            case QAudioFormat::Int16: {
+                qint16 v = 0;
+                std::memcpy(&v, p, sizeof(v));
+                value = double(v) / 32768.0;
+                break;
+            }
+            case QAudioFormat::Int32: {
+                qint32 v = 0;
+                std::memcpy(&v, p, sizeof(v));
+                value = double(v) / 2147483648.0;
+                break;
+            }
+            case QAudioFormat::Float: {
+                float v = 0;
+                std::memcpy(&v, p, sizeof(v));
+                value = std::isfinite(v) ? std::clamp(double(v), -1.0, 1.0) : 0.0;
+                break;
+            }
+            default: return {};
+            }
+            sumSquares += value * value;
+            peak = std::max(peak, std::abs(value));
+        }
+    }
+    out.rms = std::sqrt(sumSquares / double(frames * channels));
+    out.peak = peak;
+    return out;
+}
+void VoiceEndpointer::reset() {
+    m_elapsedMs = m_candidateMs = m_silentMs = 0;
+    m_heardSpeech = false;
+}
+bool VoiceEndpointer::observe(const AudioLevel &level) {
+    if (level.durationMs <= 0 || !std::isfinite(level.rms) ||
+        !std::isfinite(level.peak)) return false;
+    const int elapsed = std::clamp(level.durationMs, 1, 500);
+    m_elapsedMs = std::min(3600000, m_elapsedMs + elapsed);
+    // Deliberately conservative energy gate. This is NOT Silero/WebRTC VAD:
+    // fans, music and quiet speech can fool it. Disabled by default.
+    if (level.rms >= 0.018 && level.peak >= 0.045) {
+        m_candidateMs = std::min(3600000, m_candidateMs + elapsed);
+        m_silentMs = 0;
+        if (m_candidateMs >= 350) m_heardSpeech = true;
+    } else {
+        m_candidateMs = 0;
+        if (m_heardSpeech) m_silentMs = std::min(3600000, m_silentMs + elapsed);
+    }
+    return m_heardSpeech && m_elapsedMs >= 3000 && m_silentMs >= 2200;
+}
+
 QByteArray pcmToWav(const QByteArray &pcm, int sampleRate) {
     if (pcm.isEmpty() || (pcm.size() % 2) || pcm.size() > 32 * 1024 * 1024 ||
         sampleRate < 8000 || sampleRate > 96000) return {};

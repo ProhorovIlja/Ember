@@ -2,6 +2,9 @@
 
 #include <QAudioDevice>
 #include <QAudioFormat>
+#include <atomic>
+#include <cmath>
+#include <algorithm>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -63,9 +66,64 @@ const QString kSystemPrompt =
     "Do not claim to have viewed local files or used programs unless you actually did.";
 }
 
+// No audio samples are logged, sent over a network or stored by this meter.
+// The existing private scratch QFile remains the ONLY recording destination.
+// The audio thread writes this QIODevice; UI polls atomic scalar observations.
+class CaptureTap final : public QIODevice {
+public:
+    explicit CaptureTap(QFile *file) : m_file(file) {}
+    void configure(const QAudioFormat &format, bool autoEnd) {
+        m_format = format;
+        m_autoEnd = autoEnd;
+        m_gate.reset();
+        m_level.store(0);
+        m_endRequested.store(false);
+    }
+    bool isSequential() const override { return true; }
+    int level() const { return m_level.load(); }
+    bool autoEndRequested() const { return m_endRequested.load(); }
+protected:
+    qint64 readData(char *, qint64) override { return -1; }
+    qint64 writeData(const char *data, qint64 length) override {
+        if (!m_file || length < 0) return -1;
+        const qint64 written = m_file->write(data, length);
+        if (written <= 0) return written;
+        const int bytesPerFrame = m_format.bytesPerFrame();
+        if (bytesPerFrame <= 0) return written;
+        // Bound callback work to 50-ms windows, so short pauses inside a
+        // larger platform buffer are not smeared across an entire second.
+        const qint64 windowBytes = std::max<qint64>(
+            bytesPerFrame, qint64(m_format.sampleRate()) * bytesPerFrame / 20);
+        for (qint64 offset = 0; offset + bytesPerFrame <= written;) {
+            const qint64 bytes = std::min(windowBytes,
+                                         (written - offset) / bytesPerFrame *
+                                             bytesPerFrame);
+            if (bytes <= 0) break;
+            const auto level = EmberCore::pcmLevel(data + offset, bytes, m_format);
+            if (level.durationMs > 0) {
+                const int scaled = std::clamp(
+                    int(std::lround(std::sqrt(level.rms) * 170)), 0, 100);
+                m_level.store(scaled);
+                if (m_autoEnd && m_gate.observe(level))
+                    m_endRequested.store(true);
+            }
+            offset += bytes;
+        }
+        return written;
+    }
+private:
+    QFile *m_file = nullptr;
+    QAudioFormat m_format;
+    EmberCore::VoiceEndpointer m_gate;
+    bool m_autoEnd = false;
+    std::atomic<int> m_level{0};
+    std::atomic<bool> m_endRequested{false};
+};
+
 EmberBackend::EmberBackend(QObject *parent)
     : QObject(parent),
       m_settings(QDir(appFolder()).filePath("data/ember.ini"), QSettings::IniFormat) {
+    m_captureTap = std::make_unique<CaptureTap>(&m_captureFile);
     QDir().mkpath(QDir(appFolder()).filePath("data"));
     QDir().mkpath(QDir(appFolder()).filePath("cache"));
     cleanupOldVoiceScratch();
@@ -109,6 +167,7 @@ EmberBackend::EmberBackend(QObject *parent)
     m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 4);
     m_outputVolume = qBound(0, m_settings.value("audio/outputVolume", 85).toInt(), 100);
     m_earlySpeechEnabled = m_settings.value("voice/earlySpeech", true).toBool();
+    m_autoEndOnSilence = m_settings.value("voice/autoEndOnSilence", false).toBool();
     m_localModel = m_settings.value("voice/localModel", "qwen3-tts-0.6b").toString();
     m_localVoice = m_settings.value("voice/localVoice", "vivian").toString();
     const QRegularExpression modelRx("^[A-Za-z0-9_./-]{1,80}$");
@@ -135,6 +194,16 @@ EmberBackend::EmberBackend(QObject *parent)
     m_captureWatchdog.setInterval(100);
     connect(&m_captureWatchdog, &QTimer::timeout, this, [this] {
         if (!m_listening) return;
+        const int level = m_captureTap ? m_captureTap->level() : 0;
+        if (m_microphoneLevel != level) {
+            m_microphoneLevel = level;
+            emit microphoneLevelChanged();
+        }
+        if (m_autoEndOnSilence && !m_captureDictation && m_captureTap &&
+            m_captureTap->autoEndRequested()) {
+            stopRecording();
+            return;
+        }
         if (m_audioSource && m_audioSource->error() != QAudio::NoError) {
             releaseCapture();
             QFile::remove(m_captureFile.fileName());
@@ -1019,10 +1088,28 @@ void EmberBackend::releaseCapture() {
         m_audioSource->stop();
         m_audioSource.reset();
     }
+    if (m_captureTap && m_captureTap->isOpen()) m_captureTap->close();
     if (m_captureFile.isOpen()) m_captureFile.close();
+    if (m_microphoneLevel != 0) {
+        m_microphoneLevel = 0;
+        emit microphoneLevelChanged();
+    }
     m_captureDictation = false;
     setListening(false);
     if (wasDictation) emit dictationChanged();
+}
+void EmberBackend::setAutoEndOnSilence(bool enabled) {
+    if (m_autoEndOnSilence == enabled) return;
+    if (m_listening) {
+        setStatus("Finish the current recording before changing voice endpointing.");
+        return;
+    }
+    m_autoEndOnSilence = enabled;
+    m_settings.setValue("voice/autoEndOnSilence", enabled);
+    emit configurationChanged();
+    setStatus(enabled
+        ? "Experimental pause ending enabled for voice only; quiet speech can be missed."
+        : "Voice requires manual Stop; dictation remains hold-to-record.");
 }
 void EmberBackend::startRecording() { startCapture(false); }
 void EmberBackend::startDictation() { startCapture(true); }
@@ -1089,8 +1176,15 @@ void EmberBackend::startCapture(bool dictation) {
         return;
     }
     m_captureDictation = dictation;
+    if (!m_captureTap) {
+        m_captureFile.close();
+        setStatus("Microphone input monitor could not initialize.");
+        return;
+    }
+    m_captureTap->configure(m_captureFormat, !dictation && m_autoEndOnSilence);
+    m_captureTap->open(QIODevice::WriteOnly);
     m_audioSource = std::make_unique<QAudioSource>(input, m_captureFormat);
-    m_audioSource->start(&m_captureFile);
+    m_audioSource->start(m_captureTap.get());
     if (m_audioSource->error() != QAudio::NoError) {
         releaseCapture();
         setStatus("Microphone capture failed. Check Windows permissions and audio device.");
@@ -1102,14 +1196,9 @@ void EmberBackend::startCapture(bool dictation) {
     m_captureWatchdog.start();
     setStatus(dictation
         ? "Dictation recording locally — hold to speak, release to transcribe RU/EN."
-        : "Voice recording locally — stop when you finish.");
-    const quint64 session = ++m_captureSession;
-    if (!dictation) {
-        QTimer::singleShot(30000, this, [this, session] {
-            if (m_listening && !m_captureDictation && session == m_captureSession)
-                stopRecording();
-        });
-    }
+        : (m_autoEndOnSilence
+            ? "Voice recording locally — experimental pause ending, or press Stop."
+            : "Voice recording locally — press Stop when done. No fixed 30s cutoff."));
 }
 void EmberBackend::stopRecording() {
     if (!m_listening) return;

@@ -7,6 +7,19 @@
 #include <QStringList>
 namespace EmberCore {
 struct Turn { QString user; QString assistant; };
+// Non-persisted capture-energy inspection, not speech classification.
+struct AudioLevel { double rms = 0.0; double peak = 0.0; int durationMs = 0; };
+AudioLevel pcmLevel(const char *bytes, qsizetype length, const QAudioFormat &format);
+// An OPTIONAL experimental pause endpointer: speech must first be sustained,
+// then quiet must persist. Manual stop remains available at all times.
+class VoiceEndpointer {
+public:
+    void reset();
+    bool observe(const AudioLevel &level);
+private:
+    int m_elapsedMs = 0, m_candidateMs = 0, m_silentMs = 0;
+    bool m_heardSpeech = false;
+};
 QByteArray pcmToWav(const QByteArray &pcm, int sampleRate);
 // Offline 16 kHz mono conversion for common Windows capture devices.
 QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source);

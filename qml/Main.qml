@@ -576,9 +576,57 @@ ApplicationWindow {
                                 Layout.maximumWidth: 540
                                 horizontalAlignment: Text.AlignHCenter
                                 wrapMode: Text.WordWrap
-                                text: "Push to talk. Tap Record during Ember speech to interrupt. Recording stops after 30 seconds; not full-duplex."
+                                text: "Push to talk. Interrupt Ember while speaking. Stop manually, or opt into experimental silence ending."
                                 color: "#94AFC8"
                                 font.pixelSize: 13
+                            }
+                            ColumnLayout {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredWidth: 440
+                                spacing: 6
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: "MIC INPUT"
+                                        color: "#74A4CA"
+                                        font.pixelSize: 10
+                                        font.letterSpacing: 1.1
+                                    }
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        height: 7
+                                        radius: 4
+                                        color: "#071829"
+                                        border.color: "#1A3C5D"
+                                        Rectangle {
+                                            anchors.left: parent.left
+                                            anchors.top: parent.top
+                                            anchors.bottom: parent.bottom
+                                            width: (parent.width - 2) *
+                                                   (ember.microphoneLevel / 100)
+                                            radius: 4
+                                            color: "#60B4F5"
+                                            Behavior on width { NumberAnimation { duration: 90 } }
+                                        }
+                                    }
+                                    Text {
+                                        text: ember.listening ? ember.microphoneLevel + "%" : "Idle"
+                                        color: "#9FC8E6"
+                                        font.pixelSize: 11
+                                    }
+                                }
+                                PillButton {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: ember.autoEndOnSilence
+                                        ? "Experimental auto-finish: ON"
+                                        : "Experimental auto-finish: OFF"
+                                    implicitWidth: 251
+                                    implicitHeight: 31
+                                    enabled: !ember.listening
+                                    onClicked: ember.autoEndOnSilence = !ember.autoEndOnSilence
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Optional energy-based pause ending. Quiet speech and noise may confuse it; disabled by default."
+                                }
                             }
                             RowLayout {
                                 Layout.alignment: Qt.AlignHCenter

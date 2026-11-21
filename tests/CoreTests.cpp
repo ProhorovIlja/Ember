@@ -9,6 +9,60 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void measuresCaptureEnergyAcrossWindowsPcmFormats() {
+        QAudioFormat format;
+        format.setSampleRate(16000);
+        format.setChannelCount(1);
+        format.setSampleFormat(QAudioFormat::Int16);
+        QByteArray silence(3200, char(0));
+        const auto quiet = EmberCore::pcmLevel(silence.constData(), silence.size(), format);
+        QCOMPARE(quiet.durationMs, 100);
+        QCOMPARE(quiet.rms, 0.0);
+        QCOMPARE(quiet.peak, 0.0);
+        QByteArray loud(3200, char(0));
+        for (int i = 0; i < 1600; ++i) {
+            loud[2 * i] = char(0);
+            loud[2 * i + 1] = char(0x20);
+        }
+        const auto signal = EmberCore::pcmLevel(loud.constData(), loud.size(), format);
+        QVERIFY(signal.rms > 0.24 && signal.rms < 0.26);
+        QVERIFY(signal.peak > 0.24);
+        QCOMPARE(signal.durationMs, 100);
+        format.setChannelCount(2);
+        QByteArray stereo(6400, char(0));
+        for (int i = 0; i < 1600; ++i) {
+            stereo[i * 4 + 2] = char(0);
+            stereo[i * 4 + 3] = char(0x20);
+        }
+        QVERIFY(EmberCore::pcmLevel(stereo.constData(), stereo.size(), format).rms > 0.16);
+        format.setChannelCount(1);
+        format.setSampleFormat(QAudioFormat::Float);
+        QByteArray floats(1600 * sizeof(float), char(0));
+        const float half = 0.5f;
+        for (int i = 0; i < 1600; ++i)
+            std::memcpy(floats.data() + i * sizeof(float), &half, sizeof(float));
+        const auto floatLevel = EmberCore::pcmLevel(
+            floats.constData(), floats.size(), format);
+        QVERIFY(floatLevel.rms > 0.49 && floatLevel.rms < 0.51);
+        QVERIFY(EmberCore::pcmLevel(nullptr, floats.size(), format).durationMs == 0);
+        QVERIFY(EmberCore::pcmLevel(floats.constData(), 3, format).durationMs == 0);
+    }
+    void optionalSilenceEndpointNeverCutsUntilSustainedVoiceAndLongPause() {
+        EmberCore::VoiceEndpointer detector;
+        const EmberCore::AudioLevel quiet{0.001, 0.002, 100};
+        const EmberCore::AudioLevel voice{0.09, 0.20, 100};
+        for (int i = 0; i < 55; ++i) QVERIFY(!detector.observe(quiet));
+        for (int i = 0; i < 5; ++i) QVERIFY(!detector.observe(voice));
+        for (int i = 0; i < 16; ++i) QVERIFY(!detector.observe(quiet));
+        for (int i = 0; i < 4; ++i) QVERIFY(!detector.observe(voice));
+        for (int i = 0; i < 21; ++i) QVERIFY(!detector.observe(quiet));
+        QVERIFY(detector.observe(quiet));
+        detector.reset();
+        for (int i = 0; i < 100; ++i) QVERIFY(!detector.observe(quiet));
+        for (int i = 0; i < 10; ++i)
+            QVERIFY(!detector.observe({0.006, 0.010, 100}));
+        QVERIFY(!detector.observe({0.1, 0.2, 0}));
+    }
     void interruptingVoiceNeverInterruptsTranscription() {
         using EmberCore::captureAllowedWithInterruption;
         QVERIFY(captureAllowedWithInterruption(false, false, false, false));

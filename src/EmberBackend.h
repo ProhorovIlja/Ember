@@ -35,6 +35,8 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QString continuityNotes READ continuityNotes NOTIFY continuityNotesChanged)
     Q_PROPERTY(QString recognitionHints READ recognitionHints NOTIFY recognitionHintsChanged)
     Q_PROPERTY(bool localHistoryReady READ localHistoryReady CONSTANT)
+    Q_PROPERTY(int microphoneLevel READ microphoneLevel NOTIFY microphoneLevelChanged)
+    Q_PROPERTY(bool autoEndOnSilence READ autoEndOnSilence WRITE setAutoEndOnSilence NOTIFY configurationChanged)
     Q_PROPERTY(bool dictationActive READ dictationActive NOTIFY dictationChanged)
     Q_PROPERTY(QString dictatedText READ dictatedText NOTIFY dictationChanged)
     Q_PROPERTY(bool brainReady READ brainReady NOTIFY brainReadyChanged)
@@ -74,6 +76,8 @@ public:
     QString continuityNotes() const { return m_continuityNotes; }
     QString recognitionHints() const { return m_recognitionHints; }
     bool localHistoryReady() const { return m_store && m_store->ready(); }
+    int microphoneLevel() const { return m_microphoneLevel; }
+    bool autoEndOnSilence() const { return m_autoEndOnSilence; }
     bool dictationActive() const { return m_listening && m_captureDictation; }
     QString dictatedText() const { return m_dictatedText; }
     bool brainReady() const { return m_brainReady; }
@@ -122,6 +126,7 @@ public:
     Q_INVOKABLE void submitText(const QString &text);
     Q_INVOKABLE void startRecording();
     Q_INVOKABLE void startDictation();
+    Q_INVOKABLE void setAutoEndOnSilence(bool enabled);
     Q_INVOKABLE void stopDictation();
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void testVoice();
@@ -147,6 +152,7 @@ signals:
     void continuityNotesChanged();
     void recognitionHintsChanged();
     void dictationChanged();
+    void microphoneLevelChanged();
     void dictationReady(const QString &text);
     void brainReadyChanged();
     void busyChanged();
@@ -213,6 +219,8 @@ private:
     int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0, m_chatMode = 0;
     int m_recognitionLanguage = 0, m_recognitionEngine = 0;
     int m_deliveryStyle = 0, m_outputVolume = 85;
+    int m_microphoneLevel = 0;
+    bool m_autoEndOnSilence = false;
     bool m_brainReady = false, m_busy = false, m_listening = false;
     bool m_privateMode = false; // never stored in QSettings
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
@@ -232,6 +240,7 @@ private:
     std::unique_ptr<QLockFile> m_workLock;
     std::unique_ptr<QAudioSource> m_audioSource;
     QFile m_captureFile;
+    std::unique_ptr<class CaptureTap> m_captureTap;
     QStringList m_transcriptionSegments;
     qint64 m_transcriptionOffset = 0, m_transcriptionSize = 0;
     qint64 m_transcriptionChunkSize = 0;
