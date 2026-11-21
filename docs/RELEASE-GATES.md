@@ -1,6 +1,6 @@
 # Ember release policy
 
-The first branch is a **source-first development foundation**. It must **not** publish a stable GitHub Release as a finished private AI until every mandatory item is demonstrably working and license compliant.
+The first branch is a **source-first development foundation**. The unsigned development installer is already built and smoke-tested in GitHub Actions, but this does not waive real hardware and model acceptance. `release/verify_release.py` and `.github/workflows/stable-release.yml` block stable publication unless the tag is semantically versioned, an explicit reviewed acceptance manifest exists with twelve HTTPS evidence records, the release source version matches the tested revision and detailed version-specific notes are present. It must **not** publish a stable GitHub Release as a finished private AI until every mandatory item is demonstrably working and license compliant.
 
 - [ ] All native Windows CI builds and automated tests green, with a portable bundle that starts on a **clean** Windows 10/11 install and has zero WebView2 dependency.
 - [ ] LLM model weights and backend supplied with clear safe installation and checksum verification. Tested GGUF on RTX 4070 12 GB / Ryzen 5600 / 32 GB.

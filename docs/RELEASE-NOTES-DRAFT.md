@@ -9,5 +9,7 @@
 - Additional offline TTS provider: opt-in OpenAI-compatible Qwen3/Chatterbox speech API on fixed `127.0.0.1:43822` (no remote URLs, proxies or redirects); configurable local model alias and voice; response must be 16-bit PCM WAV.
 - Readouts for last successful local speech recognition, LLM completion and TTS-chunk generation latency. These are **local timings, not quality scores**.
 - Complete spoken replies are segmented on sentence boundaries instead of silently truncating after 700 characters; queued audio can be cancelled and its prior file handle is released before regenerating.
+- User-editable, locally persisted comparison script (English or Russian with multilingual model), repeatable across selected voices; the Chat screen now includes an explicit **Stop reply** button.
+- A reproducible Inno Setup **development** installer and portable ZIP compiled by CI; silent install, actual QML launch and uninstall smoke test; installer SHA-256 in artifact. A separate **fail-closed stable release workflow** validates hardware, voice quality, licenses, notes and reviewer evidence before any final Release.
 
 Limitations: requires separate models and binaries; hardware and audio quality unverified; no real-time full-duplex calls or automatic installers. This document is a draft and must not be published as a stable download.
