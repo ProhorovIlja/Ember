@@ -1,5 +1,6 @@
 #include "Core.h"
 #include <QDataStream>
+#include <QIODevice>
 #include <QJsonArray>
 #include <QUrl>
 #include <algorithm>
