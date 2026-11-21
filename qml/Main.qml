@@ -10,13 +10,13 @@ ApplicationWindow {
     minimumHeight: 630
     visible: true
     title: "Ember · Local Intelligence"
-    color: "#0B1019"
+    color: "#000000"
     font.family: "Segoe UI"
     property int page: 0
-    property color mint: "#80F1C3"
+    property color mint: "#77C4FF"
     property color silver: "#B2C2D1"
-    property color borderColor: "#293749"
-    property color cardColor: "#151E2B"
+    property color borderColor: "#1A2D45"
+    property color cardColor: "#0A101C"
     Dialog {
         id: deleteChatDialog
         parent: Overlay.overlay
@@ -65,9 +65,9 @@ ApplicationWindow {
         width: parent.width
         height: 53
         radius: 15
-        color: window.page === index ? "#234138" : (hover.hovered ? "#182633" : "transparent")
+        color: window.page === index ? "#112940" : (hover.hovered ? "#0D1B30" : "transparent")
         border.width: window.page === index ? 1 : 0
-        border.color: "#416C62"
+        border.color: "#2C6997"
         Behavior on color { ColorAnimation { duration: 180 } }
         HoverHandler { id: hover }
         MouseArea {
@@ -81,27 +81,27 @@ ApplicationWindow {
             anchors.leftMargin: 17
             spacing: 16
             Text { text: symbol; color: window.page === index ? window.mint : window.silver; font.pixelSize: 20 }
-            Text { text: label; color: window.page === index ? "#E5FFF3" : "#B9C8D9"; font.pixelSize: 15; font.weight: window.page === index ? Font.DemiBold : Font.Normal }
+            Text { text: label; color: window.page === index ? "#E6F4FF" : "#B9C8D9"; font.pixelSize: 15; font.weight: window.page === index ? Font.DemiBold : Font.Normal }
         }
     }
     component PillButton: Button {
         id: pill
-        property color fill: "#263E39"
-        property color ink: "#DAFFF0"
+        property color fill: "#0F2B4B"
+        property color ink: "#EAF5FF"
         font.pixelSize: 14
         font.weight: Font.DemiBold
         implicitHeight: 44
         implicitWidth: 138
         background: Rectangle {
             radius: 13
-            color: !pill.enabled ? "#29343D" : (pill.down ? "#38655A" : (pill.hovered ? "#315A50" : pill.fill))
-            border.color: !pill.enabled ? "#36404B" : "#497669"
+            color: !pill.enabled ? "#202B3A" : (pill.down ? "#245780" : (pill.hovered ? "#19496D" : pill.fill))
+            border.color: !pill.enabled ? "#36404B" : "#3476A7"
             border.width: 1
             Behavior on color { ColorAnimation { duration: 140 } }
         }
         contentItem: Text {
             text: pill.text
-            color: pill.enabled ? pill.ink : "#78908F"
+            color: pill.enabled ? pill.ink : "#8698B5"
             font: pill.font
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -114,8 +114,8 @@ ApplicationWindow {
         Rectangle {
             Layout.preferredWidth: 225
             Layout.fillHeight: true
-            color: "#101823"
-            border.color: "#202C3A"
+            color: "#05080E"
+            border.color: "#122035"
             border.width: 1
             ColumnLayout {
                 anchors.fill: parent
@@ -128,10 +128,10 @@ ApplicationWindow {
                     Rectangle {
                         width: 42; height: 42; radius: 15
                         gradient: Gradient {
-                            GradientStop { position: 0; color: "#224C43" }
-                            GradientStop { position: 1; color: "#122830" }
+                            GradientStop { position: 0; color: "#134C81" }
+                            GradientStop { position: 1; color: "#08152A" }
                         }
-                        border.color: "#4D9B84"
+                        border.color: "#378CC8"
                         Image {
                             anchors.fill: parent
                             anchors.margins: 3
@@ -143,11 +143,11 @@ ApplicationWindow {
                     }
                     Column {
                         spacing: 2
-                        Text { text: "EMBER"; color: "#ECFFF7"; font.pixelSize: 19; font.bold: true; font.letterSpacing: 2 }
-                        Text { text: "LOCAL INTELLIGENCE"; color: "#809C9D"; font.pixelSize: 9; font.letterSpacing: 1.2 }
+                        Text { text: "EMBER"; color: "#F1F9FF"; font.family: "Bahnschrift"; font.pixelSize: 21; font.bold: true; font.letterSpacing: 2.5 }
+                        Text { text: "LOCAL INTELLIGENCE"; color: "#789FC0"; font.pixelSize: 9; font.letterSpacing: 1.2 }
                     }
                 }
-                Rectangle { Layout.fillWidth: true; height: 1; color: "#253341"; Layout.topMargin: 21; Layout.bottomMargin: 21 }
+                Rectangle { Layout.fillWidth: true; height: 1; color: "#1A2940"; Layout.topMargin: 21; Layout.bottomMargin: 21 }
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 8
@@ -229,12 +229,12 @@ ApplicationWindow {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 9
-                    Text { text: "ON THIS MACHINE"; color: "#7892A4"; font.pixelSize: 10; font.letterSpacing: 1.3 }
+                    Text { text: "ON THIS MACHINE"; color: "#7194B4"; font.pixelSize: 10; font.letterSpacing: 1.3 }
                     RowLayout {
                         spacing: 9
                         Rectangle {
                             width: 8; height: 8; radius: 4
-                            color: ember.brainReady ? window.mint : "#CA9477"
+                            color: ember.brainReady ? window.mint : "#FFB97D"
                         }
                         Text {
                             text: ember.brainReady ? "Brain online" : "Brain offline"
@@ -244,7 +244,7 @@ ApplicationWindow {
                     }
                     Text {
                         text: "Private by design. No hosted AI endpoints."
-                        color: "#8298AA"
+                        color: "#7D95AF"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -255,7 +255,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#0C121D"
+            color: "#000000"
             ColumnLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 36
@@ -271,7 +271,8 @@ ApplicationWindow {
                         Text {
                             text: window.page === 0 ? "The sound of intelligence" :
                                   window.page === 1 ? "A conversation with Ember" : "Make Ember yours"
-                            font.pixelSize: 26
+                            font.pixelSize: 27
+                            font.family: "Bahnschrift"
                             font.weight: Font.DemiBold
                             color: "#F3F7FE"
                         }
@@ -294,8 +295,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     implicitHeight: 43
                     radius: 12
-                    color: "#192632"
-                    border.color: "#314957"
+                    color: "#0B1A2B"
+                    border.color: "#254263"
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 16
@@ -303,12 +304,12 @@ ApplicationWindow {
                         spacing: 12
                         Rectangle {
                             width: 8; height: 8; radius: 4
-                            color: ember.busy ? "#F2C38A" : (ember.brainReady ? window.mint : "#B78377")
+                            color: ember.busy ? "#FFC889" : (ember.brainReady ? window.mint : "#AF8492")
                         }
                         Text {
                             Layout.fillWidth: true
                             text: ember.status
-                            color: "#BBD1D9"
+                            color: "#CADFF2"
                             elide: Text.ElideRight
                             font.pixelSize: 13
                         }
@@ -338,12 +339,12 @@ ApplicationWindow {
                                     height: 282
                                     radius: 141
                                     color: "transparent"
-                                    border.color: ember.listening ? "#69F3BA" : "#315A56"
+                                    border.color: ember.listening ? "#6DBEFF" : "#204B76"
                                     border.width: ember.listening ? 2 : 1
                                     Behavior on border.color { ColorAnimation { duration: 250 } }
                                     Rectangle {
                                         x: 16; y: 32; width: 10; height: 10; radius: 5
-                                        color: "#83F3BE"
+                                        color: "#71C7FF"
                                         opacity: ember.busy || ember.listening ? 0.9 : 0.4
                                     }
                                     NumberAnimation on rotation {
@@ -357,19 +358,19 @@ ApplicationWindow {
                                     width: 228
                                     height: 228
                                     radius: 114
-                                    color: "#182F36"
-                                    border.color: "#326D62"
+                                    color: "#112745"
+                                    border.color: "#2C5F93"
                                     border.width: 1
                                     gradient: Gradient {
-                                        GradientStop { position: 0; color: "#315D54" }
-                                        GradientStop { position: 0.48; color: "#1A383D" }
-                                        GradientStop { position: 1; color: "#101E30" }
+                                        GradientStop { position: 0; color: "#1D598C" }
+                                        GradientStop { position: 0.48; color: "#142C4C" }
+                                        GradientStop { position: 1; color: "#09162B" }
                                     }
                                     Rectangle {
                                         anchors.centerIn: parent
                                         width: 138; height: 138; radius: 69
-                                        color: "#10252B"
-                                        border.color: "#4FAF91"
+                                        color: "#0A203F"
+                                        border.color: "#53A7E6"
                                         border.width: 1
                                         Image {
                                             anchors.fill: parent
@@ -394,7 +395,7 @@ ApplicationWindow {
                                 text: ember.listening ? "I'm listening" :
                                       ember.speaking ? "Ember is speaking" :
                                       ember.busy ? "Putting thoughts into words" : "Speak when you're ready"
-                                color: "#ECFFF6"
+                                color: "#F2F9FF"
                                 font.pixelSize: 23
                                 font.weight: Font.DemiBold
                             }
@@ -404,7 +405,7 @@ ApplicationWindow {
                                 horizontalAlignment: Text.AlignHCenter
                                 wrapMode: Text.WordWrap
                                 text: "Push to talk. Your microphone is idle until you start, and recording stops after 30 seconds."
-                                color: "#93A7B8"
+                                color: "#94AFC8"
                                 font.pixelSize: 13
                             }
                             RowLayout {
@@ -441,11 +442,11 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     anchors.margins: 18
                                     spacing: 10
-                                    Text { text: "LAST HEARD"; color: "#85AFA6"; font.pixelSize: 10; font.letterSpacing: 1.2 }
+                                    Text { text: "LAST HEARD"; color: "#7EB5E2"; font.pixelSize: 10; font.letterSpacing: 1.2 }
                                     Text {
                                         width: parent.width
                                         text: ember.transcript.length ? ember.transcript : "Your words will appear here once transcribed."
-                                        color: ember.transcript.length ? "#DDEDE8" : "#879CAB"
+                                        color: ember.transcript.length ? "#E1F2FF" : "#879CAB"
                                         font.pixelSize: 13
                                         wrapMode: Text.WordWrap
                                         maximumLineCount: 3
@@ -521,8 +522,8 @@ ApplicationWindow {
                                         width: Math.min(parent.width * 0.82, 700)
                                         implicitHeight: bubbleBody.implicitHeight + 39
                                         radius: 16
-                                        color: modelData.role === "you" ? "#23433D" : "#172434"
-                                        border.color: modelData.role === "you" ? "#42796C" : "#2F4056"
+                                        color: modelData.role === "you" ? "#123E68" : "#172434"
+                                        border.color: modelData.role === "you" ? "#3576AF" : "#2F4056"
                                         Column {
                                             id: bubbleBody
                                             anchors.left: parent.left
@@ -634,8 +635,8 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     implicitHeight: 85
                                     radius: 16
-                                    color: "#173029"
-                                    border.color: "#356D57"
+                                    color: "#0B203B"
+                                    border.color: "#24578E"
                                     Column {
                                         anchors.fill: parent
                                         anchors.margins: 17
@@ -644,13 +645,13 @@ ApplicationWindow {
                                         Text {
                                             width: parent.width
                                             text: "Default installation: D:\\Games\\Ember. Choose trusted local engines and model files. Nothing downloads automatically."
-                                            color: "#D2E9DF"
+                                            color: "#CFDFF1"
                                             wrapMode: Text.WordWrap
                                             font.pixelSize: 13
                                         }
                                     }
                                 }
-                                Text { text: "MODEL ROUTING"; color: "#DAE4EE"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                                Text { text: "MODEL ROUTING"; color: "#D9ECFF"; font.pixelSize: 16; font.weight: Font.DemiBold }
                                 Repeater {
                                     model: [
                                         { key: "brainExe", label: "llama-server executable" },
@@ -696,7 +697,7 @@ ApplicationWindow {
                                 }
                                 Text {
                                     text: "AUDIO ROUTING"
-                                    color: "#DAE4EE"
+                                    color: "#D9ECFF"
                                     font.pixelSize: 16
                                     font.weight: Font.DemiBold
                                     Layout.topMargin: 8
@@ -748,7 +749,7 @@ ApplicationWindow {
                                                     width: microphonePicker.width
                                                     implicitHeight: Math.min(contentItem.implicitHeight + 6, 280)
                                                     padding: 3
-                                                    background: Rectangle { color: "#17252F"; radius: 10; border.color: "#49796B" }
+                                                    background: Rectangle { color: "#102137"; radius: 10; border.color: "#2E6FA7" }
                                                     contentItem: ListView {
                                                         clip: true
                                                         implicitHeight: contentHeight
@@ -770,7 +771,7 @@ ApplicationWindow {
                                                         verticalAlignment: Text.AlignVCenter
                                                         elide: Text.ElideRight
                                                     }
-                                                    background: Rectangle { color: parent.highlighted ? "#31574F" : "#17252F" }
+                                                    background: Rectangle { color: parent.highlighted ? "#1D4672" : "#102137" }
                                                 }
                                             }
                                         }
@@ -810,7 +811,7 @@ ApplicationWindow {
                                                     width: speakerPicker.width
                                                     implicitHeight: Math.min(contentItem.implicitHeight + 6, 280)
                                                     padding: 3
-                                                    background: Rectangle { color: "#17252F"; radius: 10; border.color: "#49796B" }
+                                                    background: Rectangle { color: "#102137"; radius: 10; border.color: "#2E6FA7" }
                                                     contentItem: ListView {
                                                         clip: true
                                                         implicitHeight: contentHeight
@@ -832,7 +833,7 @@ ApplicationWindow {
                                                         verticalAlignment: Text.AlignVCenter
                                                         elide: Text.ElideRight
                                                     }
-                                                    background: Rectangle { color: parent.highlighted ? "#31574F" : "#17252F" }
+                                                    background: Rectangle { color: parent.highlighted ? "#1D4672" : "#102137" }
                                                 }
                                             }
                                         }
@@ -845,7 +846,7 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                Text { text: "PERSONALITY & VOICE"; color: "#DAE4EE"; font.pixelSize: 16; font.weight: Font.DemiBold; Layout.topMargin: 8 }
+                                Text { text: "PERSONALITY & VOICE"; color: "#D9ECFF"; font.pixelSize: 16; font.weight: Font.DemiBold; Layout.topMargin: 8 }
                                 Rectangle {
                                     Layout.fillWidth: true
                                     implicitHeight: 178
@@ -865,7 +866,7 @@ ApplicationWindow {
                                             color: "#E3EDF4"
                                             font.pixelSize: 12
                                             wrapMode: TextEdit.Wrap
-                                            background: Rectangle { radius: 8; color: "#0F1925" }
+                                            background: Rectangle { radius: 8; color: "#0A1524" }
                                         }
                                         RowLayout {
                                             Item { Layout.fillWidth: true }
@@ -884,7 +885,7 @@ ApplicationWindow {
                                     Text {
                                         Layout.fillWidth: true
                                         text: "Synthesis engine"
-                                        color: "#A7BBC8"
+                                        color: "#B1C7DE"
                                         font.pixelSize: 13
                                     }
                                     ComboBox {
@@ -900,15 +901,15 @@ ApplicationWindow {
                                         contentItem: Text {
                                             leftPadding: 14
                                             text: enginePicker.displayText
-                                            color: "#E7F6ED"
+                                            color: "#EAF4FF"
                                             font.pixelSize: 13
                                             verticalAlignment: Text.AlignVCenter
                                             elide: Text.ElideRight
                                         }
                                         background: Rectangle {
-                                            color: "#172B31"
+                                            color: "#0D233A"
                                             radius: 12
-                                            border.color: "#437B6C"
+                                            border.color: "#316EA3"
                                         }
                                         delegate: ItemDelegate {
                                             required property int index
@@ -919,12 +920,12 @@ ApplicationWindow {
                                             highlighted: enginePicker.highlightedIndex === index
                                             contentItem: Text {
                                                 text: parent.text
-                                                color: "#E6F4EC"
+                                                color: "#EAF4FF"
                                                 font.pixelSize: 13
                                                 verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.highlighted ? "#31574F" : "#17252F"
+                                                color: parent.highlighted ? "#1D4672" : "#102137"
                                             }
                                         }
                                     }
@@ -936,7 +937,7 @@ ApplicationWindow {
                                     Text {
                                         Layout.fillWidth: true
                                         text: "Voice · Kokoro English v0.19"
-                                        color: "#A7BBC8"
+                                        color: "#B1C7DE"
                                         font.pixelSize: 13
                                         wrapMode: Text.WordWrap
                                     }
@@ -961,17 +962,17 @@ ApplicationWindow {
                                         onActivated: ember.voiceId = currentIndex
                                         contentItem: Text {
                                             text: voiceSelector.displayText
-                                            color: "#E7F6ED"
+                                            color: "#EAF4FF"
                                             font.pixelSize: 13
                                             leftPadding: 14
                                             verticalAlignment: Text.AlignVCenter
                                             elide: Text.ElideRight
                                         }
                                         background: Rectangle {
-                                            color: "#172B31"
+                                            color: "#0D233A"
                                             radius: 12
                                             border.width: 1
-                                            border.color: "#437B6C"
+                                            border.color: "#316EA3"
                                         }
                                         delegate: ItemDelegate {
                                             required property int index
@@ -985,10 +986,10 @@ ApplicationWindow {
                                                 text: parent.text
                                                 font: parent.font
                                                 verticalAlignment: Text.AlignVCenter
-                                                color: "#E6F4EC"
+                                                color: "#EAF4FF"
                                             }
                                             background: Rectangle {
-                                                color: parent.highlighted ? "#31574F" : "#17252F"
+                                                color: parent.highlighted ? "#1D4672" : "#102137"
                                             }
                                         }
                                         popup: Popup {
@@ -997,9 +998,9 @@ ApplicationWindow {
                                             implicitHeight: Math.min(contentItem.implicitHeight + 6, 330)
                                             padding: 3
                                             background: Rectangle {
-                                                color: "#17252F"
+                                                color: "#102137"
                                                 radius: 10
-                                                border.color: "#49796B"
+                                                border.color: "#2E6FA7"
                                             }
                                             contentItem: ListView {
                                                 clip: true
@@ -1047,9 +1048,9 @@ ApplicationWindow {
                                                 font.pixelSize: 13
                                                 onEditingFinished: ember.localModel = text
                                                 background: Rectangle {
-                                                    color: "#0C1A24"
+                                                    color: "#0A192D"
                                                     radius: 9
-                                                    border.color: "#3D5D61"
+                                                    border.color: "#254A73"
                                                 }
                                             }
                                         }
@@ -1072,15 +1073,15 @@ ApplicationWindow {
                                                 font.pixelSize: 13
                                                 onEditingFinished: ember.localVoice = text
                                                 background: Rectangle {
-                                                    color: "#0C1A24"
+                                                    color: "#0A192D"
                                                     radius: 9
-                                                    border.color: "#3D5D61"
+                                                    border.color: "#254A73"
                                                 }
                                             }
                                         }
                                         Text {
                                             text: "Start your own OpenAI-compatible TTS server on 43822. Output must be PCM16 WAV; redirects and remote hosts are blocked."
-                                            color: "#8EA7B4"
+                                            color: "#86A4BD"
                                             font.pixelSize: 11
                                             Layout.fillWidth: true
                                             wrapMode: Text.WordWrap
@@ -1119,7 +1120,7 @@ ApplicationWindow {
                                             color: "#F0F8F6"
                                             font.pixelSize: 13
                                             wrapMode: TextEdit.Wrap
-                                            background: Rectangle { radius: 9; color: "#0F1B27" }
+                                            background: Rectangle { radius: 9; color: "#090F1D" }
                                         }
                                         RowLayout {
                                             Layout.fillWidth: true
