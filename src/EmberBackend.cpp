@@ -940,7 +940,13 @@ void EmberBackend::stopSpeechOnError(const QString &error) {
     setStatus(error);
 }
 void EmberBackend::beginSpeech(const QString &text) {
-    m_voiceQueue = EmberCore::speechChunks(text);
+    if (EmberCore::mostlyCyrillic(text)) {
+        m_voiceTurnActive = false;
+        setStatus("English-only voice: the model answered mainly in Russian. "
+                  "Its original text is preserved; please retry in English.");
+        return;
+    }
+    m_voiceQueue = EmberCore::speechChunks(EmberCore::speechFriendlyText(text));
     if (m_voiceQueue.isEmpty()) {
         setStatus("No valid text available for the local speech engine.");
         return;
