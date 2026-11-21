@@ -83,3 +83,10 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Core tests reject arbitrary or traversal-like session names and validate native-English-only TTS request shape.
 - [ ] Clean Windows 10 hardware crash/reboot tests verify orphan deletion, lock behavior, antivirus file locks and no impact on concurrently running Ember instances.
 - [ ] Physical securely erased media is **not** claimed; encrypted-at-rest archive and optional Drive backups remain separate future work.
+
+### Local Qwen3-ASR benchmark tool
+
+- [x] Source-level local benchmark provides deterministic WER/CER and timing with user-provided RU/EN WAV + reference, no transcript/audio retention and no remote requests; CI mock protocol tests have a clear engine-free path.
+- [ ] Run real Qwen3-ASR 0.6B, 1.7B and Whisper comparative RU/EN voice tests under the same conditions on Windows 10 RTX 4070; inspect hallucinations on silence and GPU contention.
+
+- [x] New microphone turns stop any old still-playing PCM stream before capture, instead of permitting previous assistant audio to be recorded into the next turn.

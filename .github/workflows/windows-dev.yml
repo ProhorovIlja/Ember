@@ -29,6 +29,11 @@ jobs:
         run: |
           python tools/voice_benchmark.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Local voice benchmark self-test failed.' }
+      - name: Validate optional native ASR protocol and text metrics
+        shell: pwsh
+        run: |
+          python tools/asr_benchmark.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Local Qwen3-ASR mock protocol test failed.' }
       - name: Install Qt 6.8.3 dynamic development modules
         uses: jurplel/install-qt-action@v4
         with:
