@@ -10,7 +10,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 ENDPOINT = "http://127.0.0.1:43822/v1/audio/speech"
 PROMPTS = (
@@ -20,7 +21,12 @@ PROMPTS = (
     "Wait, is that really what you meant? Tell me more.",
 )
 MAX_BYTES = 12 * 1024 * 1024
-OPENER = build_opener(ProxyHandler({}))
+class RejectRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # never forward locally generated spoken text to a remote host
+
+
+OPENER = build_opener(ProxyHandler({}), RejectRedirect())
 
 
 def percentile95(values):
@@ -29,8 +35,11 @@ def percentile95(values):
 
 
 def measure(endpoint, model, voice, prompt):
-    if not (endpoint.startswith("http://127.0.0.1:") and
-            endpoint.endswith("/v1/audio/speech")):
+    u = urlsplit(endpoint)
+    if (u.scheme != "http" or u.hostname != "127.0.0.1" or
+            u.port is None or u.username is not None or
+            u.password is not None or u.query or u.fragment or
+            u.path != "/v1/audio/speech"):
         raise ValueError("Only loopback HTTP TTS endpoints are allowed")
     payload = json.dumps({
         "model": model, "voice": voice, "input": prompt,
