@@ -12,6 +12,8 @@
 #include <QJsonObject>
 #include <QMediaDevices>
 #include <QNetworkRequest>
+#include <QRegularExpression>
+#include <QSaveFile>
 #include <QUrl>
 #include <QVariantMap>
 
@@ -46,6 +48,13 @@ EmberBackend::EmberBackend(QObject *parent)
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_voiceId = m_settings.value("voiceId", 0).toInt();
     m_voiceId = qBound(0, m_voiceId, 10);
+    m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
+    m_localModel = m_settings.value("voice/localModel", "qwen3-tts").toString();
+    m_localVoice = m_settings.value("voice/localVoice", "Vivian").toString();
+    const QRegularExpression modelRx("^[A-Za-z0-9_./-]{1,80}$");
+    const QRegularExpression voiceRx("^[A-Za-z0-9_-]{1,80}$");
+    if (!modelRx.match(m_localModel).hasMatch()) m_localModel = "qwen3-tts";
+    if (!voiceRx.match(m_localVoice).hasMatch()) m_localVoice = "Vivian";
     // Stable, opaque Qt device identifiers; never persist the numeric list position.
     m_inputId = QByteArray::fromBase64(m_settings.value("audio/inputId").toByteArray());
     m_outputId = QByteArray::fromBase64(m_settings.value("audio/outputId").toByteArray());
@@ -142,19 +151,16 @@ EmberBackend::EmberBackend(QObject *parent)
 
     connect(&m_tts, &QProcess::finished, this,
             [this](int code, QProcess::ExitStatus how) {
+                if (!m_cliTtsActive) return; // a cancelled CLI may finish during an API request
+                m_cliTtsActive = false;
                 if (!m_busy) return;
                 setBusy(false);
-                const QString audioFile = workFile("voice.wav");
                 if (how != QProcess::NormalExit || code != 0 ||
-                    QFileInfo(audioFile).size() < 44) {
+                    QFileInfo(workFile("voice.wav")).size() < 44) {
                     setStatus("Voice synthesis failed. Check the Kokoro files and voice ID.");
                     return;
                 }
-                m_mediaPlayer.stop();
-                m_mediaPlayer.setSource(QUrl::fromLocalFile(audioFile));
-                m_mediaPlayer.play();
-                setSpeaking(true);
-                setStatus("Speaking locally — no cloud audio service.");
+                playSynthesizedFile();
             });
     connect(&m_tts, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) {
@@ -225,6 +231,32 @@ void EmberBackend::setPersona(const QString &persona) {
 void EmberBackend::setVoiceId(int index) {
     if (index < 0 || index > 10 || index == m_voiceId) return;
     m_voiceId = index;
+    storeConfig();
+}
+void EmberBackend::setVoiceEngine(int index) {
+    if (index < 0 || index > 1 || m_voiceEngine == index) return;
+    if (m_busy || m_speaking || m_listening) cancelWork();
+    m_voiceEngine = index;
+    m_settings.setValue("voice/engine", index);
+    m_settings.sync();
+    ++m_configurationRevision;
+    emit configurationChanged();
+    setStatus(index == 0
+        ? "Offline Kokoro selected. The next reply uses installed model files."
+        : "Local speech service selected. Start a compatible server on 127.0.0.1:43822.");
+}
+void EmberBackend::setLocalVoice(const QString &value) {
+    const QRegularExpression safe("^[A-Za-z0-9_-]{1,80}$");
+    if (!safe.match(value).hasMatch() || m_localVoice == value) return;
+    m_localVoice = value;
+    m_settings.setValue("voice/localVoice", value);
+    storeConfig();
+}
+void EmberBackend::setLocalModel(const QString &value) {
+    const QRegularExpression safe("^[A-Za-z0-9_./-]{1,80}$");
+    if (!safe.match(value).hasMatch() || m_localModel == value) return;
+    m_localModel = value;
+    m_settings.setValue("voice/localModel", value);
     storeConfig();
 }
 
@@ -589,6 +621,14 @@ void EmberBackend::transcribe() {
 }
 
 void EmberBackend::synthesize(const QString &text) {
+    if (m_voiceEngine == 1) {
+        synthesizeViaLocalServer(text);
+        return;
+    }
+    if (m_tts.state() != QProcess::NotRunning) {
+        setStatus("Previous Kokoro process is stopping. Try again shortly.");
+        return;
+    }
     const QString root = configPath("ttsDir");
     const QDir folder(root);
     const QString model = folder.filePath("model.onnx");
@@ -612,8 +652,66 @@ void EmberBackend::synthesize(const QString &text) {
                         "--output-filename=" + workFile("voice.wav"),
                         text.left(700)});
     setBusy(true);
+    m_cliTtsActive = true;
     setStatus("Synthesizing speech locally with Kokoro…");
     m_tts.start();
+}
+void EmberBackend::playSynthesizedFile() {
+    m_mediaPlayer.stop();
+    m_mediaPlayer.setSource(QUrl::fromLocalFile(workFile("voice.wav")));
+    m_mediaPlayer.play();
+    setSpeaking(true);
+    setStatus("Speaking locally — no cloud audio service.");
+}
+void EmberBackend::synthesizeViaLocalServer(const QString &text) {
+    constexpr qsizetype maxWavBytes = 8 * 1024 * 1024;
+    const QString url = "http://127.0.0.1:43822/v1/audio/speech";
+    if (!EmberCore::allowedLocalSpeechEndpoint(url) || !m_work || !m_work->isValid()) {
+        setStatus("Invalid private work folder or local speech service endpoint.");
+        return;
+    }
+    QNetworkRequest request{QUrl(url)};
+    request.setTransferTimeout(90000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    QFile::remove(workFile("voice.wav"));
+    QNetworkReply *reply = m_network.post(
+        request, QJsonDocument(EmberCore::speechRequest(
+            m_localModel, m_localVoice, text)).toJson(QJsonDocument::Compact));
+    m_speechReply = reply;
+    setBusy(true);
+    setStatus("Synthesizing with local high-quality TTS service…");
+    connect(reply, &QNetworkReply::downloadProgress, this,
+            [this, reply](qint64 received, qint64) {
+                if (m_speechReply == reply && received > maxWavBytes) reply->abort();
+            });
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        if (m_speechReply != reply) {
+            reply->deleteLater();
+            return;  // cancelled: never play outdated or crossed-over audio
+        }
+        m_speechReply = nullptr;
+        const bool ok = reply->error() == QNetworkReply::NoError &&
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
+            reply->bytesAvailable() <= maxWavBytes;
+        const QByteArray wav = ok ? reply->readAll() : QByteArray();
+        reply->deleteLater();
+        if (!ok || !EmberCore::validSpeechWav(wav)) {
+            setBusy(false);
+            setStatus("Local TTS is offline, returned unsupported WAV or exceeded the 8 MiB limit.");
+            return;
+        }
+        QSaveFile output(workFile("voice.wav"));
+        if (!output.open(QIODevice::WriteOnly) ||
+            output.write(wav) != wav.size() || !output.commit()) {
+            setBusy(false);
+            setStatus("Could not save temporary local speech for playback.");
+            return;
+        }
+        setBusy(false);
+        playSynthesizedFile();
+    });
 }
 void EmberBackend::testVoice() {
     if (m_busy || m_listening) return;
@@ -627,6 +725,12 @@ void EmberBackend::cancelWork() {
         m_reply = nullptr;
         reply->abort();
     }
+    if (m_speechReply) {
+        auto reply = m_speechReply;
+        m_speechReply = nullptr;
+        reply->abort();
+    }
+    m_cliTtsActive = false;
     if (m_whisper.state() != QProcess::NotRunning) m_whisper.kill();
     if (m_tts.state() != QProcess::NotRunning) m_tts.kill();
     releaseCapture();
