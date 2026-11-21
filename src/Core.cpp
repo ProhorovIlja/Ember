@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QRegularExpression>
 #include <QUrl>
 #include <algorithm>
 #include <cmath>
@@ -214,6 +215,41 @@ bool validSpeechWav(const QByteArray &wav) {
         pos = next;
     }
     return format && data && blockAlign > 0;
+}
+QString speechFriendlyText(const QString &markdown) {
+    if (markdown.size() > 16384) return {};
+    QStringList spokenLines;
+    bool insideCode = false;
+    for (const QString &raw : markdown.split('\n')) {
+        QString line = raw.trimmed();
+        if (line.startsWith("```") || line.startsWith("~~~")) {
+            if (!insideCode)
+                spokenLines.append("The code example is in the text chat.");
+            insideCode = !insideCode;
+            continue;
+        }
+        if (insideCode || line.isEmpty()) continue;
+        line.remove(QRegularExpression(R"(^#{1,6}\s+)"));
+        line.remove(QRegularExpression(R"(^>\s*)"));
+        line.remove(QRegularExpression(R"(^[-*+]\s+)"));
+        line.remove(QRegularExpression(R"(^\d+[.)]\s+)"));
+        line.replace(QRegularExpression(R"(\[([^\]\n]{1,180})\]\([^)]+\))"), "\\1");
+        line.replace(QRegularExpression(R"(https?://[^\s<>]+)"), "a reference link");
+        line.remove(QRegularExpression(R"(\[[0-9]{1,3}\])"));
+        line.replace(QRegularExpression(R"((\*{1,3}|_{2,3}))"), "");
+        line.remove('`');
+        if (!line.trimmed().isEmpty()) spokenLines.append(line);
+    }
+    return spokenLines.join(' ').simplified();
+}
+bool mostlyCyrillic(const QString &text) {
+    int cyrillic = 0, letters = 0;
+    for (const QChar c : text) {
+        if (!c.isLetter()) continue;
+        ++letters;
+        if (c.script() == QChar::Script_Cyrillic) ++cyrillic;
+    }
+    return cyrillic >= 20 && letters > 0 && cyrillic * 4 >= letters;
 }
 // Preserve the content of a long spoken reply instead of silently clipping
 // everything after the first 700 characters. Prefer natural sentence ends,
