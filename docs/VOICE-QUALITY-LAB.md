@@ -85,3 +85,11 @@ Additional native voice-serving candidates to review (not automatically integrat
 - [fr820/tts-server](https://github.com/fr820/tts-server): model-agnostic speech server with streaming chunks and backend performance scripts; verify real-model rather than mock latency.
 
 A future latency-oriented architecture should avoid starting an offline TTS process per sentence, preserve cancel/barging controls, and transmit the first valid PCM chunk as soon as it is ready. None of these designs are proven in the present Qt playback implementation.
+
+## Resident C++ voice serving and two-slot playback (21 November)
+
+Source-verified from [speech.cpp](https://github.com/nyosegawa/speech.cpp) `README.md`, `docs/server.md` and `docs/models.md`: `speech serve [MODEL...] --host 127.0.0.1 --port 43822 --device auto --threads 4`, the `GET /health` readiness route, the `POST /v1/audio/speech` response, and nine case-sensitive Qwen3 voices including `vivian` and `serena`. Ember now has explicit Start/Stop controls and readiness polling for this native Windows/GGML/Vulkan option, plus alternate local TTS API providers. The upstream repository's RTX 2080 and Apple M5 timings are not measurements of the user's RTX 4070; no quantitative superiority claim has been made.
+
+The WAV-based audio chain now generates the **next** block concurrently with playback of the **current** block. This can reduce inter-segment silence, but it does **not** start audible speech at the first LLM token. Speech-friendly rendering removes common Markdown/code syntaxes only from TTS output (not the saved answer), and corrupted byte-rate, bad PCM frame alignment or malformed RIFF chunks are rejected. Distinguish UI `PlayingState` onset from first sound at the physical headphones.
+
+**Next benchmark-critical stage**: speech.cpp can stream 16-bit PCM with `response_format:"pcm"` and `X-Sample-Rate`; Ember's present shared local API deliberately asks for a whole WAV instead. Before adding Qt `QAudioSink` push-mode PCM streaming, test bounded queued-buffer writes, audio device changes, cancellation mid-chunk, HTTP/body limits, output sample-rate validation, and actual first-sound with headphones. The pipeline must not falsely claim live duplex.
