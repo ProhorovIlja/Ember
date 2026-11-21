@@ -50,6 +50,22 @@ private slots:
         }
         QCOMPARE(EmberCore::whisperWav(floats, format).size(), 44 + 160 * 2);
     }
+    void longSpokenRepliesAreSplitWithoutSilentTruncation() {
+        const QString input = QString("A thoughtful reply has a natural pause. ").repeated(70).trimmed();
+        const auto chunks = EmberCore::speechChunks(input);
+        QVERIFY(chunks.size() > 2);
+        for (const auto &chunk : chunks) {
+            QVERIFY(!chunk.isEmpty());
+            QVERIFY(chunk.size() <= 700);
+            QVERIFY(chunk.endsWith('.') || chunk == chunks.last());
+        }
+        QCOMPARE(chunks.join(" "), input);
+        const auto forced = EmberCore::speechChunks(QString(1500, 'x'), 600);
+        QVERIFY(forced.size() >= 3);
+        for (const auto &chunk : forced) QVERIFY(chunk.size() <= 600);
+        QVERIFY(EmberCore::speechChunks({}).isEmpty());
+        QVERIFY(EmberCore::speechChunks(QString(17000, 'y')).isEmpty());
+    }
     void localSpeechBoundaryAndRequestShape() {
         QVERIFY(EmberCore::allowedLocalSpeechEndpoint(
             "http://127.0.0.1:43822/v1/audio/speech"));

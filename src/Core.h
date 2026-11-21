@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QList>
 #include <QString>
+#include <QStringList>
 namespace EmberCore {
 struct Turn { QString user; QString assistant; };
 QByteArray pcmToWav(const QByteArray &pcm, int sampleRate);
@@ -14,4 +15,5 @@ bool allowedLocalEndpoint(const QString &url);
 bool allowedLocalSpeechEndpoint(const QString &url);
 QJsonObject speechRequest(const QString &model, const QString &voice, const QString &text);
 bool validSpeechWav(const QByteArray &wav);
+QStringList speechChunks(const QString &text, int maxCharacters = 620);
 }

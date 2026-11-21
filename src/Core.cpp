@@ -190,6 +190,42 @@ bool validSpeechWav(const QByteArray &wav) {
     }
     return format && data && blockAlign > 0;
 }
+// Preserve the content of a long spoken reply instead of silently clipping
+// everything after the first 700 characters. Prefer natural sentence ends,
+// then word boundaries. Never pass more than 700 UTF-16 code units to either
+// offline TTS provider. The API stays turn-based, not fake full duplex.
+QStringList speechChunks(const QString &input, int maxCharacters) {
+    const QString text = input.simplified();
+    if (text.isEmpty() || text.size() > 16384) return {};
+    const int limit = std::clamp(maxCharacters, 80, 700);
+    QStringList chunks;
+    for (qsizetype pos = 0; pos < text.size();) {
+        qsizetype end = std::min<qsizetype>(pos + limit, text.size());
+        if (end < text.size()) {
+            // Never divide a Unicode surrogate pair in a long unbroken word.
+            if (text[end - 1].isHighSurrogate() && text[end].isLowSurrogate()) --end;
+            qsizetype sentence = -1;
+            for (qsizetype at = end - 1; at >= pos + limit / 3; --at) {
+                const QChar ch = text[at];
+                if ((ch == '.' || ch == '!' || ch == '?' || ch == ';') &&
+                    (at + 1 == text.size() || text[at + 1].isSpace())) {
+                    sentence = at + 1;
+                    break;
+                }
+            }
+            if (sentence > pos) end = sentence;
+            else {
+                const qsizetype space = text.lastIndexOf(' ', end);
+                if (space > pos + limit / 3) end = space;
+            }
+        }
+        const QString chunk = text.mid(pos, end - pos).trimmed();
+        if (!chunk.isEmpty()) chunks.append(chunk);
+        pos = end;
+        while (pos < text.size() && text[pos].isSpace()) ++pos;
+    }
+    return chunks;
+}
 bool allowedLocalEndpoint(const QString &raw) {
     const QUrl url(raw);
     return url.isValid() && url.scheme() == "http" && url.host() == "127.0.0.1" &&
