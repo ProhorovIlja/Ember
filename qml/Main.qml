@@ -17,6 +17,13 @@ ApplicationWindow {
     property color silver: "#B2C2D1"
     property color borderColor: "#1A2D45"
     property color cardColor: "#0A101C"
+    property string historyQuery: ""
+    Timer {
+        id: historySearchDebounce
+        interval: 180
+        repeat: false
+        onTriggered: window.historyQuery = historySearch.text.trim()
+    }
     Dialog {
         id: deleteChatDialog
         parent: Overlay.overlay
@@ -181,18 +188,44 @@ ApplicationWindow {
                             color: ember.localHistoryReady ? window.mint : "#CF9B88"
                         }
                     }
+                    TextField {
+                        id: historySearch
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 37
+                        placeholderText: "Search saved chats"
+                        font.pixelSize: 12
+                        color: "#D6EBFB"
+                        placeholderTextColor: "#7892AD"
+                        leftPadding: 12
+                        rightPadding: 12
+                        selectByMouse: true
+                        enabled: ember.localHistoryReady
+                        onTextChanged: historySearchDebounce.restart()
+                        Keys.onEscapePressed: text = ""
+                        background: Rectangle {
+                            radius: 10
+                            color: "#071422"
+                            border.width: 1
+                            border.color: historySearch.activeFocus ? "#4B9BD0" : "#203A54"
+                            Behavior on border.color { ColorAnimation { duration: 140 } }
+                        }
+                    }
                     ListView {
                         id: historyList
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
                         spacing: 5
-                        model: ember.sessions
+                        model: {
+                            const updated = ember.sessions
+                            return window.historyQuery.length > 0
+                                ? ember.searchHistory(window.historyQuery) : updated
+                        }
                         boundsBehavior: Flickable.StopAtBounds
                         delegate: Rectangle {
                             required property var modelData
                             width: historyList.width
-                            height: 49
+                            height: window.historyQuery.length > 0 ? 67 : 49
                             radius: 10
                             color: modelData.id === ember.currentSessionId
                                    ? "#133352" : (historyHover.hovered ? "#0C1D31" : "transparent")
@@ -201,15 +234,33 @@ ApplicationWindow {
                             border.width: 1
                             Behavior on color { ColorAnimation { duration: 110 } }
                             Text {
-                                anchors.fill: parent
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
                                 anchors.leftMargin: 12
                                 anchors.rightMargin: 9
+                                anchors.topMargin: window.historyQuery.length > 0 ? 9 : 0
+                                height: window.historyQuery.length > 0 ? 24 : parent.height
                                 verticalAlignment: Text.AlignVCenter
                                 text: modelData.title
                                 elide: Text.ElideRight
                                 color: modelData.id === ember.currentSessionId
                                        ? "#EAF7FF" : "#A6BED2"
                                 font.pixelSize: 12
+                                maximumLineCount: 1
+                            }
+                            Text {
+                                visible: window.historyQuery.length > 0
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 9
+                                anchors.topMargin: 36
+                                text: modelData.snippet || "Title match"
+                                elide: Text.ElideRight
+                                color: "#7F9FBA"
+                                font.pixelSize: 10
                                 maximumLineCount: 1
                             }
                             HoverHandler { id: historyHover }
@@ -222,6 +273,13 @@ ApplicationWindow {
                                 }
                             }
                         }
+                    }
+                    PillButton {
+                        Layout.fillWidth: true
+                        text: "Export selected chat"
+                        implicitHeight: 37
+                        enabled: ember.localHistoryReady && ember.currentSessionId.length > 0 && !ember.busy
+                        onClicked: ember.exportCurrentSession()
                     }
                     Text {
                         text: "Only text is saved. No audio recordings."
