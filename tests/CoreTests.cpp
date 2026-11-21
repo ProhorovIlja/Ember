@@ -163,6 +163,26 @@ private slots:
         }
         QCOMPARE(EmberCore::whisperWav(floats, format).size(), 44 + 160 * 2);
     }
+    void mergesOverlappingEnglishAndRussianDictation() {
+        QCOMPARE(EmberCore::joinTranscriptionSegments({
+            "I walked into the old city",
+            "the old city under the rain",
+            "under the rain and looked up"
+        }), QString("I walked into the old city under the rain and looked up"));
+        QCOMPARE(EmberCore::joinTranscriptionSegments({
+            "Сегодня мы идём в старый город",
+            "В старый город завтра приедут друзья",
+            "приедут друзья из Москвы."
+        }), QString::fromUtf8(
+            "Сегодня мы идём в старый город завтра приедут друзья из Москвы."));
+        QCOMPARE(EmberCore::joinTranscriptionSegments({
+            "One word", "word stays", "one one"
+        }), QString("One word word stays one one"));
+        QCOMPARE(EmberCore::joinTranscriptionSegments({" ", "\n"}), QString());
+        QCOMPARE(EmberCore::joinTranscriptionSegments({
+            "A short sentence ends.", "SENTENCE ENDS, and resumes."
+        }), QString("A short sentence ends. and resumes."));
+    }
     void longSpokenRepliesAreSplitWithoutSilentTruncation() {
         const QString input = QString("A thoughtful reply has a natural pause. ").repeated(70).trimmed();
         const auto chunks = EmberCore::speechChunks(input);
