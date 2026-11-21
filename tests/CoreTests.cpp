@@ -542,6 +542,29 @@ private slots:
         QCOMPARE(EmberCore::pcmToWav(QByteArray("odd"), 16000), QByteArray());
         QCOMPARE(EmberCore::pcmToWav(pcm, 0), QByteArray());
     }
+    void suppressesOnlyDigitallyNearSilentAsrWavBeforeInference() {
+        // A muted device should not prompt either model to invent a phrase.
+        const QByteArray mute(16000 * 2, char(0)); // exactly one second
+        const QByteArray silent = EmberCore::pcmToWav(mute, 16000);
+        QVERIFY(EmberCore::nearSilentAsrWav(silent));
+        QByteArray barelyAudible = mute;
+        barelyAudible[100] = char(31); // under the conservative -60 dBFS gate
+        QVERIFY(EmberCore::nearSilentAsrWav(
+            EmberCore::pcmToWav(barelyAudible, 16000)));
+        QByteArray quietVoice = mute;
+        quietVoice[100] = char(33); // even one sample above gate is kept
+        QVERIFY(!EmberCore::nearSilentAsrWav(
+            EmberCore::pcmToWav(quietVoice, 16000)));
+        quietVoice[100] = char(0);
+        quietVoice[101] = char(0x80); // negative full-scale sample
+        QVERIFY(!EmberCore::nearSilentAsrWav(
+            EmberCore::pcmToWav(quietVoice, 16000)));
+        QVERIFY(!EmberCore::nearSilentAsrWav(
+            EmberCore::pcmToWav(mute, 48000)));
+        QVERIFY(!EmberCore::nearSilentAsrWav(
+            QByteArray("not a legitimate WAV")));
+        QVERIFY(!EmberCore::nearSilentAsrWav({}));
+    }
     void resamplesCommonWindowsStereoMicrophone() {
         QAudioFormat format;
         format.setSampleRate(48000);
