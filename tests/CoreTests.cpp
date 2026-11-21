@@ -969,6 +969,46 @@ private slots:
             "![scene](image://local-attachment)"),
             QString("an image in the text chat"));
     }
+    void neverRendersOrPersistsStreamedLocalModelThinking() {
+        using EmberCore::visibleAssistantText;
+        QVERIFY(visibleAssistantText("<think>private note.").isEmpty());
+        QCOMPARE(visibleAssistantText("<THINK>ignore.</think>Public answer."),
+                 QString("Public answer."));
+        QCOMPARE(visibleAssistantText("Intro. <think>secret.</think> Outro."),
+                 QString("Intro.  Outro."));
+        QCOMPARE(visibleAssistantText("<think>one</think><think>two</think>Final."),
+                 QString("Final."));
+        QCOMPARE(visibleAssistantText("The answer <thi"), QString("The answer "));
+        QCOMPARE(visibleAssistantText("The answer <THINK>private work."),
+                 QString("The answer "));
+        QCOMPARE(visibleAssistantText("Plain <angle> notation."),
+                 QString("Plain <angle> notation."));
+
+        // Exactly how an SSE response can split a <think> opener, hidden
+        // content and closing delimiter across network packet boundaries.
+        const QStringList deltas{
+            "<th", "ink>secret premise. ", "private conclusions.",
+            "</thi", "nk>Here is ", "the public answer."
+        };
+        QString raw, oldVisible;
+        for (const QString &delta : deltas) {
+            raw += delta;
+            const QString newVisible = visibleAssistantText(raw);
+            QVERIFY2(newVisible.startsWith(oldVisible),
+                     "Visible reply must be append-only for TTS cursor stability");
+            QVERIFY(!newVisible.contains("secret"));
+            QVERIFY(!newVisible.contains("private"));
+            QVERIFY(!newVisible.contains("<think>"));
+            oldVisible = newVisible;
+        }
+        QCOMPARE(oldVisible, QString("Here is the public answer."));
+
+        // Keep Cyrillic content after hidden tags; bound the parser input.
+        QCOMPARE(visibleAssistantText(QString::fromUtf8(
+            "<think>скрыто</think>Привет, мир.")),
+            QString::fromUtf8("Привет, мир."));
+        QVERIFY(visibleAssistantText(QString(16385, 'x')).isEmpty());
+    }
     void keepsInternalReasoningOutOfEarlyAndFallbackVoices() {
         qsizetype cursor = 0;
         QString draft = "<think>Let me consider an internal path.";
