@@ -15,6 +15,8 @@ public:
     QString error() const { return m_error; }
     QString createSession();
     QVariantList sessions(int limit = 80) const;
+    QVariantList search(const QString &text, int limit = 50) const;
+    bool exportMarkdown(const QString &session, const QString &path) const;
     QVariantList messages(const QString &session, int limit = 300) const;
     bool append(const QString &session, const QString &role, const QString &body);
     bool remove(const QString &session);
