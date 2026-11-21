@@ -709,6 +709,10 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         if (text.size() > 4096) setStatus("Message exceeds the 4,096-character input limit.");
         return;
     }
+    // A PCM voice may still be playing after the LLM is done. Abort the
+    // previous HTTP/sink state; stopping only the WAV player is insufficient.
+    if (m_speaking || m_speechSequence || m_pcmSink || m_speechReply)
+        cancelWork();
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_voiceEarlyFailed = false;
@@ -754,10 +758,12 @@ void EmberBackend::submit(const QString &raw, bool voice) {
             "Put the answer's helpful point in the first complete sentence. "
             "Use conversational prose, not Markdown, code fences, or raw URLs.";
     }
+    const QString recalled = m_store && m_store->ready() && !m_sessionId.isEmpty()
+        ? m_store->historicalExcerpts(m_sessionId, text) : QString();
     QJsonObject payload = EmberCore::chatRequest(
         effectivePersona, m_history, text,
         voice ? 512 : (m_chatMode == 1 ? 2048 : 1400),
-        m_chatMode == 1 ? 0.92 : 0.73);
+        m_chatMode == 1 ? 0.92 : 0.73, recalled);
     payload.insert("stream", true);
     const QString url = "http://127.0.0.1:43821/v1/chat/completions";
     if (!EmberCore::allowedLocalEndpoint(url)) {

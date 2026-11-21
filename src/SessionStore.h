@@ -16,6 +16,9 @@ public:
     QString createSession();
     QVariantList sessions(int limit = 80) const;
     QVariantList search(const QString &text, int limit = 50) const;
+    // Small, opt-in-to-this-chat lexical recollection; no embeddings or cloud.
+    QString historicalExcerpts(const QString &session, const QString &question,
+                               int maxResults = 3) const;
     bool exportMarkdown(const QString &session, const QString &path) const;
     QVariantList messages(const QString &session, int limit = 300) const;
     bool append(const QString &session, const QString &role, const QString &body);

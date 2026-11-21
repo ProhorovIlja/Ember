@@ -3,6 +3,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QRegularExpression>
+#include <QSet>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
@@ -35,6 +37,9 @@ SessionStore::SessionStore(const QString &path) {
              "PRAGMA busy_timeout=3000",
              "PRAGMA journal_mode=WAL",
              "PRAGMA synchronous=NORMAL",
+              "PRAGMA wal_autocheckpoint=256",
+              "PRAGMA journal_size_limit=2097152",
+              "PRAGMA secure_delete=ON",
              "CREATE TABLE IF NOT EXISTS sessions("
              "id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT 'New conversation',"
              "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
@@ -152,6 +157,87 @@ QVariantList SessionStore::search(const QString &text, int limit) const {
     }
     return result;
 }
+QString SessionStore::historicalExcerpts(const QString &session,
+                                         const QString &question,
+                                         int maxResults) const {
+    if (!m_ready || session.isEmpty() || session.size() > 64 ||
+        question.trimmed().isEmpty() || question.size() > 4096) return {};
+    // Avoid an embeddings index or long-lived duplicate text on the disk.
+    static const QSet<QString> ignored{
+        "the", "and", "this", "that", "then", "from", "with", "about",
+        "there", "which", "what", "when", "where", "would", "could",
+        "should", "have", "were", "they", "them", "your", "you",
+        "for", "are", "was", "how", "why", "can", "did", "does",
+        "please", "tell", "remember", "again", "before", "after",
+        "что", "как", "это", "этот", "этом", "этого", "мне", "тебе",
+        "для", "про", "где", "когда", "кто", "она", "они", "его",
+        "еще", "ещё", "надо", "нужно", "было", "был", "будет",
+        "можешь", "можно", "хочу", "теперь", "раньше", "тогда"
+    };
+    QStringList terms;
+    const QRegularExpression words(R"([\p{L}\p{N}]{3,32})");
+    auto match = words.globalMatch(question.toCaseFolded());
+    while (match.hasNext() && terms.size() < 8) {
+        const QString term = match.next().captured();
+        if (!ignored.contains(term) && !terms.contains(term))
+            terms.append(term);
+    }
+    if (terms.isEmpty()) return {};
+    // Exclude recent 48 messages: these are already represented by the
+    // short-term conversation history sent to the LLM.
+    QSqlQuery cutoff(m_db);
+    cutoff.prepare("SELECT id FROM messages WHERE session_id=? "
+                   "ORDER BY id DESC LIMIT 1 OFFSET 47");
+    cutoff.addBindValue(session);
+    if (!cutoff.exec() || !cutoff.next()) return {};
+    QSqlQuery records(m_db);
+    records.prepare("SELECT role,substr(body,1,1800) FROM messages "
+                    "WHERE session_id=? AND id<? ORDER BY id DESC LIMIT 2048");
+    records.addBindValue(session);
+    records.addBindValue(cutoff.value(0).toLongLong());
+    if (!records.exec()) return {};
+    struct Hit {
+        int score;
+        int ordinal;
+        QString role;
+        QString text;
+    };
+    QList<Hit> matches;
+    int ordinal = 0;
+    while (records.next()) {
+        const QString message = records.value(1).toString();
+        const QString folded = message.toCaseFolded();
+        int score = 0;
+        qsizetype first = -1;
+        for (const QString &term : terms) {
+            const qsizetype found = folded.indexOf(term);
+            if (found < 0) continue;
+            score += term.size() >= 7 ? 3 : 2;
+            if (first < 0 || found < first) first = found;
+        }
+        if (score && first >= 0) {
+            const qsizetype begin = std::max<qsizetype>(0, first - 100);
+            const QString excerpt = message.mid(begin, 380).simplified();
+            if (!excerpt.isEmpty())
+                matches.append(Hit{score, ordinal, records.value(0).toString(), excerpt});
+        }
+        ++ordinal;
+    }
+    std::sort(matches.begin(), matches.end(), [](const Hit &a, const Hit &b) {
+        return a.score != b.score ? a.score > b.score : a.ordinal < b.ordinal;
+    });
+    QStringList excerpts;
+    QSet<QString> duplicates;
+    for (const Hit &hit : matches) {
+        if (excerpts.size() >= std::clamp(maxResults, 1, 4)) break;
+        if (duplicates.contains(hit.text)) continue;
+        duplicates.insert(hit.text);
+        excerpts.append(QString("[%1, earlier message] %2")
+            .arg(hit.role == "you" ? "User" : "Ember", hit.text));
+    }
+    return excerpts.join('\n').left(1550);
+}
+
 bool SessionStore::exportMarkdown(const QString &session, const QString &path) const {
     if (!m_ready || !exists(session) || path.trimmed().isEmpty()) return false;
     // Stream the entire conversation, not just the last 300 UI messages.

@@ -59,3 +59,11 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Local native Early Speech setting permits choosing sentence-first low latency or full-text GPU-headroom operation with the same PCM stream transport.
 - [ ] Collect real RTX 4070 results using paired Vivian/Serena/Kokoro/other approved female English voice tests and blind naturalness ratings; compare both Early Speech states under concurrent llama-server load.
 - [ ] Validate actual physical acoustic first-sound timing; the probe deliberately reports only first **HTTP byte** timing.
+
+### Local bounded story continuity (21 November 2026)
+
+- [x] Active-session-only older-history lexical recall with bounded scan/quotes, no new index, cloud request, cross-chat read, or synthesized audio persistence.
+- [x] Pinned notes preserved; retrieved history is explicitly lower-trust and never given a privileged system role; current user input remains the final message.
+- [x] Regression tests for EN/RU lexical matches, chat isolation, deletion, bounded role order; local SQLite WAL/secure delete settings.
+- [x] New text turns cancel still-active old PCM audio, not only the WAV player.
+- [ ] Long-session latency, recall accuracy and full voice-to-text concurrency need testing on real Windows 10 + RTX 4070 and representative stories.
