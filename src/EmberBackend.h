@@ -36,6 +36,8 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool listening READ listening NOTIFY listeningChanged)
     Q_PROPERTY(bool speaking READ speaking NOTIFY speakingChanged)
+    Q_PROPERTY(bool speechServerReady READ speechServerReady NOTIFY speechServerChanged)
+    Q_PROPERTY(bool speechServerRunning READ speechServerRunning NOTIFY speechServerChanged)
     Q_PROPERTY(QString persona READ persona WRITE setPersona NOTIFY configurationChanged)
     Q_PROPERTY(int chatMode READ chatMode WRITE setChatMode NOTIFY configurationChanged)
     Q_PROPERTY(int recognitionLanguage READ recognitionLanguage WRITE setRecognitionLanguage NOTIFY configurationChanged)
@@ -67,6 +69,8 @@ public:
     bool busy() const { return m_busy; }
     bool listening() const { return m_listening; }
     bool speaking() const { return m_speaking; }
+    bool speechServerReady() const { return m_speechServerReady; }
+    bool speechServerRunning() const { return m_speechServer.state() != QProcess::NotRunning; }
     QString persona() const { return m_persona; }
     int chatMode() const { return m_chatMode; }
     int recognitionLanguage() const { return m_recognitionLanguage; }
@@ -94,6 +98,8 @@ public:
     Q_INVOKABLE void setOutputDeviceIndex(int index);
     Q_INVOKABLE void startBrain();
     Q_INVOKABLE void stopBrain();
+    Q_INVOKABLE void startSpeechServer();
+    Q_INVOKABLE void stopSpeechServer();
     Q_INVOKABLE void submitText(const QString &text);
     Q_INVOKABLE void startRecording();
     Q_INVOKABLE void startDictation();
@@ -121,6 +127,7 @@ signals:
     void busyChanged();
     void listeningChanged();
     void speakingChanged();
+    void speechServerChanged();
     void configurationChanged();
     void audioDevicesChanged();
 private:
@@ -148,6 +155,8 @@ private:
     QString speechFile(int slot) const;
     void stopSpeechOnError(const QString &error);
     void pollBrain();
+    void pollSpeechServer();
+    void setSpeechServerReady(bool ready);
     void storeConfig();
     QString configPath(const QString &key) const;
     QString workFile(const QString &name) const;
@@ -175,6 +184,7 @@ private:
     bool m_brainReady = false, m_busy = false, m_listening = false;
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
     bool m_speechSequence = false;
+    bool m_speechServerReady = false;
     // One WAV plays while the opposite private slot is synthesized ahead.
     int m_playingSpeechSlot = -1, m_readySpeechSlot = -1, m_ttsOutputSlot = -1;
     QSettings m_settings;
@@ -193,13 +203,13 @@ private:
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;
     QPointer<QNetworkReply> m_speechReply;
-    QProcess m_brain, m_whisper, m_tts;
-    QTimer m_healthTimer;
+    QProcess m_brain, m_whisper, m_tts, m_speechServer;
+    QTimer m_healthTimer, m_speechHealthTimer;
     QTimer m_captureWatchdog;
     QTimer m_chatRenderTimer;
     quint64 m_captureSession = 0;
-    QElapsedTimer m_brainElapsed;
-    quint64 m_brainSession = 0;
+    QElapsedTimer m_brainElapsed, m_speechServerElapsed;
+    quint64 m_brainSession = 0, m_speechServerSession = 0;
     QElapsedTimer m_asrElapsed, m_llmElapsed, m_ttsElapsed, m_voiceTurnElapsed;
     qint64 m_asrLastMs = -1, m_llmLastMs = -1, m_ttsLastMs = -1;
     qint64 m_llmFirstTokenMs = -1, m_voiceFirstPlaybackMs = -1;
