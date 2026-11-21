@@ -13,6 +13,12 @@ public:
     QString filePath(const QString &id) const;
     QString fileUrl(const QString &id) const;
     QByteArray dataUri(const QString &id) const;
+    // Verified backup bytes. Also used for local vision requests.
+    QByteArray verifiedBytes(const QString &id) const;
+    // Restore only content-addressed JPEG/PNG, preserving existing items.
+    bool installArchived(const QString &id, const QByteArray &encoded,
+                         bool png, bool *created = nullptr);
+    int imageCount() const;
     QVariantList list(int limit = 120) const;
     bool remove(const QString &id);
 private:

@@ -2,6 +2,7 @@
 #include "Core.h"
 #include "SessionStore.h"
 #include "ImageLibrary.h"
+#include "EmberBundle.h"
 #include <QFile>
 #include <QLockFile>
 #include <QAudioDevice>
@@ -162,6 +163,8 @@ public:
     Q_INVOKABLE void exportCurrentSession();
     Q_INVOKABLE void exportCompactHistory();
     Q_INVOKABLE void restoreCompactHistory();
+    Q_INVOKABLE void exportCompleteHistory();
+    Q_INVOKABLE void restoreCompleteHistory();
 signals:
     void statusChanged();
     void transcriptChanged();

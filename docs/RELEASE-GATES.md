@@ -6,8 +6,10 @@
   deduplication, on-device gallery and safe-only typed image request on localhost.
 - [ ] Confirm vision GGUF/mmproj compatibility, projector startup, true image
   understanding on Windows 10 RTX 4070 and no accidental remote images.
-- [ ] Ensure local Library migration, compact encrypted backup with image blobs,
-  storage quota/cleanup policies and Private mode semantics are fully tested.
+- [x] Local full .emberpack backup roundtrips SQLite text plus image Library
+  with SHA-256 integrity and nonoverwriting imported chat sessions.
+- [ ] Add authenticated encryption (and opt-in Drive) for cloud-safe bundles,
+  test crash recovery, restore UI/DPI and very large Library handling.
 - [ ] Test drag-drop and Ctrl+Shift+V image paste on real Windows shell/DPI.
 - [ ] Validate real third-party model licenses and full offline VLM weights
   before offering them in a final installer.

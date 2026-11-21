@@ -119,15 +119,56 @@ QString ImageLibrary::fileUrl(const QString &id) const {
     const QString path = filePath(id);
     return path.isEmpty() ? QString() : QUrl::fromLocalFile(path).toString();
 }
-QByteArray ImageLibrary::dataUri(const QString &id) const {
+int ImageLibrary::imageCount() const {
+    return QDir(m_root).entryList({"*.jpg", "*.png"},
+        QDir::Files | QDir::NoSymLinks).size();
+}
+QByteArray ImageLibrary::verifiedBytes(const QString &id) const {
     const QString path = filePath(id);
     if (path.isEmpty()) return {};
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return {};
-    const QByteArray data = file.read(kMaxStoredBytes + 1);
-    if (data.isEmpty() || data.size() > kMaxStoredBytes ||
+    const QByteArray bytes = file.read(kMaxStoredBytes + 1);
+    if (bytes.isEmpty() || bytes.size() > kMaxStoredBytes ||
         QString::fromLatin1(QCryptographicHash::hash(
-            data, QCryptographicHash::Sha256).toHex()) != id) return {};
+            bytes, QCryptographicHash::Sha256).toHex()) != id) return {};
+    return bytes;
+}
+bool ImageLibrary::installArchived(const QString &id,
+                                   const QByteArray &encoded,
+                                   bool png, bool *created) {
+    if (created) *created = false;
+    if (!kIdPattern.match(id).hasMatch() ||
+        encoded.isEmpty() || encoded.size() > kMaxStoredBytes ||
+        QString::fromLatin1(QCryptographicHash::hash(
+            encoded, QCryptographicHash::Sha256).toHex()) != id ||
+        !(png ? encoded.startsWith("\x89PNG\r\n\x1a\n")
+               : encoded.startsWith("\xff\xd8"))) return false;
+    QBuffer buffer;
+    buffer.setData(encoded);
+    if (!buffer.open(QIODevice::ReadOnly)) return false;
+    QImageReader reader(&buffer, png ? "PNG" : "JPG");
+    const QSize dimensions = reader.size();
+    if (!dimensions.isValid() || dimensions.width() > 1536 ||
+        dimensions.height() > 1536 ||
+        qint64(dimensions.width()) * dimensions.height() > 2500000 ||
+        !reader.canRead()) return false;
+    const QString target = QDir(m_root).filePath(
+        id + (png ? ".png" : ".jpg"));
+    if (QFileInfo::exists(target))
+        return !filePath(id).isEmpty() && verifiedBytes(id) == encoded;
+    if (!QDir().mkpath(m_root)) return false;
+    QSaveFile file(target);
+    if (!file.open(QIODevice::WriteOnly) ||
+        file.write(encoded) != encoded.size() || !file.commit()) return false;
+    if (created) *created = true;
+    return true;
+}
+QByteArray ImageLibrary::dataUri(const QString &id) const {
+    const QString path = filePath(id);
+    if (path.isEmpty()) return {};
+    const QByteArray data = verifiedBytes(id);
+    if (data.isEmpty()) return {};
     return QByteArray(path.endsWith(".png", Qt::CaseInsensitive)
                       ? "data:image/png;base64," : "data:image/jpeg;base64,")
          + data.toBase64();
@@ -137,7 +178,7 @@ QVariantList ImageLibrary::list(int limit) const {
     const QDir root(m_root);
     const auto entries = root.entryInfoList({"*.jpg", "*.png"},
         QDir::Files | QDir::NoSymLinks | QDir::Readable, QDir::Time);
-    const int maximum = std::clamp(limit, 1, 240);
+    const int maximum = std::clamp(limit, 1, 4097);
     for (const QFileInfo &entry : entries) {
         const QString id = entry.completeBaseName();
         const QString url = fileUrl(id);

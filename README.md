@@ -7,6 +7,9 @@ This repository currently contains a **development foundation**. It compiles an 
 ## Design priorities
 
 - Speech first: choose a real Windows microphone → local `whisper.cpp` transcription → local `llama.cpp` response → either offline `sherpa-onnx` Kokoro or a separate **localhost-only** OpenAI-compatible Qwen3-TTS/Chatterbox service → selected Windows speakers.
+- Explicit complete local .emberpack backup includes chats and image Library
+  with SHA-256 verification. Legacy .emberbackup text-only backups remain
+  compatible. Neither is encrypted; Drive sync is not yet integrated.
 - Native local image Library: add from file/clipboard or reattach a saved
   image; bounded metadata-free JPEG/PNG, deduplicated SHA-256. A vision-capable
   local GGUF plus explicitly configured mmproj is required for actual image

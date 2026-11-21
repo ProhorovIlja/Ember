@@ -2117,6 +2117,42 @@ void EmberBackend::restoreCompactHistory() {
     setStatus("Chats restored as separate copies. Existing conversations were preserved.");
 }
 
+void EmberBackend::exportCompleteHistory() {
+    if (m_privateMode || m_busy || m_listening || m_speaking ||
+        !m_store || !m_store->ready() || !m_images) {
+        setStatus("Finish the current task and exit Private mode before saving the full archive.");
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(
+        nullptr, "Save complete local Ember chats and images",
+        QDir::home().filePath("Ember-complete.emberpack"),
+        "Ember full backup (*.emberpack)");
+    if (path.isEmpty()) return;
+    QString error;
+    setStatus(EmberBundle::exportComplete(*m_store, *m_images, path, &error)
+        ? "Complete local chats and image Library saved. Not encrypted."
+        : "Full backup failed: " + error);
+}
+void EmberBackend::restoreCompleteHistory() {
+    if (m_privateMode || m_busy || m_listening || m_speaking ||
+        !m_store || !m_store->ready() || !m_images) {
+        setStatus("Finish the current task and exit Private mode before full restore.");
+        return;
+    }
+    const QString path = QFileDialog::getOpenFileName(
+        nullptr, "Restore complete local Ember chats and images",
+        QDir::homePath(), "Ember full backup (*.emberpack)");
+    if (path.isEmpty()) return;
+    QString error;
+    if (!EmberBundle::restoreComplete(*m_store, *m_images, path, &error)) {
+        setStatus("Full restore failed: " + error);
+        return;
+    }
+    m_imageItems = m_images->list();
+    emit imageLibraryChanged();
+    refreshSessions();
+    setStatus("Chats restored as new copies; image Library recovered without overwriting.");
+}
 void EmberBackend::setContinuityNotes(const QString &text) {
     if (!m_store || !m_store->ready() || m_sessionId.isEmpty()) {
         setStatus("Local story memory requires a writable SQLite conversation.");

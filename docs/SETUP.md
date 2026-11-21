@@ -20,8 +20,17 @@ image, then Send. Ember constructs the current-user OpenAI-style typed
 `127.0.0.1:43821`, never to an external server. Without a configured
 projector Ember refuses to analyze an image; it does not falsely claim to
 see one. The text archive saves a SHA-256 reference, not base64 blobs.
-Local image files are independent of existing text-only compressed backups:
-exporting/restoring chats does not yet back up their image content.
+A new explicit **Backup chats + images** action creates a full local
+`.emberpack`: the existing compressed chat archive plus SHA-256 checked
+normalized Library images (JPEG/PNG already compressed on disk).
+**Restore full** verifies the entire package before installing assets and
+recreates chat sessions under new UUIDs without replacing saved chats.
+The old `.emberbackup` text-only archive and Restore remain supported.
+The new format is NOT encrypted and is not automatically synced to Drive;
+only export it to storage you trust. A single package limits chats to 256 MiB
+and images to 4096/1 GiB; larger libraries fail instead of silently skipping.
+Filesystem and database are not one crash-atomic transaction: interrupted
+restores may require recovery from the retained original archive.
 Deleting an image leaves a visible missing-asset reference in old chats.
 Model/mmproj compatibility and visual quality need actual RTX4070 validation.
 

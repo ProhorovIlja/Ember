@@ -393,7 +393,27 @@ ApplicationWindow {
                         spacing: 8
                         PillButton {
                             Layout.fillWidth: true
-                            text: "Backup all"
+                            text: "Backup chats + images"
+                            implicitHeight: 36
+                            enabled: ember.localHistoryReady && !ember.privateMode
+                                     && !ember.busy && !ember.listening && !ember.speaking
+                            onClicked: ember.exportCompleteHistory()
+                        }
+                        PillButton {
+                            Layout.fillWidth: true
+                            text: "Restore full"
+                            implicitHeight: 36
+                            enabled: ember.localHistoryReady && !ember.privateMode
+                                     && !ember.busy && !ember.listening && !ember.speaking
+                            onClicked: ember.restoreCompleteHistory()
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        PillButton {
+                            Layout.fillWidth: true
+                            text: "Backup text"
                             implicitHeight: 36
                             enabled: ember.localHistoryReady && !ember.privateMode
                                      && !ember.busy && !ember.listening && !ember.speaking
@@ -421,7 +441,7 @@ ApplicationWindow {
                     Text {
                         text: ember.privateMode
                               ? "Private text stays in RAM. Voice recognition still uses temporary local WAV files."
-                              : "Chats stay in SQLite. Backups are compressed, not encrypted; cloud upload is manual."
+                              : "Full backup includes Library images; text-only backups remain compatible. Neither format is encrypted."
                         color: "#718CA5"
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
