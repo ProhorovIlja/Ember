@@ -794,6 +794,21 @@ private slots:
                  QStringList({"The code example is in the text chat.",
                               "The explanation is visible."}));
         QCOMPARE(cursor, qsizetype(streamed.size()));
+
+        cursor = 0;
+        streamed = "```python\nsecret();\n  ```\nPublic summary. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(streamed, cursor, false),
+                 QStringList({"The code example is in the text chat.",
+                              "Public summary."}));
+        QCOMPARE(cursor, qsizetype(streamed.size()));
+        // Four spaces mean indentation inside code, not a closing fence.
+        cursor = 0;
+        streamed = "```python\n    ```\nsecret_again();";
+        QVERIFY(EmberCore::takeCommittedSpeech(streamed, cursor, false).isEmpty());
+        streamed += "\n```\nExplained. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(streamed, cursor, false),
+                 QStringList({"The code example is in the text chat.",
+                              "Explained."}));
     }
     void doesNotSpeakImageAltTextAsVerifiedVision() {
         const QString markdown = "See ![Confidential chart](https://example.org/chart.png) "
