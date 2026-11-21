@@ -177,7 +177,7 @@ bool attachLocalVisionData(QJsonObject &request, const QByteArray &dataUri) {
     const bool jpeg = dataUri.startsWith("data:image/jpeg;base64,");
     const bool png = dataUri.startsWith("data:image/png;base64,");
     if ((!jpeg && !png) || dataUri.size() > 7 * 1024 * 1024 ||
-        dataUri.size() < 40) return false;
+        dataUri.size() < 30) return false;
     const qsizetype comma = dataUri.indexOf(',');
     const QByteArray encoded = dataUri.mid(comma + 1);
     if (encoded.isEmpty() || encoded.size() % 4 != 0) return false;

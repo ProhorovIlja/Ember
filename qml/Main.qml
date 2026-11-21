@@ -18,6 +18,33 @@ ApplicationWindow {
     property color borderColor: "#1A2D45"
     property color cardColor: "#0A101C"
     property string historyQuery: ""
+    property string imageToDelete: ""
+    Dialog {
+        id: deleteImageDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 430
+        modal: true
+        title: "Delete local image?"
+        standardButtons: Dialog.Yes | Dialog.Cancel
+        onAccepted: {
+            ember.deleteSavedImage(window.imageToDelete)
+            window.imageToDelete = ""
+        }
+        background: Rectangle {
+            color: "#091522"
+            radius: 16
+            border.color: "#2A6292"
+        }
+        contentItem: Text {
+            text: "This removes the image from the on-device Library. Older chats may lose their image preview. This cannot be undone."
+            color: "#D7E7F6"
+            font.pixelSize: 13
+            wrapMode: Text.WordWrap
+            implicitWidth: 360
+            implicitHeight: 95
+        }
+    }
     Timer {
         id: historySearchDebounce
         interval: 180
@@ -139,7 +166,12 @@ ApplicationWindow {
 
     function submitComposer() {
         const value = composer.text.trim()
-        if (value.length === 0 || !ember.brainReady || ember.busy) return
+        if ((value.length === 0 && ember.pendingImageUrl.length === 0)
+            || !ember.brainReady || ember.busy) return
+        if (ember.pendingImageUrl.length > 0 && !ember.visionReady) {
+            ember.submitText(value) // report missing vision model; keep draft
+            return
+        }
         ember.submitText(value)
         composer.text = ""
     }
@@ -239,6 +271,7 @@ ApplicationWindow {
                     spacing: 8
                     NavButton { label: "Voice"; symbol: "◉"; index: 0 }
                     NavButton { label: "Chat"; symbol: "▤"; index: 1 }
+                    NavButton { label: "Library"; symbol: "▧"; index: 3 }
                     NavButton { label: "Settings"; symbol: "⚙"; index: 2 }
                 }
                 ColumnLayout {
@@ -439,7 +472,8 @@ ApplicationWindow {
                         spacing: 5
                         Text {
                             text: window.page === 0 ? "The sound of intelligence" :
-                                  window.page === 1 ? "A conversation with Ember" : "Make Ember yours"
+                                  window.page === 1 ? "A conversation with Ember" :
+                                  window.page === 3 ? "Your private image Library" : "Make Ember yours"
                             font.pixelSize: 27
                             font.family: "Bahnschrift"
                             font.weight: Font.DemiBold
@@ -451,6 +485,7 @@ ApplicationWindow {
                                   ? (ember.privateMode
                                       ? "PRIVATE SESSION · RAM-ONLY TEXT · NO CHAT ARCHIVE"
                                       : "Persistent on-device history · RU/EN dictation · no cloud sync") :
+                                  window.page === 3 ? "Images are normalized and stored only on this PC" :
                                   "Modular engines, voices and personality"
                             font.pixelSize: 12
                             color: "#92A5B8"
@@ -830,13 +865,36 @@ ApplicationWindow {
                                                 width: parent.width
                                                 text: modelData.role === "ember"
                                                     ? ember.formatReply(modelData.body)
-                                                    : modelData.body
+                                                    : ember.messageText(modelData.body)
                                                 textFormat: modelData.role === "ember"
                                                     ? Text.RichText : Text.PlainText
                                                 wrapMode: Text.Wrap
                                                 color: "#EEF3F9"
                                                 font.pixelSize: 14
                                                 lineHeight: 1.3
+                                            }
+                                            Image {
+                                                id: chatImagePreview
+                                                width: parent.width
+                                                height: visible ? 174 : 0
+                                                source: modelData.role === "you"
+                                                    ? ember.messageImageUrl(modelData.body) : ""
+                                                visible: source.toString().length > 0
+                                                sourceSize.width: 780
+                                                sourceSize.height: 780
+                                                fillMode: Image.PreserveAspectFit
+                                                asynchronous: true
+                                                smooth: true
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                visible: modelData.role === "you" &&
+                                                    modelData.body.indexOf("[Ember image sha256:") >= 0 &&
+                                                    chatImagePreview.source.toString().length === 0
+                                                text: "Attached image is unavailable in the local Library."
+                                                color: "#F0B6A1"
+                                                font.pixelSize: 11
+                                                wrapMode: Text.WordWrap
                                             }
                                         }
                                     }
@@ -857,7 +915,7 @@ ApplicationWindow {
                             }
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 142
+                                Layout.preferredHeight: ember.pendingImageUrl.length > 0 ? 227 : 142
                                 color: window.cardColor
                                 radius: 17
                                 border.color: window.borderColor
@@ -865,6 +923,45 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     anchors.margins: 12
                                     spacing: 10
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: ember.pendingImageUrl.length > 0
+                                        spacing: 12
+                                        Image {
+                                            Layout.preferredWidth: 86
+                                            Layout.preferredHeight: 63
+                                            source: ember.pendingImageUrl
+                                            sourceSize.width: 360
+                                            sourceSize.height: 360
+                                            fillMode: Image.PreserveAspectFit
+                                            smooth: true
+                                            asynchronous: true
+                                        }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            Text {
+                                                text: "LOCAL IMAGE ATTACHED"
+                                                color: window.mint
+                                                font.pixelSize: 11
+                                                font.letterSpacing: 0.9
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: ember.visionReady
+                                                    ? "On-device vision ready · attach to this message"
+                                                    : "Vision projector missing · configure in Settings"
+                                                color: ember.visionReady ? "#9BC6E5" : "#F4B9A5"
+                                                font.pixelSize: 11
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                        PillButton {
+                                            text: "Remove"
+                                            implicitWidth: 84
+                                            implicitHeight: 32
+                                            onClicked: ember.clearAttachedImage()
+                                        }
+                                    }
                                     TextArea {
                                         id: composer
                                         Layout.fillWidth: true
@@ -883,15 +980,42 @@ ApplicationWindow {
                                         background: Rectangle { color: "transparent" }
                                         Keys.onPressed: function(event) {
                                             if ((event.modifiers & Qt.ControlModifier) &&
+                                                (event.modifiers & Qt.ShiftModifier) &&
+                                                event.key === Qt.Key_V) {
+                                                ember.pasteImage()
+                                                event.accepted = true
+                                            }
+                                            if ((event.modifiers & Qt.ControlModifier) &&
                                                 (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
                                                 window.submitComposer()
                                                 event.accepted = true
                                             }
                                         }
+                                        DropArea {
+                                            anchors.fill: parent
+                                            onDropped: function(drop) {
+                                                if (drop.hasUrls && drop.urls.length === 1)
+                                                    ember.attachImageUrl(drop.urls[0].toString())
+                                            }
+                                        }
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        Text { text: "Ctrl + Enter to send"; color: "#8097A7"; font.pixelSize: 11 }
+                                        Text { text: "Ctrl + Enter · send"; color: "#8097A7"; font.pixelSize: 11 }
+                                        PillButton {
+                                            text: "Add image"
+                                            implicitWidth: 97
+                                            implicitHeight: 31
+                                            enabled: !ember.privateMode && !ember.busy && !ember.listening
+                                            onClicked: ember.chooseImage()
+                                        }
+                                        PillButton {
+                                            text: "Paste image"
+                                            implicitWidth: 102
+                                            implicitHeight: 31
+                                            enabled: !ember.privateMode && !ember.busy && !ember.listening
+                                            onClicked: ember.pasteImage()
+                                        }
                                         Item { Layout.fillWidth: true }
                                         PillButton {
                                             text: ember.dictationActive ? "● Dictating…" :
@@ -911,7 +1035,9 @@ ApplicationWindow {
                                             text: ember.busy ? "Working…" : "Send message"
                                             implicitWidth: 146
                                             implicitHeight: 38
-                                            enabled: ember.brainReady && !ember.busy && composer.text.trim().length > 0
+                                            enabled: ember.brainReady && !ember.busy &&
+                                                     (composer.text.trim().length > 0 ||
+                                                      ember.pendingImageUrl.length > 0)
                                             onClicked: window.submitComposer()
                                         }
                                     }
@@ -955,6 +1081,7 @@ ApplicationWindow {
                                     model: [
                                         { key: "brainExe", label: "llama-server executable" },
                                         { key: "brainModel", label: "Language model · GGUF" },
+                                        { key: "visionProj", label: "Vision projector · GGUF · optional" },
                                         { key: "asrExe", label: "whisper-cli executable" },
                                         { key: "asrModel", label: "Speech recognition weights" },
                                         { key: "asrVadModel", label: "Silero speech detection · optional" },
@@ -1897,6 +2024,143 @@ ApplicationWindow {
                                     }
                                 }
                                 Item { Layout.preferredHeight: 22 }
+                            }
+                        }
+                    }
+                    Item {
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 14
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 86
+                                radius: 15
+                                color: "#0B1C31"
+                                border.color: "#244C73"
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 10
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            text: "ON-DEVICE IMAGE LIBRARY"
+                                            color: window.mint
+                                            font.pixelSize: 12
+                                            font.letterSpacing: 1.1
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: "Images are normalized, deduplicated and never automatically uploaded."
+                                            font.pixelSize: 11
+                                            color: "#9BB7CE"
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+                                    PillButton {
+                                        text: "Add image"
+                                        implicitWidth: 112
+                                        implicitHeight: 37
+                                        enabled: !ember.privateMode && !ember.busy && !ember.listening
+                                        onClicked: ember.chooseImage()
+                                    }
+                                    PillButton {
+                                        text: "Paste image"
+                                        implicitWidth: 114
+                                        implicitHeight: 37
+                                        enabled: !ember.privateMode && !ember.busy && !ember.listening
+                                        onClicked: ember.pasteImage()
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: 17
+                                color: window.cardColor
+                                border.color: window.borderColor
+                                GridView {
+                                    id: imageGallery
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    clip: true
+                                    cellWidth: 190
+                                    cellHeight: 216
+                                    model: ember.imageLibraryItems
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ScrollBar.vertical: ScrollBar {}
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        width: imageGallery.cellWidth - 12
+                                        height: imageGallery.cellHeight - 12
+                                        radius: 13
+                                        color: "#0C1B2D"
+                                        border.color: "#26476C"
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 9
+                                            spacing: 6
+                                            Image {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: 116
+                                                source: modelData.url
+                                                sourceSize.width: 430
+                                                sourceSize.height: 430
+                                                asynchronous: true
+                                                fillMode: Image.PreserveAspectFit
+                                                smooth: true
+                                            }
+                                            Text {
+                                                text: modelData.label + " · " +
+                                                      Math.max(1, Math.ceil(modelData.bytes / 1024)) + " KB"
+                                                color: "#A8C8E1"
+                                                font.pixelSize: 10
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 6
+                                                PillButton {
+                                                    text: "Attach"
+                                                    Layout.fillWidth: true
+                                                    implicitHeight: 31
+                                                    enabled: !ember.privateMode && !ember.busy
+                                                    onClicked: {
+                                                        ember.attachSavedImage(modelData.id)
+                                                        window.page = 1
+                                                    }
+                                                }
+                                                PillButton {
+                                                    text: "Delete"
+                                                    implicitWidth: 70
+                                                    implicitHeight: 31
+                                                    enabled: !ember.privateMode && !ember.busy
+                                                    onClicked: {
+                                                        window.imageToDelete = modelData.id
+                                                        deleteImageDialog.open()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: imageGallery.count === 0
+                                    text: "No saved images yet.\nAdd an image or paste one from your clipboard."
+                                    color: "#8CAAC6"
+                                    font.pixelSize: 14
+                                    horizontalAlignment: Text.AlignHCenter
+                                    lineHeight: 1.45
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Library is independent of text-chat backups. Deleted images cannot be recovered from a chat transcript alone."
+                                color: "#849BB0"
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
                             }
                         }
                     }

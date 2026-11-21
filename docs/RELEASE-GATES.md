@@ -1,5 +1,19 @@
 # Ember release policy
 
+## Native Image Library and multimodal release checks
+
+- [x] Source-level local image file/clipboard normalization, content-addressed
+  deduplication, on-device gallery and safe-only typed image request on localhost.
+- [ ] Confirm vision GGUF/mmproj compatibility, projector startup, true image
+  understanding on Windows 10 RTX 4070 and no accidental remote images.
+- [ ] Ensure local Library migration, compact encrypted backup with image blobs,
+  storage quota/cleanup policies and Private mode semantics are fully tested.
+- [ ] Test drag-drop and Ctrl+Shift+V image paste on real Windows shell/DPI.
+- [ ] Validate real third-party model licenses and full offline VLM weights
+  before offering them in a final installer.
+
+
+
 ## No-VPN / no-first-run-network deployment — mandatory for final publication
 
 - [ ] Assemble a signed-off inventory of ALL offline LLM, RU/EN ASR, English TTS,
