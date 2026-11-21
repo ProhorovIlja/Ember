@@ -367,6 +367,14 @@ ApplicationWindow {
                                 Text { text: "CURRENT SESSION"; color: "#8EACA8"; font.pixelSize: 11; font.letterSpacing: 1.2 }
                                 Item { Layout.fillWidth: true }
                                 PillButton {
+                                    text: "Stop reply"
+                                    implicitWidth: 119
+                                    implicitHeight: 36
+                                    enabled: ember.busy
+                                    visible: ember.busy
+                                    onClicked: ember.cancelWork()
+                                }
+                                PillButton {
                                     text: "New conversation"
                                     implicitWidth: 166
                                     implicitHeight: 36
@@ -956,6 +964,52 @@ ApplicationWindow {
                                     wrapMode: Text.WordWrap
                                     color: "#8A9FAD"
                                     font.pixelSize: 12
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 210
+                                    radius: 14
+                                    color: window.cardColor
+                                    border.color: window.borderColor
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 16
+                                        spacing: 11
+                                        Text {
+                                            text: "VOICE COMPARISON SCRIPT"
+                                            font.pixelSize: 11
+                                            font.letterSpacing: 1
+                                            color: window.mint
+                                        }
+                                        TextArea {
+                                            id: voiceSampleEditor
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            text: ember.voiceSample
+                                            color: "#F0F8F6"
+                                            font.pixelSize: 13
+                                            wrapMode: TextEdit.Wrap
+                                            background: Rectangle { radius: 9; color: "#0F1B27" }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text {
+                                                text: "Use the same script for each voice; Russian requires a multilingual model."
+                                                color: "#819CAA"
+                                                font.pixelSize: 11
+                                                Layout.fillWidth: true
+                                                wrapMode: Text.WordWrap
+                                            }
+                                            PillButton {
+                                                text: "Save sample"
+                                                implicitWidth: 132
+                                                implicitHeight: 34
+                                                enabled: voiceSampleEditor.text.trim().length > 0 &&
+                                                         voiceSampleEditor.text.length <= 1200
+                                                onClicked: ember.voiceSample = voiceSampleEditor.text
+                                            }
+                                        }
+                                    }
                                 }
                                 Item { Layout.preferredHeight: 22 }
                             }
