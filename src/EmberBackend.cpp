@@ -28,6 +28,7 @@ QString defaultPath(const QString &key) {
     if (key == "brainModel") return root.filePath("models/llm/model.gguf");
     if (key == "asrExe") return root.filePath("engines/whisper/whisper-cli.exe");
     if (key == "asrModel") return root.filePath("models/stt/ggml-base.bin");
+    if (key == "asrVadModel") return root.filePath("models/stt/ggml-silero-v6.2.0.bin");
     if (key == "ttsExe") return root.filePath("engines/sherpa/sherpa-onnx-offline-tts.exe");
     if (key == "ttsDir") return root.filePath("models/tts/kokoro-en-v0_19");
     return {};
@@ -249,7 +250,7 @@ void EmberBackend::choosePath(const QString &key) {
         const bool executable = key.endsWith("Exe");
         const QString filter = executable ? "Windows executable (*.exe)" :
             key == "brainModel" ? "GGUF weights (*.gguf)" :
-            key == "asrModel" ? "Whisper weights (*.bin)" : "All files (*)";
+            (key == "asrModel" || key == "asrVadModel") ? "Whisper/VAD weights (*.bin)" : "All files (*)";
         chosen = QFileDialog::getOpenFileName(nullptr, "Select local file",
                                                configPath(key), filter);
     }
@@ -859,9 +860,15 @@ void EmberBackend::transcribe() {
     m_whisper.setWorkingDirectory(QFileInfo(configPath("asrExe")).absolutePath());
     m_whisper.setProgram(configPath("asrExe"));
     static const QString languages[] = {"auto", "en", "ru"};
-    m_whisper.setArguments({"-m", configPath("asrModel"), "-f", workFile("microphone.wav"),
-                            "-l", languages[m_recognitionLanguage],
-                            "-otxt", "-of", workFile("recognition"), "-np"});
+    QStringList arguments{"-m", configPath("asrModel"), "-f", workFile("microphone.wav"),
+                          "-l", languages[m_recognitionLanguage],
+                          "-otxt", "-of", workFile("recognition"), "-np"};
+    // Current whisper.cpp supports an optional GGML Silero VAD model.
+    // The setting is opt-in by installing its tiny weights; legacy Whisper
+    // engines and users without the model keep the previous invocation.
+    if (isRegularFile(configPath("asrVadModel")))
+        arguments << "--vad" << "-vm" << configPath("asrVadModel");
+    m_whisper.setArguments(arguments);
     setBusy(true);
     setStatus(QString("Offline transcription · %1% completed…")
                   .arg(m_transcriptionOffset * 100 / m_transcriptionSize));
