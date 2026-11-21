@@ -695,10 +695,13 @@ ApplicationWindow {
                                     onClicked: ember.listening ? ember.stopRecording() : ember.startRecording()
                                 }
                                 PillButton {
-                                    text: "Test voice"
-                                    implicitWidth: 120
-                                    enabled: !ember.busy && !ember.listening
+                                    text: ember.speaking ? "Retest voice" : "Test voice"
+                                    implicitWidth: 128
+                                    enabled: !ember.listening &&
+                                             (!ember.busy || ember.speaking)
                                     onClicked: ember.testVoice()
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Replay the voice sample; interrupts current voice output. Does not interrupt active transcription or LLM generation."
                                 }
                                 PillButton {
                                     text: "Cancel"

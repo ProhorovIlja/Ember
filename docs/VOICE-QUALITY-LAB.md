@@ -239,7 +239,9 @@ selection still falls back if that selected device disappears.
 
 Clicking Test Voice again can now interrupt its current playback/stream
 without launching overlapping PCM sinks, but cannot interrupt an active
-mic transcription or LLM generation. The test controls should still be
+mic transcription or LLM generation. QML exposes "Retest voice" during
+playback; if early streamed TTS overlaps LLM text generation, the backend
+reports why the retest is unavailable instead of doing nothing. The test controls should still be
 verified with physical Windows speakers and real GGUF models; successful
 CI proves logic/build only, not hotplug behaviour on Bluetooth/USB hardware.
 

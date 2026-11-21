@@ -2117,7 +2117,10 @@ void EmberBackend::testVoice() {
     // Interrupt an already-playing voice test/reply, never an active ASR,
     // microphone take or in-progress LLM generation.
     if (m_listening || m_chatGenerating || m_cliAsrActive || m_nativeAsrReply ||
-        m_transcriptionSize > 0 || (m_busy && !voicePlaying)) return;
+        m_transcriptionSize > 0 || (m_busy && !voicePlaying)) {
+        setStatus("Voice test unavailable while recording, transcribing, or generating a reply.");
+        return;
+    }
     if (m_voiceEngine == 1 &&
         m_speechServer.state() != QProcess::NotRunning && !m_speechServerReady) {
         setStatus("Native speech model is still loading; test it after Ready appears.");
