@@ -46,9 +46,38 @@ EmberBackend::EmberBackend(QObject *parent)
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_voiceId = m_settings.value("voiceId", 0).toInt();
     m_voiceId = qBound(0, m_voiceId, 10);
-
+    // Stable, opaque Qt device identifiers; never persist the numeric list position.
+    m_inputId = QByteArray::fromBase64(m_settings.value("audio/inputId").toByteArray());
+    m_outputId = QByteArray::fromBase64(m_settings.value("audio/outputId").toByteArray());
+    if (m_inputId.size() > 1024) m_inputId.clear();
+    if (m_outputId.size() > 1024) m_outputId.clear();
+    connect(&m_mediaDevices, &QMediaDevices::audioInputsChanged,
+            this, &EmberBackend::onInputInventoryChanged);
+    connect(&m_mediaDevices, &QMediaDevices::audioOutputsChanged,
+            this, &EmberBackend::onOutputInventoryChanged);
+    onInputInventoryChanged();
+    onOutputInventoryChanged();
+    m_captureWatchdog.setInterval(100);
+    connect(&m_captureWatchdog, &QTimer::timeout, this, [this] {
+        if (!m_listening) return;
+        if (m_audioSource && m_audioSource->error() != QAudio::NoError) {
+            releaseCapture();
+            m_pcm.clear();
+            setStatus("Microphone stopped unexpectedly. Check device and Windows permissions.");
+        } else if (m_pcm.size() > 30 * 1024 * 1024) {
+            stopRecording();  // bounded memory even for 96-kHz multichannel inputs
+        }
+    });
     m_mediaPlayer.setAudioOutput(&m_audioOutput);
     m_audioOutput.setVolume(0.85);
+    // Do not activate a stale/disconnected output device.
+    const auto output = QMediaDevices::audioOutputs();
+    for (const auto &device : output) {
+        if (!m_outputId.isEmpty() && device.id() == m_outputId) {
+            m_audioOutput.setDevice(device);
+            break;
+        }
+    }
     connect(&m_mediaPlayer, &QMediaPlayer::playbackStateChanged, this,
             [this](QMediaPlayer::PlaybackState state) {
                 if (state == QMediaPlayer::StoppedState && m_speaking) {
@@ -197,6 +226,122 @@ void EmberBackend::setVoiceId(int index) {
     if (index < 0 || index > 10 || index == m_voiceId) return;
     m_voiceId = index;
     storeConfig();
+}
+
+// The first entry uses the current Windows default rather than persisting
+// a device ID; specific entries survive device reorder and app restarts.
+QVariantList EmberBackend::audioInputs() const {
+    QVariantList result;
+    const QAudioDevice selected = QMediaDevices::defaultAudioInput();
+    result.append(QVariantMap{{"name", selected.isNull()
+        ? QString("System default (no microphone)") :
+          QString("System default — %1").arg(selected.description())}});
+    for (const QAudioDevice &device : QMediaDevices::audioInputs()) {
+        result.append(QVariantMap{{"name", device.description()}});
+    }
+    return result;
+}
+QVariantList EmberBackend::audioOutputs() const {
+    QVariantList result;
+    const QAudioDevice selected = QMediaDevices::defaultAudioOutput();
+    result.append(QVariantMap{{"name", selected.isNull()
+        ? QString("System default (no speaker)") :
+          QString("System default — %1").arg(selected.description())}});
+    for (const QAudioDevice &device : QMediaDevices::audioOutputs()) {
+        result.append(QVariantMap{{"name", device.description()}});
+    }
+    return result;
+}
+int EmberBackend::selectedInputIndex() const {
+    const auto devices = QMediaDevices::audioInputs();
+    for (qsizetype i = 0; i < devices.size(); ++i)
+        if (!m_inputId.isEmpty() && m_inputId == devices.at(i).id()) return int(i) + 1;
+    return 0;
+}
+int EmberBackend::selectedOutputIndex() const {
+    const auto devices = QMediaDevices::audioOutputs();
+    for (qsizetype i = 0; i < devices.size(); ++i)
+        if (!m_outputId.isEmpty() && m_outputId == devices.at(i).id()) return int(i) + 1;
+    return 0;
+}
+QAudioDevice EmberBackend::activeInput() const {
+    if (m_inputId.isEmpty()) return QMediaDevices::defaultAudioInput();
+    for (const auto &device : QMediaDevices::audioInputs()) {
+        if (device.id() == m_inputId) return device;
+    }
+    return QAudioDevice();
+}
+void EmberBackend::setInputDeviceIndex(int index) {
+    const auto devices = QMediaDevices::audioInputs();
+    if (index < 0 || index > devices.size()) return;
+    const QByteArray selected = index == 0 ? QByteArray() : devices.at(index - 1).id();
+    if (selected == m_inputId) return;
+    if (m_listening) {
+        releaseCapture();
+        m_pcm.clear();
+    }
+    m_inputId = selected;
+    if (m_inputId.isEmpty()) m_settings.remove("audio/inputId");
+    else m_settings.setValue("audio/inputId", m_inputId.toBase64());
+    m_settings.sync();
+    emit audioDevicesChanged();
+    setStatus("Microphone selection saved. The next recording uses this device.");
+}
+void EmberBackend::setOutputDeviceIndex(int index) {
+    const auto devices = QMediaDevices::audioOutputs();
+    if (index < 0 || index > devices.size()) return;
+    const QByteArray selected = index == 0 ? QByteArray() : devices.at(index - 1).id();
+    if (selected == m_outputId) return;
+    m_mediaPlayer.stop();
+    setSpeaking(false);
+    m_outputId = selected;
+    if (m_outputId.isEmpty()) m_settings.remove("audio/outputId");
+    else m_settings.setValue("audio/outputId", m_outputId.toBase64());
+    m_settings.sync();
+    const QAudioDevice target = index == 0
+        ? QMediaDevices::defaultAudioOutput() : devices.at(index - 1);
+    if (!target.isNull()) m_audioOutput.setDevice(target);
+    emit audioDevicesChanged();
+    setStatus("Speaker selection saved. The next reply uses this output.");
+}
+void EmberBackend::onInputInventoryChanged() {
+    const auto devices = QMediaDevices::audioInputs();
+    bool selectedExists = m_inputId.isEmpty();
+    bool recordingDeviceExists = !m_listening;
+    for (const auto &device : devices) {
+        if (device.id() == m_inputId) selectedExists = true;
+        if (m_listening && device.id() == m_captureDeviceId)
+            recordingDeviceExists = true;
+    }
+    if (!recordingDeviceExists) {
+        releaseCapture();
+        m_pcm.clear();
+        setStatus("Selected microphone disconnected; recording was discarded.");
+    }
+    if (!selectedExists) {
+        m_inputId.clear();
+        m_settings.remove("audio/inputId");
+        m_settings.sync();
+        setStatus("Saved microphone disconnected; using Windows default.");
+    }
+    emit audioDevicesChanged();
+}
+void EmberBackend::onOutputInventoryChanged() {
+    const auto devices = QMediaDevices::audioOutputs();
+    bool selectedExists = m_outputId.isEmpty();
+    for (const auto &device : devices)
+        if (device.id() == m_outputId) selectedExists = true;
+    if (!selectedExists) {
+        m_mediaPlayer.stop();
+        setSpeaking(false);
+        m_outputId.clear();
+        m_settings.remove("audio/outputId");
+        m_settings.sync();
+        const auto fallback = QMediaDevices::defaultAudioOutput();
+        if (!fallback.isNull()) m_audioOutput.setDevice(fallback);
+        setStatus("Saved speaker disconnected; using Windows default.");
+    }
+    emit audioDevicesChanged();
 }
 void EmberBackend::setStatus(const QString &text) {
     if (m_status == text) return;
@@ -354,6 +499,8 @@ void EmberBackend::submit(const QString &raw, bool voice) {
 }
 
 void EmberBackend::releaseCapture() {
+    m_captureWatchdog.stop();
+    m_captureDeviceId.clear();
     if (m_audioSource) {
         m_audioSource->stop();
         m_audioSource.reset();
@@ -370,13 +517,13 @@ void EmberBackend::startRecording() {
         setStatus("Could not create the private work folder in this installation.");
         return;
     }
-    const QAudioDevice input = QMediaDevices::defaultAudioInput();
+    const QAudioDevice input = activeInput();
     QAudioFormat format;
     format.setSampleRate(16000);
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
     if (input.isNull()) {
-        setStatus("No microphone is configured in Windows.");
+        setStatus("The selected microphone is missing. Choose another device in Settings.");
         return;
     }
     m_captureFormat = input.isFormatSupported(format) ? format : input.preferredFormat();
@@ -398,10 +545,13 @@ void EmberBackend::startRecording() {
         setStatus("Microphone capture could not start. Check Windows privacy and input device.");
         return;
     }
+    m_captureDeviceId = input.id();
     setListening(true);
-    setStatus("Recording locally · press Stop when you finish.");
-    QTimer::singleShot(30000, this, [this]() {
-        if (m_listening) stopRecording();
+    m_captureWatchdog.start();
+    setStatus("Recording from selected microphone · press Stop when you finish.");
+    const quint64 session = ++m_captureSession;
+    QTimer::singleShot(30000, this, [this, session]() {
+        if (m_listening && m_captureSession == session) stopRecording();
     });
 }
 void EmberBackend::stopRecording() {
