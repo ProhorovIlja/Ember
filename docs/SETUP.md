@@ -21,7 +21,8 @@ image, then Send. Ember constructs the current-user OpenAI-style typed
 projector Ember refuses to analyze an image; it does not falsely claim to
 see one. The text archive saves a SHA-256 reference, not base64 blobs.
 A new explicit **Backup chats + images** action creates a full local
-`.emberpack`: the existing compressed chat archive plus SHA-256 checked
+`.emberpack` (format `EMBER-COMPLETE-BACKUP-2`; fixed-length identifiers
+to avoid allocating from untrusted length fields): the existing compressed chat archive plus SHA-256 checked
 normalized Library images (JPEG/PNG already compressed on disk).
 **Restore full** verifies the entire package before installing assets and
 recreates chat sessions under new UUIDs without replacing saved chats.

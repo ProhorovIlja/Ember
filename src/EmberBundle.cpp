@@ -17,7 +17,7 @@
 #include <algorithm>
 
 namespace {
-const QByteArray kMagic = QByteArrayLiteral("EMBER-COMPLETE-BACKUP-1\n");
+const QByteArray kMagic = QByteArrayLiteral("EMBER-COMPLETE-BACKUP-2\n");
 constexpr quint64 kMaxChat = 256ULL * 1024 * 1024;
 constexpr quint64 kMaxMedia = 1024ULL * 1024 * 1024;
 constexpr quint32 kMaxPhotos = 4096;
@@ -96,8 +96,13 @@ bool EmberBundle::exportComplete(SessionStore &store, ImageLibrary &images,
             ok = false;
             break;
         }
-        stream << id << quint8(ext == ".png" ? 1 : 0)
-               << quint32(bytes.size());
+        // Fixed 64-byte ASCII hash ID: no untrusted QString length field on
+        // restore, therefore no unbounded allocation before validation.
+        const QByteArray rawId = id.toLatin1();
+        if (rawId.size() != 64) { ok = false; break; }
+        ok = stream.writeRawData(rawId.constData(), 64) == 64;
+        if (!ok) break;
+        stream << quint8(ext == ".png" ? 1 : 0) << quint32(bytes.size());
         ok = stream.status() == QDataStream::Ok &&
             out.write(bytes) == bytes.size();
     }
@@ -148,10 +153,13 @@ bool EmberBundle::restoreComplete(SessionStore &store, ImageLibrary &images,
     const QRegularExpression hashRx(QStringLiteral("^[0-9a-f]{64}$"));
     quint64 totalMedia = 0;
     for (quint32 i = 0; i < count; ++i) {
-        QString id;
+        char rawId[64]{};
+        if (stream.readRawData(rawId, 64) != 64)
+            return problem(error, "Truncated fixed-length image identifier.");
+        const QString id = QString::fromLatin1(rawId, 64);
         quint8 format = 0;
         quint32 bytes = 0;
-        stream >> id >> format >> bytes;
+        stream >> format >> bytes;
         if (stream.status() != QDataStream::Ok ||
             !hashRx.match(id).hasMatch() || seen.contains(id) ||
             format > 1 || bytes == 0 || bytes > kMaxImageBytes ||
