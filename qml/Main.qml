@@ -735,6 +735,58 @@ ApplicationWindow {
                                     spacing: 16
                                     Text {
                                         Layout.fillWidth: true
+                                        text: "Synthesis engine"
+                                        color: "#A7BBC8"
+                                        font.pixelSize: 13
+                                    }
+                                    ComboBox {
+                                        id: enginePicker
+                                        Layout.preferredWidth: 268
+                                        Layout.preferredHeight: 43
+                                        model: [
+                                            "Kokoro · local CLI",
+                                            "Qwen3 / Chatterbox · local API"
+                                        ]
+                                        currentIndex: ember.voiceEngine
+                                        onActivated: ember.voiceEngine = currentIndex
+                                        contentItem: Text {
+                                            leftPadding: 14
+                                            text: enginePicker.displayText
+                                            color: "#E7F6ED"
+                                            font.pixelSize: 13
+                                            verticalAlignment: Text.AlignVCenter
+                                            elide: Text.ElideRight
+                                        }
+                                        background: Rectangle {
+                                            color: "#172B31"
+                                            radius: 12
+                                            border.color: "#437B6C"
+                                        }
+                                        delegate: ItemDelegate {
+                                            required property int index
+                                            required property string modelData
+                                            width: enginePicker.width
+                                            height: 40
+                                            text: modelData
+                                            highlighted: enginePicker.highlightedIndex === index
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: "#E6F4EC"
+                                                font.pixelSize: 13
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.highlighted ? "#31574F" : "#17252F"
+                                            }
+                                        }
+                                    }
+                                }
+                                RowLayout {
+                                    visible: ember.voiceEngine === 0
+                                    Layout.fillWidth: true
+                                    spacing: 16
+                                    Text {
+                                        Layout.fillWidth: true
                                         text: "Voice · Kokoro English v0.19"
                                         color: "#A7BBC8"
                                         font.pixelSize: 13
@@ -811,7 +863,84 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                                Rectangle {
+                                    visible: ember.voiceEngine === 1
+                                    Layout.fillWidth: true
+                                    implicitHeight: 189
+                                    color: window.cardColor
+                                    radius: 13
+                                    border.color: window.borderColor
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 16
+                                        spacing: 9
+                                        Text {
+                                            text: "EXTERNAL LOCAL ENGINE · 127.0.0.1:43822"
+                                            color: window.mint
+                                            font.pixelSize: 11
+                                            font.letterSpacing: 1
+                                        }
+                                        RowLayout {
+                                            spacing: 14
+                                            Layout.fillWidth: true
+                                            Text {
+                                                text: "Model alias"
+                                                Layout.preferredWidth: 94
+                                                color: window.silver
+                                                font.pixelSize: 13
+                                            }
+                                            TextField {
+                                                id: externalModel
+                                                Layout.fillWidth: true
+                                                text: ember.localModel
+                                                maximumLength: 80
+                                                color: "#ECF8F3"
+                                                placeholderText: "qwen3-tts"
+                                                font.pixelSize: 13
+                                                onEditingFinished: ember.localModel = text
+                                                background: Rectangle {
+                                                    color: "#0C1A24"
+                                                    radius: 9
+                                                    border.color: "#3D5D61"
+                                                }
+                                            }
+                                        }
+                                        RowLayout {
+                                            spacing: 14
+                                            Layout.fillWidth: true
+                                            Text {
+                                                text: "Voice ID"
+                                                Layout.preferredWidth: 94
+                                                color: window.silver
+                                                font.pixelSize: 13
+                                            }
+                                            TextField {
+                                                id: externalVoice
+                                                Layout.fillWidth: true
+                                                text: ember.localVoice
+                                                maximumLength: 80
+                                                color: "#ECF8F3"
+                                                placeholderText: "Vivian"
+                                                font.pixelSize: 13
+                                                onEditingFinished: ember.localVoice = text
+                                                background: Rectangle {
+                                                    color: "#0C1A24"
+                                                    radius: 9
+                                                    border.color: "#3D5D61"
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            text: "Start your own OpenAI-compatible TTS server on 43822. Output must be PCM16 WAV; redirects and remote hosts are blocked."
+                                            color: "#8EA7B4"
+                                            font.pixelSize: 11
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+                                }
                                 Text {
+                                    visible: ember.voiceEngine === 0
                                     Layout.fillWidth: true
                                     text: "All 11 speaker names and IDs come from the official Kokoro English v0.19 pack. Compare female voices with Test voice. No weights are bundled."
                                     wrapMode: Text.WordWrap
