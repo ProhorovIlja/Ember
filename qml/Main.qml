@@ -1004,13 +1004,13 @@ ApplicationWindow {
                                                 font.pixelSize: 13
                                                 background: Rectangle {
                                                     radius: 11
-                                                    color: "#152C30"
-                                                    border.color: "#416A63"
+                                                    color: "#0B223A"
+                                                    border.color: "#316EA3"
                                                 }
                                                 contentItem: Text {
                                                     leftPadding: 14
                                                     verticalAlignment: Text.AlignVCenter
-                                                    color: "#E8F7EE"
+                                                    color: "#E7F4FF"
                                                     elide: Text.ElideRight
                                                     font.pixelSize: 13
                                                     text: microphonePicker.displayText
@@ -1037,7 +1037,7 @@ ApplicationWindow {
                                                     font.pixelSize: 12
                                                     contentItem: Text {
                                                         text: parent.text
-                                                        color: "#EAF5F0"
+                                                        color: "#EAF4FF"
                                                         font: parent.font
                                                         verticalAlignment: Text.AlignVCenter
                                                         elide: Text.ElideRight
@@ -1066,13 +1066,13 @@ ApplicationWindow {
                                                 font.pixelSize: 13
                                                 background: Rectangle {
                                                     radius: 11
-                                                    color: "#152C30"
-                                                    border.color: "#416A63"
+                                                    color: "#0B223A"
+                                                    border.color: "#316EA3"
                                                 }
                                                 contentItem: Text {
                                                     leftPadding: 14
                                                     verticalAlignment: Text.AlignVCenter
-                                                    color: "#E8F7EE"
+                                                    color: "#E7F4FF"
                                                     elide: Text.ElideRight
                                                     font.pixelSize: 13
                                                     text: speakerPicker.displayText
@@ -1099,7 +1099,7 @@ ApplicationWindow {
                                                     font.pixelSize: 12
                                                     contentItem: Text {
                                                         text: parent.text
-                                                        color: "#EAF5F0"
+                                                        color: "#EAF4FF"
                                                         font: parent.font
                                                         verticalAlignment: Text.AlignVCenter
                                                         elide: Text.ElideRight
@@ -1314,7 +1314,7 @@ ApplicationWindow {
                                                 Layout.fillWidth: true
                                                 text: ember.localModel
                                                 maximumLength: 80
-                                                color: "#ECF8F3"
+                                                color: "#EAF5FF"
                                                 placeholderText: "qwen3-tts"
                                                 font.pixelSize: 13
                                                 onEditingFinished: ember.localModel = text
@@ -1339,7 +1339,7 @@ ApplicationWindow {
                                                 Layout.fillWidth: true
                                                 text: ember.localVoice
                                                 maximumLength: 80
-                                                color: "#ECF8F3"
+                                                color: "#EAF5FF"
                                                 placeholderText: "Vivian"
                                                 font.pixelSize: 13
                                                 onEditingFinished: ember.localVoice = text
