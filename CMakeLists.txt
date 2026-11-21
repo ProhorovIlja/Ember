@@ -11,6 +11,24 @@ target_link_libraries(EmberCore PUBLIC Qt6::Core Qt6::Multimedia Qt6::Sql)
 target_include_directories(EmberCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 qt_add_executable(Ember WIN32 src/main.cpp src/EmberBackend.h src/EmberBackend.cpp)
 target_link_libraries(Ember PRIVATE EmberCore Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::Multimedia Qt6::Widgets Qt6::Svg)
+
+if(WIN32)
+    # Build a real Explorer/taskbar .ico without shipping a preview raster or
+    # an external icon compiler. Qt SVG is already used by the runtime.
+    qt_add_executable(ember-icon-builder tools/IconBuilder.cpp)
+    target_link_libraries(ember-icon-builder PRIVATE Qt6::Core Qt6::Gui Qt6::Svg)
+    set(EMBER_ICON_FILE "${CMAKE_CURRENT_BINARY_DIR}/ember.ico")
+    add_custom_command(
+        OUTPUT "${EMBER_ICON_FILE}"
+        COMMAND $<TARGET_FILE:ember-icon-builder> "${CMAKE_CURRENT_SOURCE_DIR}/assets/ember-emblem.svg" "${EMBER_ICON_FILE}"
+        DEPENDS ember-icon-builder "${CMAKE_CURRENT_SOURCE_DIR}/assets/ember-emblem.svg"
+        VERBATIM)
+    add_custom_target(ember-icon-resource DEPENDS "${EMBER_ICON_FILE}")
+    add_dependencies(Ember ember-icon-resource)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/ember-icon.rc" "IDI_ICON1 ICON \\"${EMBER_ICON_FILE}\\"\\n")
+    target_sources(Ember PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ember-icon.rc")
+endif()
+
 set_source_files_properties(qml/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 qt_add_qml_module(Ember URI Ember VERSION 1.0 QML_FILES qml/Main.qml RESOURCES assets/ember-emblem.svg)
 include(CTest)
