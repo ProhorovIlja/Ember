@@ -750,6 +750,15 @@ private slots:
         QCOMPARE(EmberCore::takeCommittedSpeech("~~~sh\nrm test;\n", cursor, true),
                  QStringList({"The code example is in the text chat."}));
     }
+    void doesNotSpeakImageAltTextAsVerifiedVision() {
+        const QString markdown = "See ![Confidential chart](https://example.org/chart.png) "
+            "and [the report](https://example.org/report).";
+        QCOMPARE(EmberCore::speechFriendlyText(markdown),
+                 QString("See an image in the text chat and the report."));
+        QCOMPARE(EmberCore::speechFriendlyText(
+            "![scene](image://local-attachment)"),
+            QString("an image in the text chat"));
+    }
     void keepsInternalReasoningOutOfEarlyAndFallbackVoices() {
         qsizetype cursor = 0;
         QString draft = "<think>Let me consider an internal path.";
