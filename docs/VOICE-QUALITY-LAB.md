@@ -120,6 +120,40 @@ ASR-derived intelligibility and human/estimated naturalness:
 https://github.com/inworld-ai/open-tts-eval
 https://github.com/huggingface/open-tts-leaderboard
 
+## 22 November — repeatable bilingual ASR corpus gate
+
+A new standard-library-only `tools/asr_corpus.py` runs on a set of
+**user-supplied local** English and Russian PCM WAV recordings plus separate
+reference UTF-8 text files. It accepts a bounded manifest with relative
+paths, refuses traversal, symlinks, missing inputs, duplicate recordings and
+non-PCM WAVs, and keeps the same restricted loopback speech.cpp transport.
+It reports per-language **micro-averaged WER/CER** calculated from raw
+edit counts, plus wall time and real-time factor; no recognized/reference
+text, WAV samples or even local paths are written to the JSON result.
+`--omit-model-id` matches file-backed GGUF startup.
+
+Example local corpus layout:
+
+```json
+{"cases":[
+  {"audio":"recordings/english-01.wav","reference":"refs/english-01.txt","language":"en"},
+  {"audio":"recordings/russian-01.wav","reference":"refs/russian-01.txt","language":"ru"}
+]}
+```
+
+```powershell
+python tools/asr_corpus.py --manifest .\private-voice-corpus\corpus.json --model qwen3-asr-1.7b --omit-model-id --output .\asr-metrics.json
+```
+
+The JSON example is a **schema illustration**, not a supplied real audio
+dataset. Synthetic CI fixture wavs are silence with a mock returned text,
+so success does not imply real speech accuracy. No output transcript is
+archived, but the user-owned WAV/reference files are sensitive local data
+and must not be uploaded to public GitHub or Google Drive by default.
+Compare both model sizes against the same recordings and measure English
+accent, Russian grammar, names, mixed-language terms and long-dictation
+segment boundaries.
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.

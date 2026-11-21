@@ -113,6 +113,7 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] One managed native speech.cpp process can host a supported TTS model, optional ASR model, or ASR-only mode without an emulator; English-only spoken reply policy is unchanged.
 - [x] Settings, native ASR cancellation and stale Whisper exit protection integrated; core tests cover only allowed native URL/model/language choices.
 - [ ] Actual speech.cpp server integration, spoken RU/EN WER/CER with controlled clips, VRAM/real-time factor, cancellation and voice capture need genuine Windows 10 RTX 4070 testing.
+- [x] Add local-only English/Russian WAV/reference corpus benchmark harness with bounded safe paths, no transcript persistence and per-language aggregate WER/CER; synthetic fixture tests do not pass real audio acceptance.
 - [ ] Only ship redistributable engine code/weights when current model and asset licenses are independently verified; no automatic model bundle or preview Release.
 
 ### Crash-safe microphone scratch cleanup and English-native TTS (21 November 2026)

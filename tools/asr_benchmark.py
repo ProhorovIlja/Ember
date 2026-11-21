@@ -80,9 +80,14 @@ def metrics(reference, prediction):
     words_b = re.findall(r"\w+", prediction.casefold())
     chars_a = list("".join(words_a))
     chars_b = list("".join(words_b))
+    word_edits = levenshtein(words_a, words_b)
+    character_edits = levenshtein(chars_a, chars_b)
     return {
-        "wer": round(levenshtein(words_a, words_b) / max(1, len(words_a)), 4),
-        "cer": round(levenshtein(chars_a, chars_b) / max(1, len(chars_a)), 4),
+        "wer": round(word_edits / max(1, len(words_a)), 4),
+        "cer": round(character_edits / max(1, len(chars_a)), 4),
+        "word_edit_distance": word_edits,
+        "character_edit_distance": character_edits,
+        "reference_character_count": len(chars_a),
         "reference_word_count": len(words_a),
         "recognized_word_count": len(words_b),
     }
