@@ -43,6 +43,9 @@ SessionStore::SessionStore(const QString &path) {
              "session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,"
              "role TEXT NOT NULL CHECK(role IN ('you','ember')),"
              "body TEXT NOT NULL, created_at INTEGER NOT NULL)",
+             "CREATE TABLE IF NOT EXISTS session_notes("
+             "session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,"
+             "body TEXT NOT NULL)",
              "CREATE INDEX IF NOT EXISTS ix_messages_session ON messages(session_id,id)",
              "CREATE INDEX IF NOT EXISTS ix_sessions_updated ON sessions(updated_at DESC)"
          }) {
@@ -160,7 +163,10 @@ bool SessionStore::exportMarkdown(const QString &session, const QString &path) c
     if (!query.exec()) return false;
     QSaveFile output(path);
     if (!output.open(QIODevice::WriteOnly)) return false;
-    const QByteArray heading("# Ember conversation\n\n");
+    QByteArray heading("# Ember conversation\n\n");
+    const QString saved = notes(session);
+    if (!saved.isEmpty())
+        heading += QString("## Saved continuity notes\n\n%1\n\n").arg(saved).toUtf8();
     if (output.write(heading) != heading.size()) {
         output.cancelWriting();
         return false;
@@ -189,6 +195,28 @@ qint64 SessionStore::totalMessages(const QString &session) const {
     query.prepare("SELECT COUNT(*) FROM messages WHERE session_id=?");
     query.addBindValue(session);
     return query.exec() && query.next() ? query.value(0).toLongLong() : 0;
+}
+QString SessionStore::notes(const QString &session) const {
+    if (!m_ready || session.isEmpty()) return {};
+    QSqlQuery query(m_db);
+    query.prepare("SELECT body FROM session_notes WHERE session_id=? LIMIT 1");
+    query.addBindValue(session);
+    return query.exec() && query.next() ? query.value(0).toString() : QString();
+}
+bool SessionStore::setNotes(const QString &session, const QString &text) {
+    if (!m_ready || !exists(session) || text.size() > 1800) return false;
+    QSqlQuery query(m_db);
+    if (text.trimmed().isEmpty()) {
+        query.prepare("DELETE FROM session_notes WHERE session_id=?");
+        query.addBindValue(session);
+    } else {
+        query.prepare("INSERT INTO session_notes(session_id,body) VALUES(?,?) "
+                      "ON CONFLICT(session_id) DO UPDATE SET body=excluded.body");
+        query.addBindValue(session);
+        query.addBindValue(text.trimmed());
+    }
+    if (!query.exec()) { m_error = query.lastError().text(); return false; }
+    return true;
 }
 bool SessionStore::append(const QString &session, const QString &role,
                           const QString &body) {
