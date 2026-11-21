@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QHttpMultiPart>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -54,6 +55,8 @@ EmberBackend::EmberBackend(QObject *parent)
     m_chatMode = qBound(0, m_settings.value("chat/mode", 0).toInt(), 3);
     m_recognitionLanguage = qBound(0,
         m_settings.value("asr/language", 0).toInt(), 2);
+    m_recognitionEngine = qBound(0,
+        m_settings.value("asr/engine", 0).toInt(), 2);
     m_chatRenderTimer.setInterval(40);
     m_chatRenderTimer.setSingleShot(true);
     connect(&m_chatRenderTimer, &QTimer::timeout,
@@ -159,6 +162,12 @@ EmberBackend::EmberBackend(QObject *parent)
         m_speechHealthTimer.stop();
         setSpeechServerReady(false);
         emit speechServerChanged();
+        if (m_nativeAsrReply) {
+            auto reply = m_nativeAsrReply;
+            m_nativeAsrReply = nullptr;
+            reply->abort();
+            failTranscription("Native recognition service exited during transcription.");
+        }
         if (m_speechSequence && m_voiceEngine == 1)
             stopSpeechOnError("The managed native speech engine exited during synthesis.");
         else
@@ -184,7 +193,8 @@ EmberBackend::EmberBackend(QObject *parent)
 
     connect(&m_whisper, &QProcess::finished, this,
             [this](int code, QProcess::ExitStatus how) {
-                if (!m_busy) return; // cancelled tasks never deliver stale text
+                if (!m_busy || !m_cliAsrActive) return;
+                m_cliAsrActive = false; // never accept stale completed ASR after cancel
                 if (how != QProcess::NormalExit || code != 0) {
                     failTranscription("Speech recognition failed. Check whisper.cpp and the selected model.");
                     return;
@@ -204,7 +214,7 @@ EmberBackend::EmberBackend(QObject *parent)
             });
     connect(&m_whisper, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) {
-                if (m_busy) {
+                if (m_busy && m_cliAsrActive) {
                     failTranscription("whisper-cli did not start. Check its executable and DLL files.");
                 }
             });
@@ -313,6 +323,20 @@ void EmberBackend::setRecognitionLanguage(int language) {
     m_settings.setValue("asr/language", language);
     m_settings.sync();
     emit configurationChanged();
+}
+void EmberBackend::setRecognitionEngine(int index) {
+    if (index < 0 || index > 2 || index == m_recognitionEngine) return;
+    if (m_busy || m_speaking || m_listening ||
+        m_speechServer.state() != QProcess::NotRunning) {
+        setStatus("Stop the current task and native speech service before changing ASR.");
+        return;
+    }
+    m_recognitionEngine = index;
+    m_settings.setValue("asr/engine", index);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(index == 0 ? "Whisper offline recognition selected."
+        : "Optional local Qwen3-ASR selected; start the native speech service first.");
 }
 void EmberBackend::setChatMode(int mode) {
     if (mode < 0 || mode > 3 || mode == m_chatMode) return;
@@ -632,22 +656,30 @@ void EmberBackend::startSpeechServer() {
     // The user explicitly starts this optional process. speech.cpp may fetch
     // model weights on its first run; Ember never automatically starts it.
     const QRegularExpression modelRx("^[A-Za-z0-9_-]{1,80}$");
-    if (!modelRx.match(m_localModel).hasMatch()) {
+    if (m_voiceEngine == 1 && !modelRx.match(m_localModel).hasMatch()) {
         setStatus("Choose a speech.cpp catalog model name, e.g. qwen3-tts-0.6b.");
+        return;
+    }
+    QStringList models{"serve"};
+    if (m_voiceEngine == 1) models.append(m_localModel);
+    if (m_recognitionEngine > 0)
+        models.append(EmberCore::nativeAsrModel(m_recognitionEngine));
+    if (models.size() < 2) {
+        setStatus("Select a native voice or recognition model before starting speech.cpp.");
         return;
     }
     ++m_speechServerSession;
     setSpeechServerReady(false);
     m_speechServer.setWorkingDirectory(QFileInfo(binary).absolutePath());
     m_speechServer.setProgram(binary);
-    m_speechServer.setArguments({"serve", m_localModel,
-                                 "--host", "127.0.0.1", "--port", "43822",
-                                 "--device", "auto", "--threads", "4"});
+    models << "--host" << "127.0.0.1" << "--port" << "43822"
+           << "--device" << "auto" << "--threads" << "4";
+    m_speechServer.setArguments(models);
     m_speechServerElapsed.start();
     m_speechHealthTimer.start();
     m_speechServer.start();
     emit speechServerChanged();
-    setStatus("Launching native local speech synthesis. First use may download model weights.");
+    setStatus("Loading native local speech models. Explicit first start may download licensed weights.");
 }
 void EmberBackend::stopSpeechServer() {
     ++m_speechServerSession;
@@ -655,6 +687,12 @@ void EmberBackend::stopSpeechServer() {
     setSpeechServerReady(false);
     if (m_speechSequence && m_voiceEngine == 1)
         stopSpeechOnError("Managed native voice synthesis was stopped.");
+    if (m_nativeAsrReply) {
+        auto reply = m_nativeAsrReply;
+        m_nativeAsrReply = nullptr;
+        reply->abort();
+        failTranscription("Managed native ASR stopped. Temporary microphone audio removed.");
+    }
     if (m_speechServer.state() != QProcess::NotRunning) {
         m_speechServer.kill();
         m_speechServer.waitForFinished(1000);
@@ -932,8 +970,15 @@ void EmberBackend::startCapture(bool dictation) {
         setStatus("Finish the current task before recording voice.");
         return;
     }
-    if (!isRegularFile(configPath("asrExe")) || !isRegularFile(configPath("asrModel"))) {
-        setStatus("Choose the offline Whisper executable and multilingual weights in Settings.");
+    if (m_recognitionEngine == 0 &&
+        (!isRegularFile(configPath("asrExe")) ||
+         !isRegularFile(configPath("asrModel")))) {
+        setStatus("Choose offline Whisper executable and multilingual weights in Settings.");
+        return;
+    }
+    if (m_recognitionEngine > 0 &&
+        (!m_speechServerReady || m_speechServer.state() != QProcess::Running)) {
+        setStatus("Start and wait for native speech.cpp with the selected Qwen3-ASR model.");
         return;
     }
     if (!m_work || !m_work->isValid()) {
@@ -1059,6 +1104,10 @@ void EmberBackend::transcribeNextChunk() {
     transcribe();
 }
 void EmberBackend::transcribe() {
+    if (m_recognitionEngine != 0) {
+        transcribeViaNativeServer();
+        return;
+    }
     if (!isRegularFile(configPath("asrExe")) || !isRegularFile(configPath("asrModel"))) {
         failTranscription("Offline Whisper files are missing from this installation.");
         return;
@@ -1066,9 +1115,8 @@ void EmberBackend::transcribe() {
     QFile::remove(workFile("recognition.txt"));
     m_whisper.setWorkingDirectory(QFileInfo(configPath("asrExe")).absolutePath());
     m_whisper.setProgram(configPath("asrExe"));
-    static const QString languages[] = {"auto", "en", "ru"};
     QStringList arguments{"-m", configPath("asrModel"), "-f", workFile("microphone.wav"),
-                          "-l", languages[m_recognitionLanguage],
+                          "-l", EmberCore::recognitionLanguageTag(m_recognitionLanguage),
                           "-otxt", "-of", workFile("recognition"), "-np"};
     // Current whisper.cpp supports an optional GGML Silero VAD model.
     // The setting is opt-in by installing its tiny weights; legacy Whisper
@@ -1076,12 +1124,96 @@ void EmberBackend::transcribe() {
     if (isRegularFile(configPath("asrVadModel")))
         arguments << "--vad" << "-vm" << configPath("asrVadModel");
     m_whisper.setArguments(arguments);
+    m_cliAsrActive = true;
     setBusy(true);
     setStatus(QString("Offline transcription · %1% completed…")
                   .arg(m_transcriptionOffset * 100 / m_transcriptionSize));
     m_whisper.start();
 }
+void EmberBackend::transcribeViaNativeServer() {
+    const QString address = "http://127.0.0.1:43822/v1/audio/transcriptions";
+    if (!EmberCore::allowedLocalAsrEndpoint(address) ||
+        !m_speechServerReady || m_speechServer.state() != QProcess::Running ||
+        m_nativeAsrReply) {
+        failTranscription("Native local Qwen3-ASR is not ready for transcription.");
+        return;
+    }
+    const QString wavName = workFile("microphone.wav");
+    if (!m_work || !m_work->isValid() || !QFileInfo(wavName).isFile() ||
+        QFileInfo(wavName).size() > 25LL * 1024 * 1024) {
+        failTranscription("Temporary microphone WAV is invalid or exceeds the 25 MiB quota.");
+        return;
+    }
+    auto *multipart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+    auto textField = [multipart](const QString &field, const QByteArray &value) {
+        QHttpPart part;
+        part.setHeader(QNetworkRequest::ContentDispositionHeader,
+            QString("form-data; name=\"%1\"").arg(field));
+        part.setBody(value);
+        multipart->append(part);
+    };
+    textField("model", EmberCore::nativeAsrModel(m_recognitionEngine).toUtf8());
+    textField("response_format", "text");
+    textField("language", EmberCore::recognitionLanguageTag(m_recognitionLanguage).toUtf8());
+    QHttpPart filePart;
+    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+        "form-data; name=\"file\"; filename=\"microphone.wav\"");
+    filePart.setHeader(QNetworkRequest::ContentTypeHeader, "audio/wav");
+    auto *wav = new QFile(wavName, multipart);
+    if (!wav->open(QIODevice::ReadOnly)) {
+        delete multipart;
+        failTranscription("Cannot open the temporary local transcription input.");
+        return;
+    }
+    filePart.setBodyDevice(wav);
+    multipart->append(filePart);
+    QNetworkRequest request{QUrl(address)};
+    request.setTransferTimeout(180000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    auto *reply = m_network.post(request, multipart);
+    multipart->setParent(reply);
+    m_nativeAsrReply = reply;
+    setBusy(true);
+    setStatus(QString("Native Qwen3-ASR transcribing segment %1% locally…")
+        .arg(m_transcriptionOffset * 100 / std::max<qint64>(1, m_transcriptionSize)));
+    connect(reply, &QNetworkReply::downloadProgress, this,
+            [this, reply](qint64 bytes, qint64) {
+                if (m_nativeAsrReply == reply && bytes > 65536) reply->abort();
+            });
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        if (m_nativeAsrReply != reply) {
+            reply->deleteLater();
+            return; // cancelled or superseded
+        }
+        m_nativeAsrReply = nullptr;
+        const bool valid = reply->error() == QNetworkReply::NoError &&
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
+            reply->rawHeader("Content-Type").toLower().startsWith("text/plain") &&
+            reply->bytesAvailable() <= 65536 &&
+            reply->rawHeader("X-Speech-Stop").toLower() != "model_limit";
+        const QByteArray raw = valid ? reply->readAll() : QByteArray();
+        reply->deleteLater();
+        if (!valid) {
+            failTranscription("Native Qwen3-ASR failed, hit its token limit, or returned invalid text.");
+            return;
+        }
+        const QString segment = QString::fromUtf8(raw).trimmed();
+        if (!segment.isEmpty()) m_transcriptionSegments.append(segment);
+        if (m_transcriptionOffset < m_transcriptionSize)
+            transcribeNextChunk();
+        else
+            completeTranscription();
+    });
+}
+
 void EmberBackend::failTranscription(const QString &reason) {
+    m_cliAsrActive = false;
+    if (m_nativeAsrReply) {
+        auto reply = m_nativeAsrReply;
+        m_nativeAsrReply = nullptr;
+        reply->abort();
+    }
     m_voiceTurnActive = false;
     m_transcribingDictation = false;
     m_transcriptionSegments.clear();
@@ -1500,6 +1632,12 @@ void EmberBackend::testVoice() {
     beginSpeech(m_voiceSample);
 }
 void EmberBackend::cancelWork() {
+    m_cliAsrActive = false;
+    if (m_nativeAsrReply) {
+        auto reply = m_nativeAsrReply;
+        m_nativeAsrReply = nullptr;
+        reply->abort();
+    }
     m_voiceTurnActive = false;
     m_chatGenerating = false;
     m_voiceEarlyFailed = true;

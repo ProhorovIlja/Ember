@@ -43,6 +43,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QString persona READ persona WRITE setPersona NOTIFY configurationChanged)
     Q_PROPERTY(int chatMode READ chatMode WRITE setChatMode NOTIFY configurationChanged)
     Q_PROPERTY(int recognitionLanguage READ recognitionLanguage WRITE setRecognitionLanguage NOTIFY configurationChanged)
+    Q_PROPERTY(int recognitionEngine READ recognitionEngine WRITE setRecognitionEngine NOTIFY configurationChanged)
     Q_PROPERTY(int voiceId READ voiceId WRITE setVoiceId NOTIFY configurationChanged)
     Q_PROPERTY(int voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY configurationChanged)
     Q_PROPERTY(bool earlySpeechEnabled READ earlySpeechEnabled WRITE setEarlySpeechEnabled NOTIFY configurationChanged)
@@ -77,6 +78,7 @@ public:
     QString persona() const { return m_persona; }
     int chatMode() const { return m_chatMode; }
     int recognitionLanguage() const { return m_recognitionLanguage; }
+    int recognitionEngine() const { return m_recognitionEngine; }
     int voiceId() const { return m_voiceId; }
     int voiceEngine() const { return m_voiceEngine; }
     bool earlySpeechEnabled() const { return m_earlySpeechEnabled; }
@@ -93,6 +95,7 @@ public:
     Q_INVOKABLE void setPersona(const QString &persona);
     Q_INVOKABLE void setChatMode(int mode);
     Q_INVOKABLE void setRecognitionLanguage(int language);
+    Q_INVOKABLE void setRecognitionEngine(int index);
     Q_INVOKABLE void setVoiceId(int index);
     Q_INVOKABLE void setVoiceEngine(int index);
     Q_INVOKABLE void setEarlySpeechEnabled(bool value);
@@ -144,6 +147,7 @@ private:
     void appendMessage(const QString &role, const QString &text);
     void submit(const QString &text, bool asVoice);
     void transcribe();
+    void transcribeViaNativeServer();
     void startCapture(bool dictation);
     void transcribeNextChunk();
     void completeTranscription();
@@ -190,9 +194,10 @@ private:
     QVariantList m_messages;
     QList<EmberCore::Turn> m_history;
     int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0, m_chatMode = 0;
-    int m_recognitionLanguage = 0;
+    int m_recognitionLanguage = 0, m_recognitionEngine = 0;
     bool m_brainReady = false, m_busy = false, m_listening = false;
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
+    bool m_cliAsrActive = false;
     bool m_speechSequence = false;
     bool m_chatGenerating = false;
     bool m_voiceEarlyActive = false, m_voiceEarlyFailed = false;
@@ -223,6 +228,7 @@ private:
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;
     QPointer<QNetworkReply> m_speechReply;
+    QPointer<QNetworkReply> m_nativeAsrReply;
     QProcess m_brain, m_whisper, m_tts, m_speechServer;
     QTimer m_healthTimer, m_speechHealthTimer;
     QTimer m_captureWatchdog;

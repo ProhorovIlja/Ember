@@ -867,7 +867,7 @@ ApplicationWindow {
                                         { key: "asrModel", label: "Speech recognition weights" },
                                         { key: "asrVadModel", label: "Silero speech detection · optional" },
                                         { key: "ttsExe", label: "sherpa-onnx TTS executable" },
-                                        { key: "speechExe", label: "speech.cpp native TTS executable · optional" },
+                                        { key: "speechExe", label: "speech.cpp native voice/ASR executable · optional" },
                                         { key: "ttsDir", label: "Kokoro model folder" }
                                     ]
                                     delegate: Rectangle {
@@ -906,7 +906,7 @@ ApplicationWindow {
                                 }
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    implicitHeight: 100
+                                    implicitHeight: 178
                                     radius: 13
                                     color: window.cardColor
                                     border.color: window.borderColor
@@ -960,8 +960,57 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text {
+                                                text: "Offline recognition engine"
+                                                color: "#D2E6F8"
+                                                font.pixelSize: 13
+                                                Layout.fillWidth: true
+                                            }
+                                            ComboBox {
+                                                id: recognitionEnginePicker
+                                                Layout.preferredWidth: 212
+                                                implicitHeight: 38
+                                                model: ["Whisper · existing", "Qwen3-ASR · 0.6B", "Qwen3-ASR · 1.7B"]
+                                                currentIndex: ember.recognitionEngine
+                                                enabled: !ember.busy && !ember.listening && !ember.speechServerRunning
+                                                onActivated: ember.recognitionEngine = currentIndex
+                                                font.pixelSize: 12
+                                                contentItem: Text {
+                                                    text: recognitionEnginePicker.displayText
+                                                    leftPadding: 11
+                                                    color: "#E6F4FF"
+                                                    font.pixelSize: 12
+                                                    verticalAlignment: Text.AlignVCenter
+                                                }
+                                                background: Rectangle {
+                                                    radius: 10
+                                                    color: "#0A1B31"
+                                                    border.color: "#2B648D"
+                                                }
+                                                delegate: ItemDelegate {
+                                                    required property int index
+                                                    required property string modelData
+                                                    width: recognitionEnginePicker.width
+                                                    height: 38
+                                                    text: modelData
+                                                    contentItem: Text {
+                                                        text: parent.text
+                                                        color: "#E6F4FF"
+                                                        font.pixelSize: 12
+                                                        verticalAlignment: Text.AlignVCenter
+                                                    }
+                                                    background: Rectangle {
+                                                        color: parent.highlighted ? "#15446A" : "#0C1C31"
+                                                    }
+                                                }
+                                            }
+                                        }
                                         Text {
-                                            text: "Auto-detect works with multilingual Whisper weights. Voice replies stay English."
+                                            text: ember.recognitionEngine === 0 ?
+                                                  "Whisper remains offline and default. Speech replies stay English." :
+                                                  "Qwen3-ASR needs the manually started native speech service below; first use may download weights. RU/EN text stays local."
                                             color: "#869CB6"
                                             font.pixelSize: 11
                                             wrapMode: Text.WordWrap
@@ -1397,7 +1446,7 @@ ApplicationWindow {
                                     }
                                 }
                                 Rectangle {
-                                    visible: ember.voiceEngine === 1
+                                    visible: ember.voiceEngine === 1 || ember.recognitionEngine > 0
                                     Layout.fillWidth: true
                                     implicitHeight: 227
                                     radius: 14
@@ -1432,7 +1481,7 @@ ApplicationWindow {
                                         }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: "Optional native Qwen3 speech service. After Ready, sound streams into the selected Windows device without a full WAV download. First model start may download licensed weights; inference stays on loopback."
+                                            text: "Optional native speech.cpp service can load TTS and your chosen ASR model together, or ASR alone with Kokoro. First start may download licensed weights; all inference stays on loopback."
                                             wrapMode: Text.WordWrap
                                             color: "#8EABC5"
                                             font.pixelSize: 12
@@ -1467,7 +1516,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             Item { Layout.fillWidth: true }
                                             PillButton {
-                                                text: ember.speechServerRunning ? "Stop native TTS" : "Start native TTS"
+                                                text: ember.speechServerRunning ? "Stop native engine" : "Start native engine"
                                                 implicitWidth: 170
                                                 implicitHeight: 38
                                                 enabled: ember.speechServerRunning || !ember.busy

@@ -14,6 +14,9 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, cons
                         const QString &historicalExcerpts = {});
 bool allowedLocalEndpoint(const QString &url);
 bool allowedLocalSpeechEndpoint(const QString &url);
+bool allowedLocalAsrEndpoint(const QString &url);
+QString nativeAsrModel(int recognitionEngine);
+QString recognitionLanguageTag(int languageChoice);
 QJsonObject speechRequest(const QString &model, const QString &voice, const QString &text);
 QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice, const QString &text);
 bool validPcmSampleRate(int rate);

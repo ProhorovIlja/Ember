@@ -174,6 +174,25 @@ bool allowedLocalSpeechEndpoint(const QString &raw) {
         url.query().isEmpty() && url.fragment().isEmpty() &&
         url.path() == "/v1/audio/speech";
 }
+bool allowedLocalAsrEndpoint(const QString &raw) {
+    const QUrl url(raw);
+    return url.isValid() && url.scheme() == "http" &&
+        url.host() == "127.0.0.1" && url.port() == 43822 &&
+        url.userName().isEmpty() && url.password().isEmpty() &&
+        url.query().isEmpty() && url.fragment().isEmpty() &&
+        url.path() == "/v1/audio/transcriptions";
+}
+QString nativeAsrModel(int recognitionEngine) {
+    if (recognitionEngine == 1) return "qwen3-asr-0.6b";
+    if (recognitionEngine == 2) return "qwen3-asr-1.7b";
+    return {};
+}
+QString recognitionLanguageTag(int choice) {
+    if (choice == 0) return "auto";
+    if (choice == 1) return "en";
+    if (choice == 2) return "ru";
+    return {};
+}
 QJsonObject speechRequest(const QString &model, const QString &voice,
                           const QString &text) {
     return QJsonObject{

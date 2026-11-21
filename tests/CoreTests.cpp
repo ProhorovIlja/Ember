@@ -486,6 +486,27 @@ private slots:
         QVERIFY(boundedMessages.at(2).toObject().value("content").toString().size() < 12000);
         QVERIFY(boundedMessages.at(2).toObject().value("content").toString().endsWith("xxx"));
     }
+    void recognizesOnlyLocalNativeAsrProtocolAndKnownModels() {
+        QVERIFY(EmberCore::allowedLocalAsrEndpoint(
+            "http://127.0.0.1:43822/v1/audio/transcriptions"));
+        for (const QString &url : {
+            "https://127.0.0.1:43822/v1/audio/transcriptions",
+            "http://localhost:43822/v1/audio/transcriptions",
+            "http://127.0.0.1:43823/v1/audio/transcriptions",
+            "http://127.0.0.1:43822/v1/audio/speech",
+            "http://127.0.0.1:43822/v1/audio/transcriptions?redirect=1",
+            "http://user:pass@127.0.0.1:43822/v1/audio/transcriptions"
+        }) QVERIFY(!EmberCore::allowedLocalAsrEndpoint(url));
+        QCOMPARE(EmberCore::nativeAsrModel(0), QString());
+        QCOMPARE(EmberCore::nativeAsrModel(1), QString("qwen3-asr-0.6b"));
+        QCOMPARE(EmberCore::nativeAsrModel(2), QString("qwen3-asr-1.7b"));
+        QCOMPARE(EmberCore::nativeAsrModel(3), QString());
+        QCOMPARE(EmberCore::recognitionLanguageTag(0), QString("auto"));
+        QCOMPARE(EmberCore::recognitionLanguageTag(1), QString("en"));
+        QCOMPARE(EmberCore::recognitionLanguageTag(2), QString("ru"));
+        QCOMPARE(EmberCore::recognitionLanguageTag(-1), QString());
+    }
+
     void localOnlyEndpoint() {
         QVERIFY(EmberCore::allowedLocalEndpoint("http://127.0.0.1:43821/health"));
         QVERIFY(EmberCore::allowedLocalEndpoint("http://127.0.0.1:43821/v1/chat/completions"));

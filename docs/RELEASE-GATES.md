@@ -67,3 +67,11 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Regression tests for EN/RU lexical matches, chat isolation, deletion, bounded role order; local SQLite WAL/secure delete settings.
 - [x] New text turns cancel still-active old PCM audio, not only the WAV player.
 - [ ] Long-session latency, recall accuracy and full voice-to-text concurrency need testing on real Windows 10 + RTX 4070 and representative stories.
+
+### Optional native Qwen3-ASR (21 November 2026)
+
+- [x] Whisper remains default; native speech.cpp 0.6B/1.7B recognition is explicitly selected and started by the user with catalog names, loopback-only endpoint, no proxy/redirect and bounded 25-second WAV parts.
+- [x] One managed native speech.cpp process can host a supported TTS model, optional ASR model, or ASR-only mode without an emulator; English-only spoken reply policy is unchanged.
+- [x] Settings, native ASR cancellation and stale Whisper exit protection integrated; core tests cover only allowed native URL/model/language choices.
+- [ ] Actual speech.cpp server integration, spoken RU/EN WER/CER with controlled clips, VRAM/real-time factor, cancellation and voice capture need genuine Windows 10 RTX 4070 testing.
+- [ ] Only ship redistributable engine code/weights when current model and asset licenses are independently verified; no automatic model bundle or preview Release.
