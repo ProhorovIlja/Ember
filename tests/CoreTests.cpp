@@ -50,6 +50,38 @@ private slots:
         }
         QCOMPARE(EmberCore::whisperWav(floats, format).size(), 44 + 160 * 2);
     }
+    void localSpeechBoundaryAndRequestShape() {
+        QVERIFY(EmberCore::allowedLocalSpeechEndpoint(
+            "http://127.0.0.1:43822/v1/audio/speech"));
+        for (const auto &url : {
+             "https://127.0.0.1:43822/v1/audio/speech",
+             "http://localhost:43822/v1/audio/speech",
+             "http://127.0.0.1:43823/v1/audio/speech",
+             "http://127.0.0.1:43822/admin",
+             "http://127.0.0.1:43822/v1/audio/speech?forward=1",
+             "http://user:secret@127.0.0.1:43822/v1/audio/speech"
+             }) QVERIFY(!EmberCore::allowedLocalSpeechEndpoint(url));
+        const auto payload = EmberCore::speechRequest("qwen3-tts","Vivian","Hello, Ember");
+        QCOMPARE(payload.value("voice").toString(), QString("Vivian"));
+        QCOMPARE(payload.value("model").toString(), QString("qwen3-tts"));
+        QCOMPARE(payload.value("response_format").toString(), QString("wav"));
+        QCOMPARE(payload.value("input").toString(), QString("Hello, Ember"));
+        QVERIFY(!payload.contains("url"));
+    }
+    void rejectsInvalidSpeechAudio() {
+        const auto good = EmberCore::pcmToWav(QByteArray::fromHex("0100020003000400"), 24000);
+        QVERIFY(EmberCore::validSpeechWav(good));
+        QVERIFY(!EmberCore::validSpeechWav({}));
+        QVERIFY(!EmberCore::validSpeechWav(QByteArray("{\\"error\\":\\"server failed\\"}")));
+        QByteArray corrupted = good;
+        corrupted[4] = char(1);
+        QVERIFY(!EmberCore::validSpeechWav(corrupted));
+        corrupted = good;
+        corrupted[20] = char(3); // not standard PCM16
+        QVERIFY(!EmberCore::validSpeechWav(corrupted));
+        corrupted = good.left(good.size() - 1);
+        QVERIFY(!EmberCore::validSpeechWav(corrupted));
+    }
     void localOnlyEndpoint() {
         QVERIFY(EmberCore::allowedLocalEndpoint("http://127.0.0.1:43821/health"));
         QVERIFY(EmberCore::allowedLocalEndpoint("http://127.0.0.1:43821/v1/chat/completions"));

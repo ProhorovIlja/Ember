@@ -125,6 +125,71 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                        {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
                        {"stream", false}};
 }
+// A shared offline speech adapter deliberately has no configurable remote
+// host and rejects redirects in the network client. Qwen3, Chatterbox and
+// compatible local TTS servers may implement this exact small contract.
+bool allowedLocalSpeechEndpoint(const QString &raw) {
+    const QUrl url(raw);
+    return url.isValid() && url.scheme() == "http" &&
+        url.host() == "127.0.0.1" && url.port() == 43822 &&
+        url.userName().isEmpty() && url.password().isEmpty() &&
+        url.query().isEmpty() && url.fragment().isEmpty() &&
+        url.path() == "/v1/audio/speech";
+}
+QJsonObject speechRequest(const QString &model, const QString &voice,
+                          const QString &text) {
+    return QJsonObject{
+        {"model", model.left(80)},
+        {"voice", voice.left(80)},
+        {"input", text.left(700)},
+        {"response_format", "wav"}
+    };
+}
+// Validate a bounded, ordinary PCM16 RIFF/WAV before writing to private
+// scratch storage and handing the file to Windows Multimedia. Do not treat
+// JSON/HTML error responses as audio. Accept optional WAV metadata chunks.
+bool validSpeechWav(const QByteArray &wav) {
+    if (wav.size() < 46 || wav.size() > 8 * 1024 * 1024 ||
+        wav.left(4) != "RIFF" || wav.mid(8, 4) != "WAVE") return false;
+    auto u16 = [&](qsizetype at) {
+        return quint16(quint8(wav[at])) |
+            (quint16(quint8(wav[at + 1])) << 8);
+    };
+    auto u32 = [&](qsizetype at) {
+        return quint32(quint8(wav[at])) |
+            (quint32(quint8(wav[at + 1])) << 8) |
+            (quint32(quint8(wav[at + 2])) << 16) |
+            (quint32(quint8(wav[at + 3])) << 24);
+    };
+    if (u32(4) != quint32(wav.size() - 8)) return false;
+    bool format = false, data = false;
+    quint16 blockAlign = 0;
+    for (qsizetype pos = 12; pos + 8 <= wav.size();) {
+        const quint32 len = u32(pos + 4);
+        const qsizetype start = pos + 8;
+        if (len > quint32(wav.size() - start)) return false;
+        const auto tag = wav.mid(pos, 4);
+        if (tag == "fmt ") {
+            if (len < 16) return false;
+            const quint16 pcm = u16(start);
+            const quint16 channels = u16(start + 2);
+            const quint32 rate = u32(start + 4);
+            blockAlign = u16(start + 12);
+            const quint16 bits = u16(start + 14);
+            if (pcm != 1 || channels < 1 || channels > 2 ||
+                rate < 8000 || rate > 96000 || bits != 16 ||
+                blockAlign != channels * 2) return false;
+            format = true;
+        } else if (tag == "data") {
+            if (len == 0) return false;
+            data = true;
+        }
+        const qsizetype next = start + len + (len % 2);
+        if (next <= pos || next > wav.size()) return false;
+        pos = next;
+    }
+    return format && data && blockAlign > 0;
+}
 bool allowedLocalEndpoint(const QString &raw) {
     const QUrl url(raw);
     return url.isValid() && url.scheme() == "http" && url.host() == "127.0.0.1" &&
