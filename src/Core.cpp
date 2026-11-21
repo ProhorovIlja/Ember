@@ -2,6 +2,8 @@
 #include <QDataStream>
 #include <QIODevice>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonParseError>
 #include <QUrl>
 #include <algorithm>
 #include <cmath>
@@ -225,6 +227,54 @@ QStringList speechChunks(const QString &input, int maxCharacters) {
         while (pos < text.size() && text[pos].isSpace()) ++pos;
     }
     return chunks;
+}
+StreamResult consumeChatStream(QByteArray &buffer, const QByteArray &incoming) {
+    StreamResult result;
+    if (incoming.size() > 128 * 1024 || buffer.size() + incoming.size() > 256 * 1024) {
+        result.error = true;
+        buffer.clear();
+        return result;
+    }
+    buffer.append(incoming);
+    for (;;) {
+        const auto lf = buffer.indexOf("\n\n");
+        const auto crlf = buffer.indexOf("\r\n\r\n");
+        const bool useCrlf = crlf >= 0 && (lf < 0 || crlf < lf);
+        const qsizetype end = useCrlf ? crlf : lf;
+        if (end < 0) break;
+        const QByteArray frame = buffer.left(end);
+        buffer.remove(0, end + (useCrlf ? 4 : 2));
+        const QList<QByteArray> lines = frame.split('\n');
+        for (QByteArray line : lines) {
+            line = line.trimmed();
+            if (!line.startsWith("data:")) continue;
+            const QByteArray data = line.mid(5).trimmed();
+            if (data == "[DONE]") {
+                result.done = true;
+                buffer.clear();
+                return result;
+            }
+            QJsonParseError error{};
+            const QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+            if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+                result.error = true;
+                buffer.clear();
+                return result;
+            }
+            const QJsonObject envelope = doc.object();
+            if (envelope.contains("error")) {
+                result.error = true;
+                buffer.clear();
+                return result;
+            }
+            const QJsonArray choices = envelope.value("choices").toArray();
+            if (choices.isEmpty()) continue;
+            const QJsonObject delta = choices.first().toObject().value("delta").toObject();
+            const QString text = delta.value("content").toString();
+            if (!text.isEmpty()) result.text += text;
+        }
+    }
+    return result;
 }
 bool allowedLocalEndpoint(const QString &raw) {
     const QUrl url(raw);
