@@ -78,7 +78,7 @@ def measure(endpoint, model, voice, prompt):
 def self_test():
     class Handler(BaseHTTPRequestHandler):
         sample_rate = 24000
-        payload = b"\\x00\\x00" * 2400
+        payload = b"\x00\x00" * 2400
 
         def do_POST(self):
             assert self.path == "/v1/audio/speech"
@@ -112,7 +112,7 @@ def self_test():
         except ValueError:
             pass
         Handler.sample_rate = 24000
-        Handler.payload = b"\\x00"
+        Handler.payload = b"\x00"
         try:
             measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.")
             raise AssertionError("Odd PCM frame was accepted")
@@ -168,7 +168,7 @@ def main():
     }
     content = json.dumps(report, indent=2, ensure_ascii=False)
     if args.output:
-        args.output.write_text(content + "\\n", encoding="utf-8")
+        args.output.write_text(content + "\n", encoding="utf-8")
     print(content)
 
 
