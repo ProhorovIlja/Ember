@@ -6,6 +6,9 @@
 #include <cmath>
 #include <algorithm>
 #include <QCoreApplication>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QMimeData>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -51,6 +54,7 @@ QString defaultPath(const QString &key) {
     const QDir root(appFolder());
     if (key == "brainExe") return root.filePath("engines/llama/llama-server.exe");
     if (key == "brainModel") return root.filePath("models/llm/model.gguf");
+    if (key == "visionProj") return root.filePath("models/vision/mmproj.gguf");
     if (key == "asrExe") return root.filePath("engines/whisper/whisper-cli.exe");
     if (key == "asrModel") return root.filePath("models/stt/ggml-base.bin");
     if (key == "asrVadModel") return root.filePath("models/stt/ggml-silero-v6.2.0.bin");
@@ -165,6 +169,9 @@ EmberBackend::EmberBackend(QObject *parent)
     }
     m_store = std::make_unique<SessionStore>(
         QDir(appFolder()).filePath("data/ember-chats.sqlite"));
+    m_images = std::make_unique<ImageLibrary>(
+        QDir(appFolder()).filePath("data/library"));
+    m_imageItems = m_images->list();
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_chatMode = qBound(0, m_settings.value("chat/mode", 0).toInt(), 3);
     m_recognitionLanguage = qBound(0,
@@ -425,7 +432,7 @@ void EmberBackend::choosePath(const QString &key) {
     } else {
         const bool executable = key.endsWith("Exe");
         const QString filter = executable ? "Windows executable (*.exe)" :
-            key == "brainModel" ? "GGUF weights (*.gguf)" :
+            (key == "brainModel" || key == "visionProj") ? "GGUF weights (*.gguf)" :
             (key == "asrModel" || key == "asrVadModel") ? "Whisper/VAD weights (*.bin)" : "All files (*)";
         chosen = QFileDialog::getOpenFileName(nullptr, "Select local file",
                                                configPath(key), filter);
@@ -761,10 +768,14 @@ void EmberBackend::startBrain() {
     ++m_brainSession; // invalidate late HTTP health checks from earlier runs
     m_brain.setWorkingDirectory(QFileInfo(binary).absolutePath());
     m_brain.setProgram(binary);
-    m_brain.setArguments({"--model", model, "--alias", "ember",
-                          "--host", "127.0.0.1", "--port", "43821",
-                          "--ctx-size", "8192", "--n-gpu-layers", "99",
-                          "--parallel", "1"});
+    QStringList launch{"--model", model, "--alias", "ember",
+                       "--host", "127.0.0.1", "--port", "43821",
+                       "--ctx-size", "8192", "--n-gpu-layers", "99",
+                       "--parallel", "1"};
+    const QString projector = configPath("visionProj");
+    m_brainVisionMode = isRegularFile(projector);
+    if (m_brainVisionMode) launch << "--mmproj" << projector;
+    m_brain.setArguments(launch);
     m_brain.start();
     m_brainElapsed.start();
     m_healthTimer.start();
@@ -926,6 +937,7 @@ void EmberBackend::pollSpeechServer() {
     });
 }
 void EmberBackend::stopBrain() {
+    m_brainVisionMode = false;
     ++m_brainSession;
     cancelWork();
     m_healthTimer.stop();
@@ -936,11 +948,122 @@ void EmberBackend::stopBrain() {
     }
     setStatus("Local brain stopped. No inference process remains active.");
 }
+void EmberBackend::chooseImage() {
+    if (m_privateMode || m_busy || m_listening) {
+        setStatus("Image Library is disabled in RAM-only Private mode and during capture.");
+        return;
+    }
+    const QString path = QFileDialog::getOpenFileName(
+        nullptr, "Add an image to the local Library", QDir::homePath(),
+        "Images (*.png *.jpg *.jpeg *.bmp *.webp);;All files (*)");
+    if (path.isEmpty()) return;
+    QString error;
+    const QString id = m_images->importFile(path, &error);
+    if (id.isEmpty()) {
+        setStatus("Image import refused: " + error);
+        return;
+    }
+    attachSavedImage(id);
+}
+void EmberBackend::pasteImage() {
+    if (m_privateMode || m_busy || m_listening) {
+        setStatus("Clipboard image import is disabled in RAM-only Private mode.");
+        return;
+    }
+    const QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard) return;
+    const QMimeData *data = clipboard->mimeData();
+    if (!data) return;
+    if (data->hasImage()) {
+        const QImage image = clipboard->image();
+        QString error;
+        const QString id = m_images->importImage(image, &error);
+        if (id.isEmpty()) setStatus("Image paste refused: " + error);
+        else attachSavedImage(id);
+    } else if (data->hasUrls()) {
+        const QList<QUrl> urls = data->urls();
+        if (urls.size() == 1 && urls.first().isLocalFile())
+            attachImageUrl(urls.first().toString());
+        else setStatus("Only one local image may be pasted at a time.");
+    } else {
+        setStatus("Clipboard has no image. Copy an image, then choose Paste image.");
+    }
+}
+void EmberBackend::attachImageUrl(const QString &url) {
+    if (m_privateMode || m_busy || m_listening) {
+        setStatus("Finish this task and exit Private mode before importing images.");
+        return;
+    }
+    const QUrl parsed(url);
+    if (!parsed.isValid() || !parsed.isLocalFile()) {
+        setStatus("Only explicitly selected local image files are allowed.");
+        return;
+    }
+    QString error;
+    const QString id = m_images->importFile(parsed.toLocalFile(), &error);
+    if (id.isEmpty()) {
+        setStatus("Local image import refused: " + error);
+        return;
+    }
+    attachSavedImage(id);
+}
+void EmberBackend::attachSavedImage(const QString &id) {
+    if (m_privateMode || m_busy || m_listening ||
+        !m_images || m_images->filePath(id).isEmpty()) {
+        setStatus("Cannot attach this image. Select a valid local Library item.");
+        return;
+    }
+    m_pendingImageId = id;
+    m_imageItems = m_images->list();
+    emit imageLibraryChanged();
+    emit imageSelectionChanged();
+    setStatus(m_brainVisionMode && m_brainReady
+        ? "Local image attached. Send to the on-device vision model."
+        : "Image saved locally. Add a vision-capable GGUF and mmproj to analyze it.");
+}
+void EmberBackend::clearAttachedImage() {
+    if (m_pendingImageId.isEmpty()) return;
+    m_pendingImageId.clear();
+    emit imageSelectionChanged();
+}
+void EmberBackend::deleteSavedImage(const QString &id) {
+    if (m_privateMode || m_busy || m_listening) return;
+    if (!m_images || !m_images->remove(id)) {
+        setStatus("Could not delete the selected local Library image.");
+        return;
+    }
+    if (m_pendingImageId == id) clearAttachedImage();
+    m_imageItems = m_images->list();
+    emit imageLibraryChanged();
+    setStatus("Local image deleted. Previous chat image references may show unavailable.");
+}
+QString EmberBackend::messageImageUrl(const QString &body) const {
+    return m_images ? m_images->fileUrl(EmberCore::attachedImageId(body))
+                    : QString();
+}
+QString EmberBackend::messageText(const QString &body) const {
+    return EmberCore::stripAttachedImageMarker(body);
+}
 void EmberBackend::submitText(const QString &text) {
     submit(text, false);
 }
 void EmberBackend::submit(const QString &raw, bool voice) {
-    const QString text = raw.trimmed();
+    const QString selected = !voice && !m_privateMode ? m_pendingImageId : QString();
+    QByteArray imageData;
+    if (!selected.isEmpty()) {
+        if (!visionReady()) {
+            setStatus("This local brain has no active vision projector. "
+                      "Choose an mmproj GGUF, then restart the brain.");
+            return;
+        }
+        imageData = m_images->dataUri(selected);
+        if (imageData.isEmpty()) {
+            setStatus("Attached image failed local SHA-256 integrity verification.");
+            return;
+        }
+    }
+    const QString text = raw.trimmed().isEmpty() && !selected.isEmpty()
+        ? QStringLiteral("Describe the attached image.") : raw.trimmed();
     if (!m_brainReady) {
         setStatus("Start the local brain before sending a message.");
         return;
@@ -964,7 +1087,9 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     setSpeaking(false);
     m_pendingUser = text;
     m_voicePending = voice;
-    appendMessage("you", text);
+    appendMessage("you", text + (selected.isEmpty() ? QString() :
+        QStringLiteral("\n\n[Ember image sha256:") + selected + QLatin1Char(']')));
+    if (!selected.isEmpty()) clearAttachedImage();
     setBusy(true);
     setStatus(voice ? "Reasoning in English for a spoken reply…"
                     : "Streaming a private local text reply…");
@@ -1004,6 +1129,12 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         effectivePersona, m_history, text,
         voice ? 512 : (m_chatMode == 1 ? 2048 : 1400),
         m_chatMode == 1 ? 0.92 : 0.73, recalled);
+    if (!selected.isEmpty() &&
+        !EmberCore::attachLocalVisionData(payload, imageData)) {
+        setBusy(false);
+        setStatus("Could not construct a private local multimodal request.");
+        return;
+    }
     payload.insert("stream", true);
     const QString url = "http://127.0.0.1:43821/v1/chat/completions";
     if (!EmberCore::allowedLocalEndpoint(url)) {
@@ -2071,6 +2202,7 @@ void EmberBackend::openSession(const QString &id) {
         m_privateMode = false;
         emit privateModeChanged();
     }
+    clearAttachedImage();
     m_sessionId = id;
     m_continuityNotes = m_store->notes(id);
     emit continuityNotesChanged();
@@ -2089,6 +2221,7 @@ void EmberBackend::openSession(const QString &id) {
 }
 void EmberBackend::clearConversation() {
     cancelWork();
+    clearAttachedImage();
     m_sessionId = !m_privateMode && m_store && m_store->ready()
         ? m_store->createSession() : QString();
     m_history.clear();

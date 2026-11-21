@@ -1,5 +1,32 @@
 # Windows portable setup — first voice milestone
 
+## Native local Image Library and single-image vision
+
+The new C++/Qt gallery normalizes user-selected local files or explicitly
+pasted clipboard images into metadata-free, bounded JPEG/PNG. They are stored
+under `data/library` named by SHA-256 of their encoded image bytes; importing
+the same normalized image twice does not duplicate storage. Image files stay
+on the user's PC and are never silently uploaded. Import/paste is refused in
+RAM-only Private mode, because that would create persistent files.
+The gallery shows a local thumbnail, permits explicit attach or delete
+and never loads a remote image URL.
+
+To make a real vision request, select a compatible **local vision-capable
+GGUF** as the brain model and choose its local `mmproj.gguf` in the
+`Vision projector · optional` Settings field, then restart the brain.
+The local llama.cpp server starts with `--mmproj`. Attach a single Library
+image, then Send. Ember constructs the current-user OpenAI-style typed
+`image_url` as a private JPEG/PNG data URI and sends it **only to**
+`127.0.0.1:43821`, never to an external server. Without a configured
+projector Ember refuses to analyze an image; it does not falsely claim to
+see one. The text archive saves a SHA-256 reference, not base64 blobs.
+Local image files are independent of existing text-only compressed backups:
+exporting/restoring chats does not yet back up their image content.
+Deleting an image leaves a visible missing-asset reference in old chats.
+Model/mmproj compatibility and visual quality need actual RTX4070 validation.
+
+
+
 **Offline native Qwen speech loading:** with downloaded packages blocked by
 default, place a trusted GGUF at `models/speech/qwen3-tts-0.6b.gguf`,
 `models/speech/qwen3-tts-1.7b.gguf`,

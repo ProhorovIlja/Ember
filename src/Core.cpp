@@ -160,6 +160,52 @@ static QString escapedInlineMarkdown(const QString &source) {
     }
     return out;
 }
+QString attachedImageId(const QString &text) {
+    static const QRegularExpression marker(
+        QStringLiteral("\\n\\n\\[Ember image sha256:([0-9a-f]{64})\\]$"));
+    const QRegularExpressionMatch match = marker.match(text);
+    return match.hasMatch() ? match.captured(1) : QString();
+}
+QString stripAttachedImageMarker(const QString &text) {
+    const QString id = attachedImageId(text);
+    return id.isEmpty() ? text :
+        text.left(text.size() - 23 - id.size()).trimmed();
+}
+bool attachLocalVisionData(QJsonObject &request, const QByteArray &dataUri) {
+    // Absolutely no third-party URLs: only a bounded in-memory local image
+    // emitted by the trusted content-addressed ImageLibrary encoder.
+    const bool jpeg = dataUri.startsWith("data:image/jpeg;base64,");
+    const bool png = dataUri.startsWith("data:image/png;base64,");
+    if ((!jpeg && !png) || dataUri.size() > 7 * 1024 * 1024 ||
+        dataUri.size() < 40) return false;
+    const qsizetype comma = dataUri.indexOf(',');
+    const QByteArray encoded = dataUri.mid(comma + 1);
+    if (encoded.isEmpty() || encoded.size() % 4 != 0) return false;
+    for (char byte : encoded) {
+        if (!(byte >= 'A' && byte <= 'Z') &&
+            !(byte >= 'a' && byte <= 'z') &&
+            !(byte >= '0' && byte <= '9') &&
+            byte != '+' && byte != '/' && byte != '=') return false;
+    }
+    QJsonArray messages = request.value("messages").toArray();
+    if (messages.isEmpty()) return false;
+    QJsonObject last = messages.last().toObject();
+    if (last.value("role").toString() != "user" ||
+        !last.value("content").isString()) return false;
+    const QString text = last.value("content").toString();
+    QJsonArray parts;
+    parts.append(QJsonObject{{"type", "text"}, {"text", text}});
+    parts.append(QJsonObject{{"type", "image_url"},
+                             {"image_url", QJsonObject{
+                                  {"url", QString::fromLatin1(dataUri)}
+                              }}});
+    last.insert("content", parts);
+    messages.removeLast();
+    messages.append(last);
+    request.insert("messages", messages);
+    return true;
+}
+
 QString safeMarkdownHtml(const QString &markdown) {
     // Qt Quick RichText can fetch remote images when directly given LLM text.
     // Build only self-contained formatting tags, with NO img/a/style/script

@@ -47,6 +47,12 @@ qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
                            int bytesPerFrame, qint64 quota = 1024LL * 1024 * 1024);
 // Render a restricted local-only subset of Markdown. No external-resource HTML.
 QString safeMarkdownHtml(const QString &markdown);
+// Image references are local SHA-256 identifiers in text archive only.
+// Never accept network URLs or raw model-supplied HTML for image rendering.
+QString attachedImageId(const QString &text);
+QString stripAttachedImageMarker(const QString &text);
+// Builds one typed-content multimodal part for the current user request.
+bool attachLocalVisionData(QJsonObject &request, const QByteArray &dataUri);
 // User-supplied local GGUF model path, never a catalog download alias.
 QString offlineSpeechModelFile(const QString &applicationRoot, const QString &alias);
 bool validSpeechWav(const QByteArray &wav);

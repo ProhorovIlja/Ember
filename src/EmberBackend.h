@@ -1,6 +1,7 @@
 #pragma once
 #include "Core.h"
 #include "SessionStore.h"
+#include "ImageLibrary.h"
 #include <QFile>
 #include <QLockFile>
 #include <QAudioDevice>
@@ -40,6 +41,9 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(bool dictationActive READ dictationActive NOTIFY dictationChanged)
     Q_PROPERTY(QString dictatedText READ dictatedText NOTIFY dictationChanged)
     Q_PROPERTY(bool brainReady READ brainReady NOTIFY brainReadyChanged)
+    Q_PROPERTY(bool visionReady READ visionReady NOTIFY brainReadyChanged)
+    Q_PROPERTY(QString pendingImageUrl READ pendingImageUrl NOTIFY imageSelectionChanged)
+    Q_PROPERTY(QVariantList imageLibraryItems READ imageLibraryItems NOTIFY imageLibraryChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool listening READ listening NOTIFY listeningChanged)
     Q_PROPERTY(bool speaking READ speaking NOTIFY speakingChanged)
@@ -82,6 +86,11 @@ public:
     bool dictationActive() const { return m_listening && m_captureDictation; }
     QString dictatedText() const { return m_dictatedText; }
     bool brainReady() const { return m_brainReady; }
+    bool visionReady() const { return m_brainReady && m_brainVisionMode; }
+    QString pendingImageUrl() const {
+        return m_images ? m_images->fileUrl(m_pendingImageId) : QString();
+    }
+    QVariantList imageLibraryItems() const { return m_imageItems; }
     bool busy() const { return m_busy; }
     bool listening() const { return m_listening; }
     bool speaking() const { return m_speaking; }
@@ -127,6 +136,14 @@ public:
     Q_INVOKABLE void startSpeechServer();
     Q_INVOKABLE void stopSpeechServer();
     Q_INVOKABLE void submitText(const QString &text);
+    Q_INVOKABLE void chooseImage();
+    Q_INVOKABLE void pasteImage();
+    Q_INVOKABLE void attachImageUrl(const QString &url);
+    Q_INVOKABLE void attachSavedImage(const QString &id);
+    Q_INVOKABLE void clearAttachedImage();
+    Q_INVOKABLE void deleteSavedImage(const QString &id);
+    Q_INVOKABLE QString messageImageUrl(const QString &body) const;
+    Q_INVOKABLE QString messageText(const QString &body) const;
     Q_INVOKABLE QString formatReply(const QString &text) const;
     Q_INVOKABLE void startRecording();
     Q_INVOKABLE void startDictation();
@@ -159,6 +176,8 @@ signals:
     void microphoneLevelChanged();
     void dictationReady(const QString &text);
     void brainReadyChanged();
+    void imageSelectionChanged();
+    void imageLibraryChanged();
     void busyChanged();
     void listeningChanged();
     void speakingChanged();
@@ -217,6 +236,10 @@ private:
     bool m_chatPreviewActive = false;
     QVariantList m_sessions;
     std::unique_ptr<SessionStore> m_store;
+    std::unique_ptr<ImageLibrary> m_images;
+    QVariantList m_imageItems;
+    QString m_pendingImageId;
+    bool m_brainVisionMode = false;
     QStringList m_voiceQueue;
     QVariantList m_messages;
     QList<EmberCore::Turn> m_history;

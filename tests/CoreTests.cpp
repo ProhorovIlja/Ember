@@ -11,6 +11,35 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void imageAttachmentMarkersAreStrictlyLocalAndNonExecutable() {
+        const QString id(64, QLatin1Char('a'));
+        const QString body = QStringLiteral("Please inspect this diagram.")
+            + QStringLiteral("\n\n[Ember image sha256:") + id + ']';
+        QCOMPARE(EmberCore::attachedImageId(body), id);
+        QCOMPARE(EmberCore::stripAttachedImageMarker(body),
+                 QString("Please inspect this diagram."));
+        QVERIFY(EmberCore::attachedImageId(
+            QStringLiteral("http://example.com/image.png")).isEmpty());
+        QVERIFY(EmberCore::attachedImageId(
+            QStringLiteral("raw [Ember image sha256:") + id + ']').isEmpty());
+        QJsonObject request = EmberCore::chatRequest(
+            "Offline assistant", {}, "Describe the image");
+        QVERIFY(!EmberCore::attachLocalVisionData(request,
+            QByteArray("https://example.com/image.jpg")));
+        QVERIFY(!EmberCore::attachLocalVisionData(request,
+            QByteArray("data:image/png;base64,evil!")));
+        QVERIFY(EmberCore::attachLocalVisionData(request,
+            QByteArray("data:image/jpeg;base64,") + QByteArray("QUJDRA==")));
+        const auto messages = request.value("messages").toArray();
+        const auto parts = messages.last().toObject().value("content").toArray();
+        QCOMPARE(parts.size(), 2);
+        QCOMPARE(parts.at(0).toObject().value("text").toString(),
+                 QString("Describe the image"));
+        QCOMPARE(parts.at(1).toObject().value("image_url").toObject()
+                 .value("url").toString(), QString("data:image/jpeg;base64,QUJDRA=="));
+        QCOMPARE(messages.first().toObject().value("role").toString(),
+                 QString("system"));
+    }
     void nativeImageLibraryImportDeduplicatesAndDoesNotUseNetwork() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
