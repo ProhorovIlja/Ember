@@ -834,6 +834,70 @@ private slots:
                  QStringList({"The code example is in the text chat.",
                               "Explained."}));
     }
+    void markdownCodeDisplaysAndSpeaksTheSameFenceBoundaries() {
+        const QString four(4, QLatin1Char(96));
+        const QString three(3, QLatin1Char(96));
+        // Three markers inside a four-marker block are literal code.
+        const QString wide = "Before.\n" + four + "cpp\n" +
+                             three + "\nsecret_call();\n" + four + "\nAfter.";
+        const QString html = EmberCore::safeMarkdownHtml(wide);
+        QCOMPARE(html.count("<pre"), 1);
+        QCOMPARE(html.count("</pre>"), 1);
+        QVERIFY(html.contains(three + "\nsecret_call();"));
+        QVERIFY(html.contains("After.<br/>"));
+        QCOMPARE(EmberCore::speechFriendlyText(wide),
+                 QString("Before. The code example is in the text chat. After."));
+
+        // The wrong closing marker must remain inside the displayed code.
+        const QString mixed = "Start.\n~~~cpp\n" + three +
+            "\nprivate_call();\n~~~\nFinal.";
+        const QString mixedHtml = EmberCore::safeMarkdownHtml(mixed);
+        QCOMPARE(mixedHtml.count("<pre"), 1);
+        QCOMPARE(mixedHtml.count("</pre>"), 1);
+        QVERIFY(mixedHtml.contains(three + "\nprivate_call();"));
+        QVERIFY(mixedHtml.contains("Final.<br/>"));
+        QCOMPARE(EmberCore::speechFriendlyText(mixed),
+                 QString("Start. The code example is in the text chat. Final."));
+
+        // Up to three spaces on a closing line are valid.
+        const QString indented = "Intro.\n" + three + "cpp\nvalue();\n  " +
+                                 three + "\nOutside.";
+        QCOMPARE(EmberCore::safeMarkdownHtml(indented).count("</pre>"), 1);
+        QCOMPARE(EmberCore::speechFriendlyText(indented),
+                 QString("Intro. The code example is in the text chat. Outside."));
+
+        // Four spaces do not close: subsequent text is still code, not prose.
+        const QString invalid = "Intro.\n" + three + "cpp\n    " +
+                                three + "\ninternal();";
+        const QString invalidHtml = EmberCore::safeMarkdownHtml(invalid);
+        QCOMPARE(invalidHtml.count("<pre"), 1);
+        QCOMPARE(invalidHtml.count("</pre>"), 1); // close only at end-of-input
+        QVERIFY(invalidHtml.contains("internal();"));
+        QCOMPARE(EmberCore::speechFriendlyText(invalid),
+                 QString("Intro. The code example is in the text chat."));
+    }
+
+    void inlineTripleMarkersNeverDelayLiveNaturalSpeech() {
+        const QString three(3, QLatin1Char(96));
+        qsizetype cursor = 0;
+        const QString inlineExample = "The literal " + three +
+            " marker is a Markdown example, not an opening code block. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(inlineExample, cursor, false),
+                 QStringList({EmberCore::speechFriendlyText(inlineExample)}));
+        QCOMPARE(cursor, qsizetype(inlineExample.size()));
+
+        cursor = 0;
+        QString stream = "This code is in the chat.\n  " + three +
+                         "cpp\nconfidential_call();";
+        QCOMPARE(EmberCore::takeCommittedSpeech(stream, cursor, false),
+                 QStringList({"This code is in the chat."}));
+        QVERIFY(EmberCore::takeCommittedSpeech(stream, cursor, false).isEmpty());
+        stream += "\n   " + three + "\nThe explanation is complete. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(stream, cursor, false),
+                 QStringList({"The code example is in the text chat.",
+                              "The explanation is complete."}));
+        QCOMPARE(cursor, qsizetype(stream.size()));
+    }
     void doesNotSpeakImageAltTextAsVerifiedVision() {
         const QString markdown = "See ![Confidential chart](https://example.org/chart.png) "
             "and [the report](https://example.org/report).";
