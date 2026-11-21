@@ -69,9 +69,15 @@ jobs:
           Copy-Item LICENSE build/Release/LICENSE
           Copy-Item docs/SETUP.md build/Release/SETUP.md
           Compress-Archive -Path 'build/Release/*' -DestinationPath 'Ember-dev-win64.zip' -CompressionLevel Optimal
+      - name: Compile and validate unsigned developer installer
+        shell: pwsh
+        run: pwsh -NoProfile -File release/build-dev-installer.ps1 -VerifyInstall
       - uses: actions/upload-artifact@v4
         with:
           name: Ember-native-dev-win64-${{ github.sha }}
-          path: Ember-dev-win64.zip
+          path: |
+            Ember-dev-win64.zip
+            dist/Ember-0.1.0-dev-Windows-x64.exe
+            dist/Ember-dev-installer-SHA256.txt
           retention-days: 7
           if-no-files-found: error
