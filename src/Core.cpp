@@ -746,13 +746,28 @@ QString speechFriendlyText(const QString &markdown) {
     if (unclosedThought >= 0) speechSource.truncate(unclosedThought);
     QStringList spokenLines;
     bool insideCode = false;
+    QChar openFence;
+    qsizetype openFenceWidth = 0;
     for (const QString &raw : speechSource.split('\n')) {
         QString line = raw.trimmed();
-        if (line.startsWith("```") || line.startsWith("~~~")) {
-            if (!insideCode)
-                spokenLines.append("The code example is in the text chat.");
-            insideCode = !insideCode;
-            continue;
+        // Markdown closing fences must use the SAME character and at least
+        // the opening width. A stray backtick fence inside a tilde block
+        // (or a shorter one inside a four-backtick block) is still code.
+        if (!line.isEmpty() && (line.front() == '`' || line.front() == '~')) {
+            qsizetype width = 0;
+            while (width < line.size() && line[width] == line.front()) ++width;
+            if (width >= 3) {
+                if (!insideCode) {
+                    insideCode = true;
+                    openFence = line.front();
+                    openFenceWidth = width;
+                    spokenLines.append("The code example is in the text chat.");
+                } else if (line.front() == openFence && width >= openFenceWidth &&
+                           line.mid(width).trimmed().isEmpty()) {
+                    insideCode = false;
+                }
+                continue;
+            }
         }
         if (insideCode || line.isEmpty()) continue;
         line.remove(QRegularExpression(R"(^#{1,6}\s+)"));
@@ -800,9 +815,31 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
             : (backticks >= 0 ? backticks : tildes);
         const QString marker = fence == backticks ? "```" : "~~~";
         if (fence == 0) {
-            const qsizetype close = remaining.indexOf(marker, 3);
+            const QChar openingCharacter = remaining.front();
+            qsizetype openingWidth = 0;
+            while (openingWidth < remaining.size() &&
+                   remaining[openingWidth] == openingCharacter) ++openingWidth;
+            qsizetype close = -1;
+            qsizetype closingWidth = 0;
+            for (qsizetype pos = openingWidth; pos < remaining.size(); ++pos) {
+                // A closing fence occupies its own line; a marker in source
+                // code, an inline expression, or the wrong marker is not one.
+                if (remaining[pos] != openingCharacter ||
+                    remaining[pos - 1] != '\n') continue;
+                qsizetype width = 0;
+                while (pos + width < remaining.size() &&
+                       remaining[pos + width] == openingCharacter) ++width;
+                if (width < openingWidth) continue;
+                const qsizetype newline = remaining.indexOf('\n', pos + width);
+                const qsizetype end = newline < 0 ? remaining.size() : newline;
+                if (!remaining.mid(pos + width, end - pos - width).trimmed().isEmpty())
+                    continue;
+                close = pos;
+                closingWidth = width;
+                break;
+            }
             if (close < 0 && !final) break;
-            cursor += close >= 0 ? close + 3 : remaining.size();
+            cursor += close >= 0 ? close + closingWidth : remaining.size();
             ready.append("The code example is in the text chat.");
             continue;
         }
