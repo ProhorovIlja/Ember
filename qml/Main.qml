@@ -51,6 +51,78 @@ ApplicationWindow {
             }
         }
     }
+    Dialog {
+        id: continuityDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(window.width - 90, 590)
+        height: Math.min(window.height - 90, 490)
+        modal: true
+        title: "Conversation memory"
+        standardButtons: Dialog.NoButton
+        onOpened: continuityEditor.text = ember.continuityNotes
+        background: Rectangle {
+            color: "#091522"
+            radius: 17
+            border.color: "#3676A8"
+            border.width: 1
+        }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                text: "Keep essential characters, relationships, world rules or project facts across sessions. This text stays on your PC and belongs only to this chat."
+                color: "#BACFE4"
+                wrapMode: Text.WordWrap
+                font.pixelSize: 13
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                background: Rectangle {
+                    color: "#040B14"
+                    radius: 11
+                    border.color: "#1B3D5C"
+                }
+                TextArea {
+                    id: continuityEditor
+                    wrapMode: TextEdit.Wrap
+                    color: "#E3F3FF"
+                    font.pixelSize: 13
+                    padding: 14
+                    placeholderText: "Characters, locations, promises, unresolved questions, story timeline..."
+                    placeholderTextColor: "#7796AF"
+                    selectByMouse: true
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    text: continuityEditor.text.length + " / 1,800 characters"
+                    color: continuityEditor.text.length > 1800 ? "#FF9F99" : "#8CA9C2"
+                    font.pixelSize: 11
+                }
+                Item { Layout.fillWidth: true }
+                PillButton {
+                    text: "Cancel"
+                    implicitHeight: 36
+                    implicitWidth: 95
+                    onClicked: continuityDialog.close()
+                }
+                PillButton {
+                    text: "Save memory"
+                    implicitHeight: 36
+                    implicitWidth: 128
+                    enabled: continuityEditor.text.length <= 1800
+                    onClicked: {
+                        ember.setContinuityNotes(continuityEditor.text)
+                        continuityDialog.close()
+                    }
+                }
+            }
+        }
+    }
     Connections {
         target: ember
         function onDictationReady(text) {
@@ -606,6 +678,13 @@ ApplicationWindow {
                                     enabled: ember.busy
                                     visible: ember.busy
                                     onClicked: ember.cancelWork()
+                                }
+                                PillButton {
+                                    text: "Memory"
+                                    implicitWidth: 94
+                                    implicitHeight: 36
+                                    enabled: ember.localHistoryReady
+                                    onClicked: continuityDialog.open()
                                 }
                                 PillButton {
                                     text: "Delete"
