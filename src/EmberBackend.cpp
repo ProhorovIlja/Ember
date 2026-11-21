@@ -206,12 +206,19 @@ EmberBackend::EmberBackend(QObject *parent)
                 m_cliTtsActive = false;
                 if (!m_busy) return;
                 setBusy(false);
-                if (how != QProcess::NormalExit || code != 0 ||
-                    m_ttsOutputSlot < 0 ||
-                    QFileInfo(speechFile(m_ttsOutputSlot)).size() < 44) {
+                if (how != QProcess::NormalExit || code != 0 || m_ttsOutputSlot < 0) {
                     stopSpeechOnError("Voice synthesis failed. Check the Kokoro files and voice ID.");
                     return;
                 }
+                QFile candidate(speechFile(m_ttsOutputSlot));
+                if (!candidate.open(QIODevice::ReadOnly) ||
+                    candidate.size() > 8 * 1024 * 1024 ||
+                    !EmberCore::validSpeechWav(candidate.readAll())) {
+                    candidate.close();
+                    stopSpeechOnError("Kokoro returned invalid or oversized PCM16 WAV audio.");
+                    return;
+                }
+                candidate.close();
                 m_ttsLastMs = m_ttsElapsed.isValid() ? m_ttsElapsed.elapsed() : -1;
                 emit voiceTimingsChanged();
                 m_readySpeechSlot = m_ttsOutputSlot;
@@ -312,12 +319,18 @@ void EmberBackend::setPersona(const QString &persona) {
 }
 void EmberBackend::setVoiceId(int index) {
     if (index < 0 || index > 10 || index == m_voiceId) return;
+    if (m_busy || m_speaking || m_listening) {
+        setStatus("Stop the current voice task before changing the speaker.");
+        return;
+    }
     m_voiceId = index;
     storeConfig();
 }
 void EmberBackend::setVoiceEngine(int index) {
     if (index < 0 || index > 1 || m_voiceEngine == index) return;
     if (m_busy || m_speaking || m_listening) cancelWork();
+    if (index == 0 && m_speechServer.state() != QProcess::NotRunning)
+        stopSpeechServer(); // release Vulkan/CPU resources when choosing Kokoro
     m_voiceEngine = index;
     m_settings.setValue("voice/engine", index);
     m_settings.sync();
@@ -330,6 +343,10 @@ void EmberBackend::setVoiceEngine(int index) {
 void EmberBackend::setLocalVoice(const QString &value) {
     const QRegularExpression safe("^[A-Za-z0-9_-]{1,80}$");
     if (!safe.match(value).hasMatch() || m_localVoice == value) return;
+    if (m_busy || m_speaking || m_listening) {
+        setStatus("Finish speaking before changing the voice identity.");
+        return;
+    }
     m_localVoice = value;
     m_settings.setValue("voice/localVoice", value);
     storeConfig();
@@ -344,6 +361,11 @@ void EmberBackend::setVoiceSample(const QString &value) {
 void EmberBackend::setLocalModel(const QString &value) {
     const QRegularExpression safe("^[A-Za-z0-9_./-]{1,80}$");
     if (!safe.match(value).hasMatch() || m_localModel == value) return;
+    if (m_busy || m_speaking || m_listening ||
+        m_speechServer.state() != QProcess::NotRunning) {
+        setStatus("Stop the current voice model before changing its name.");
+        return;
+    }
     m_localModel = value;
     m_settings.setValue("voice/localModel", value);
     storeConfig();
@@ -1128,6 +1150,7 @@ void EmberBackend::playSynthesizedFile() {
     m_mediaPlayer.setSource(QUrl());
     m_mediaPlayer.setSource(QUrl::fromLocalFile(speechFile(slot)));
     m_mediaPlayer.play();
+    if (!m_speechSequence) return; // synchronous media error may cancel playback
     setSpeaking(true);
     setStatus("Speaking locally — the next segment can prepare in parallel.");
 }
