@@ -515,6 +515,9 @@ void EmberBackend::setStatus(const QString &text) {
     emit statusChanged();
 }
 void EmberBackend::setBusy(bool value) {
+    // A synthesizer's own finished callback cannot declare Ember idle while
+    // the LLM is still streaming text for the same spoken response.
+    if (m_chatGenerating) value = true;
     if (m_busy == value) return;
     m_busy = value;
     emit busyChanged();
@@ -694,6 +697,10 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     }
     m_speechSequence = false;
     m_voiceQueue.clear();
+    m_voiceEarlyFailed = false;
+    m_voiceEarlyActive = voice && m_voiceEngine == 1 &&
+        m_speechServerReady && m_speechServer.state() == QProcess::Running;
+    m_liveSpeechCursor = 0;
     m_mediaPlayer.stop();
     m_mediaPlayer.setSource(QUrl());
     setSpeaking(false);
@@ -729,7 +736,9 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     if (voice) {
         effectivePersona +=
             " For every voice reply use fluent conversational English only, even "
-            "if the recognized input was Russian. Write naturally for listening.";
+            "if the recognized input was Russian. Write naturally for listening. "
+            "Put the answer's helpful point in the first complete sentence. "
+            "Use conversational prose, not Markdown, code fences, or raw URLs.";
     }
     QJsonObject payload = EmberCore::chatRequest(
         effectivePersona, m_history, text,
@@ -739,6 +748,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     const QString url = "http://127.0.0.1:43821/v1/chat/completions";
     if (!EmberCore::allowedLocalEndpoint(url)) {
         m_voicePending = false;
+        m_voiceEarlyActive = false;
         setBusy(false);
         setStatus("Invalid local text-engine address.");
         return;
@@ -746,6 +756,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     m_chatStreamBuffer.clear();
     m_chatStreamText.clear();
     m_chatStreamDone = m_chatStreamInvalid = m_chatPreviewActive = false;
+    m_chatGenerating = true;
     m_chatStreamSession = m_sessionId;
     QNetworkRequest request{QUrl(url)};
     request.setTransferTimeout(180000);
@@ -774,6 +785,8 @@ void EmberBackend::submit(const QString &raw, bool voice) {
             }
             m_chatStreamText += tokens.text;
             if (!m_chatRenderTimer.isActive()) m_chatRenderTimer.start();
+            if (m_voiceEarlyActive && !m_voiceEarlyFailed)
+                enqueueLiveSpeech(false);
         }
         if (tokens.done) m_chatStreamDone = true;
     };
@@ -809,8 +822,28 @@ void EmberBackend::renderChatStream() {
     }
     emit messagesChanged();
 }
+void EmberBackend::enqueueLiveSpeech(bool final) {
+    if (!m_voiceEarlyActive || m_voiceEarlyFailed) return;
+    const QStringList segments = EmberCore::takeCommittedSpeech(
+        m_chatStreamText, m_liveSpeechCursor, final);
+    for (const QString &segment : segments) {
+        if (EmberCore::mostlyCyrillic(segment)) {
+            m_voiceEarlyFailed = true;
+            stopSpeechOnError("English-only voice: primarily Russian text was not spoken.");
+            return;
+        }
+        if (segment.isEmpty()) continue;
+        m_voiceQueue.append(segment);
+    }
+    if (!m_voiceQueue.isEmpty() && !m_speechSequence) {
+        m_readySpeechSlot = m_playingSpeechSlot = m_ttsOutputSlot = -1;
+        m_speechSequence = true;
+    }
+    if (m_speechSequence) playNextSpeechChunk();
+}
 void EmberBackend::finishChatStream(bool interrupted) {
     m_chatRenderTimer.stop();
+    m_chatGenerating = false;
     const QString response = m_chatStreamText.trimmed();
     const bool shouldSpeak = m_voicePending && !interrupted;
     m_voicePending = false;
@@ -834,15 +867,26 @@ void EmberBackend::finishChatStream(bool interrupted) {
         m_llmLastMs = m_llmElapsed.elapsed();
         emit voiceTimingsChanged();
     }
-    setBusy(false);
+    const bool activeSynthesis = m_cliTtsActive || m_speechReply ||
+        m_pcmSink || m_ttsOutputSlot >= 0;
+    setBusy(activeSynthesis);
+    if (interrupted && m_voiceEarlyActive && m_speechSequence) {
+        stopSpeechOnError("Streamed response was interrupted; stopped partial voice output.");
+    }
     if (response.isEmpty()) {
         setStatus("The local model returned no streamed text. Check its server logs.");
     } else if (shouldSpeak) {
-        beginSpeech(response);
+        if (m_voiceEarlyActive) {
+            if (!m_voiceEarlyFailed) enqueueLiveSpeech(true);
+            else setStatus("Voice language or synthesis failed. Full text is saved locally.");
+        } else {
+            beginSpeech(response);
+        }
     } else {
         setStatus(interrupted ? "Generation interrupted; partial text saved locally."
                               : "Local streaming reply complete and archived.");
     }
+    m_voiceEarlyActive = false;
 }
 
 void EmberBackend::releaseCapture() {
@@ -1059,6 +1103,7 @@ QString EmberBackend::speechFile(int slot) const {
     return workFile(slot == 0 ? "voice-a.wav" : "voice-b.wav");
 }
 void EmberBackend::stopSpeechOnError(const QString &error) {
+    if (m_chatGenerating && m_voiceEarlyActive) m_voiceEarlyFailed = true;
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_readySpeechSlot = m_ttsOutputSlot = m_playingSpeechSlot = -1;
@@ -1100,12 +1145,21 @@ void EmberBackend::playNextSpeechChunk() {
     // At most one prepared chunk is buffered, keeping scratch disk bounded.
     if (!m_speaking && m_readySpeechSlot >= 0)
         playSynthesizedFile();
-    if (m_busy || m_readySpeechSlot >= 0) return;
+    // One TTS request may run concurrently with a still-generating LLM turn.
+    // Do not start a second synthesis until the first one has completed.
+    if ((m_busy && !m_chatGenerating) || m_readySpeechSlot >= 0 ||
+        m_cliTtsActive || m_speechReply || m_pcmSink) return;
     if (!m_voiceQueue.isEmpty()) {
         const QString next = m_voiceQueue.takeFirst();
         m_ttsOutputSlot = (m_playingSpeechSlot == 0 ? 1 : 0);
         synthesize(next);
     } else if (!m_speaking) {
+        // All available complete sentences may have been voiced before the
+        // LLM emits its next one. Keep the sequence alive until SSE [DONE].
+        if (m_chatGenerating && m_voiceEarlyActive && !m_voiceEarlyFailed) {
+            setStatus("Listening to Ember while the next sentence is generated…");
+            return;
+        }
         m_speechSequence = false;
         m_mediaPlayer.setSource(QUrl());
         QFile::remove(speechFile(0));
@@ -1424,6 +1478,8 @@ void EmberBackend::testVoice() {
 }
 void EmberBackend::cancelWork() {
     m_voiceTurnActive = false;
+    m_chatGenerating = false;
+    m_voiceEarlyFailed = true;
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_readySpeechSlot = m_ttsOutputSlot = m_playingSpeechSlot = -1;
@@ -1454,6 +1510,8 @@ void EmberBackend::cancelWork() {
     QFile::remove(speechFile(1));
     setSpeaking(false);
     m_voicePending = false;
+    m_voiceEarlyActive = false;
+    m_liveSpeechCursor = 0;
     setBusy(false);
     setStatus("Cancelled. No microphone capture or pending reply remains.");
 }
