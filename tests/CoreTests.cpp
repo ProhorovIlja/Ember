@@ -803,9 +803,10 @@ private slots:
         cursor = 0;
         streamed = "~~~~txt\nnot_spoken();\n~~~\nstill_not_spoken();";
         QVERIFY(EmberCore::takeCommittedSpeech(streamed, cursor, false).isEmpty());
-        streamed += "\n~~~~\nDone. ";
+        streamed += "\n~~~~\nThe example is complete. ";
         QCOMPARE(EmberCore::takeCommittedSpeech(streamed, cursor, false),
-                 QStringList({"The code example is in the text chat.", "Done."}));
+                 QStringList({"The code example is in the text chat.",
+                              "The example is complete."}));
         QCOMPARE(cursor, qsizetype(streamed.size()));
 
         cursor = 0;
