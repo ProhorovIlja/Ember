@@ -72,3 +72,16 @@ The native client now exposes optional **GGML Silero VAD** in Settings, wired to
 The English female speech shortlist now includes **Chatterbox Nano (110M, CPU-focused)** and **Turbo (350M)** as lighter competitors to Kokoro, plus **MOSS-TTS** as a quality-oriented research candidate. Published company-model comparisons are hypotheses, not blind-listening results on this GPU. Use the same text prompts and report cold start, warm latency, VRAM co-residency, clip duration, audio clipping, accent stability and consistency across 3+ minute dialogues. Sources: https://github.com/resemble-ai/chatterbox and https://github.com/OpenMOSS/MOSS-TTS .
 
 A "Frankenstein" integration means **selecting and orchestrating verified specialized engines**, with separate ASR/LLM/TTS selection and stable local APIs. Incompatible checkpoints must not be averaged, concatenated, or represented as a proven merged model without architecture-aware training and quantitative evidence.
+
+## 21 November 2026 — measurable first-token and playback-start latency
+
+Ember now records the first nonempty LLM streaming token and the time between releasing the voice microphone and `QMediaPlayer::PlayingState` for the first spoken chunk. It also retains ASR duration, full LLM response duration and TTS chunk generation time. These numbers use local monotonic `QElapsedTimer` clocks and are not sent to a network telemetry service. PlaybackState change is **not a measured speaker/headphone acoustic onset**; it excludes unknown output buffering and DAC latency.
+
+RU/EN long dictation now includes 500 ms overlap between consecutive 25-second audio segments and a conservative duplicate-phrase merger, with tests for Cyrillic, case differences and genuinely repeated single words. Benchmark both WER/CER at chunk boundaries and full CPU/VRAM latency; overlapping segments increase the amount of audio that must be decoded. VAD remains optional, and low-volume speech may still be missed.
+
+Additional native voice-serving candidates to review (not automatically integrated):
+- [speech.cpp](https://github.com/nyosegawa/speech.cpp): native C++ GGML Qwen3-ASR/TTS and Silero VAD with OpenAI-style local audio endpoints. Check exact Windows/CUDA build, server content type and PCM16 WAV before using the current Ember adapter.
+- [qwen3-tts-cpp-streaming](https://github.com/maxhorizons/qwen3-tts-cpp-streaming): Qwen3 native C++/GGML streaming. Reported RTX 5090 performance cannot be transferred to a 12 GB RTX 4070 without benchmark evidence.
+- [fr820/tts-server](https://github.com/fr820/tts-server): model-agnostic speech server with streaming chunks and backend performance scripts; verify real-model rather than mock latency.
+
+A future latency-oriented architecture should avoid starting an offline TTS process per sentence, preserve cancel/barging controls, and transmit the first valid PCM chunk as soon as it is ready. None of these designs are proven in the present Qt playback implementation.
