@@ -21,3 +21,11 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [ ] Long-form story coherence and recall over multiple sessions, dialogue naturalness, factual troubleshooting quality, code reliability, token-stream interruption and context overflow regression tests.
 - [ ] AMOLED blue UI/icon at 100/125/150/200% DPI, keyboard interaction and a real RTX 4070 visual/performance review.
 - [ ] No development previews are published; only an accepted stable Release can be downloadable under the release gating policy.
+
+### Latest local-first implementation acceptance
+
+- [x] Verified Windows desktop source has a bounded RU/EN transcription-segment merger with 500 ms overlap, plus tests. Physical microphone WER/long-capture tests remain unchecked.
+- [x] Manual per-session continuity-memory notes in SQLite with isolated sessions, disk persistence and Markdown export. Long-story narrative quality and semantic retrieval remain unchecked.
+- [x] Local LLM TTFT and Qt playback-start timing hooks added. True acoustic first-audio and full-duplex / interruption latency remain unchecked.
+- [ ] Confirm no temporary raw PCM/WAV leak following interrupted Whisper process, forced process kill or low disk space on Windows 10/11.
+- [ ] Clean Windows / RTX 4070 visual QA of the conversation Memory modal, 100–200% DPI, keyboard-only accessibility and 24h+ session stability.
