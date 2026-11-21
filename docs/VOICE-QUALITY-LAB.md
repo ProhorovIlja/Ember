@@ -105,3 +105,17 @@ The engine enforces 8–96 kHz rates, 16-bit aligned writes, a 12 MiB maximum pe
 This is **not yet validated low-latency audio on Windows 10/RTX 4070**. The first PCM accepted by Qt is not the first audible sample at the physical headphones. Hardware checks remain necessary for sample-rate compatibility, Bluetooth delay, underruns, hotplug/reconnect, long synth-vs-play speed differences, output volume and voice naturalness. The LLM and STT are still turn-based, not a continuous full-duplex speech-to-speech model.
 
 Source references: [speech.cpp server PCM contract](https://github.com/nyosegawa/speech.cpp/blob/main/docs/server.md), [Qt QAudioSink push mode](https://doc.qt.io/qt-6.8/qaudiosink.html), [Qt audio overview](https://doc.qt.io/qt-6.8/audiooverview.html).
+
+## SSE-sentence first-voice 2026-11-21
+
+The spoken assistant is no longer required to wait for the **complete LLM response** when a managed, health-verified native `speech.cpp` TTS service is running. `llama-server` emits OpenAI-compatible SSE `delta.content`; Ember commits only completed stable sentences and starts their English speech in the local PCM16 push-mode QAudioSink while the text model continues its answer. This overlaps the LLM and TTS pipelines, with local model weights still held in separate native processes rather than unsafe attempts at mixing incompatible weights.
+
+`EmberCore::takeCommittedSpeech` maintains a monotonic source cursor to avoid repeating partial SSE tokens, buffers incomplete clauses, defers unfinished fenced-code blocks, skips completed code blocks with one explanatory sentence, strips literal `<think>…</think>` reasoning spans before speech and avoids splitting at common English title abbreviations. At final `[DONE]`, it flushes the unsaid tail exactly once. If the LLM fails mid-stream or the user cancels, pending speech is stopped; partial text continues to be archived as before. For English-only voice, predominantly Cyrillic fragments are not spoken, but the original text remains intact.
+
+The LLM and speech synthesis each have independent activity state so a completed voice segment cannot mark Ember idle while another LLM sentence is still arriving. This feature is **on only when the managed native speech.cpp process is ready**. Kokoro CLI and other generic WAV API adapters retain full-response synthesis for compatibility. Audio from the PCM path is ephemeral RAM; no synthesized or captured voice is persisted in SQLite.
+
+The PCM drain watchdog was corrected to allow the total expected audio duration **plus** an eight-second margin: an arbitrary fixed eight-second cutoff would have truncated normal long sentences.
+
+**Pending real acceptance:** instrument microphone-release → first **acoustic** sound and compare with the old full-answer TTS route on the user's RTX 4070 12 GB; benchmark combined GGUF/TTS VRAM and natural prosody, hotplug and overnight stability. SSE-first-sentence audio is not full-duplex and does not support mic barge-in or the model revising an already-spoken sentence. Never claim these hardware results based solely on QtTest/Windows CI.
+
+References: https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md and https://github.com/nyosegawa/speech.cpp/blob/main/docs/server.md.
