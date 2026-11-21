@@ -55,6 +55,7 @@ The private `data\\ember-chats.sqlite` database stores only text and session met
 ### Known limitations
 
 - The UI reports LLM time-to-first-token and microphone release to the Qt player's PlayingState. This is an approximate playback-start measurement, not a physical first-sound timestamp measured at the speakers or headphones.
+- Push-to-interrupt: when Ember is speaking, click **Interrupt & speak** or hold **Interrupt & dictate**. The previous local TTS/LLM stream is cancelled before opening the microphone. An active ASR transcription cannot be interrupted this way. This is half-duplex manual barge-in, not VAD, echo suppression or simultaneous listening and talking.
 - Text now streams over loopback SSE; audio is still not live full-duplex and each ASR/TTS chunk starts its own process except for the optional persistent TTS server.
 - Optional Silero VAD preprocessing is wired for whisper-cli when VAD weights are configured. It is not a streaming VAD, echo cancellation or latency guarantee. The detector can miss unusually quiet speech; compare with VAD disabled if it does.
 - Common 44.1/48 kHz mono/stereo microphones are resampled to 16 kHz with anti-alias filtering. Native input/output selection, persisted device IDs, capture memory watchdog and basic device-disconnection handling are implemented, but actual USB/Bluetooth fault testing, VAD, echo cancellation, barge-in and full-duplex remain pending.

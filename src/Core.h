@@ -26,6 +26,9 @@ bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate, qint64 processedU
 bool validPcmSampleRate(int rate);
 bool safeScratchSessionName(const QString &name);
 bool shouldPersistConversation(bool privateMode, const QString &sessionId);
+// Half-duplex user-controlled voice interruption; never interrupt active ASR.
+bool captureAllowedWithInterruption(bool busy, bool listening,
+                                    bool speechActive, bool recognitionActive);
 bool validSpeechWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
 QString speechFriendlyText(const QString &markdown);

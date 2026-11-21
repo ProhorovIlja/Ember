@@ -576,7 +576,7 @@ ApplicationWindow {
                                 Layout.maximumWidth: 540
                                 horizontalAlignment: Text.AlignHCenter
                                 wrapMode: Text.WordWrap
-                                text: "Push to talk. Your microphone is idle until you start, and recording stops after 30 seconds."
+                                text: "Push to talk. Tap Record during Ember speech to interrupt. Recording stops after 30 seconds; not full-duplex."
                                 color: "#94AFC8"
                                 font.pixelSize: 13
                             }
@@ -584,9 +584,11 @@ ApplicationWindow {
                                 Layout.alignment: Qt.AlignHCenter
                                 spacing: 13
                                 PillButton {
-                                    text: ember.listening ? "Stop recording" : "Record voice"
-                                    implicitWidth: 169
-                                    enabled: ember.listening || (ember.brainReady && !ember.busy)
+                                    text: ember.listening ? "Stop recording" :
+                                          ember.speaking ? "Interrupt & speak" : "Record voice"
+                                    implicitWidth: ember.speaking ? 180 : 169
+                                    enabled: ember.listening ||
+                                             (ember.brainReady && (!ember.busy || ember.speaking))
                                     onClicked: ember.listening ? ember.stopRecording() : ember.startRecording()
                                 }
                                 PillButton {
@@ -841,10 +843,12 @@ ApplicationWindow {
                                         Text { text: "Ctrl + Enter to send"; color: "#8097A7"; font.pixelSize: 11 }
                                         Item { Layout.fillWidth: true }
                                         PillButton {
-                                            text: ember.dictationActive ? "● Dictating…" : "Hold to dictate"
-                                            implicitWidth: 145
+                                            text: ember.dictationActive ? "● Dictating…" :
+                                                  ember.speaking ? "Interrupt & dictate" : "Hold to dictate"
+                                            implicitWidth: ember.speaking ? 174 : 145
                                             implicitHeight: 38
-                                            enabled: !ember.busy && (!ember.listening || ember.dictationActive)
+                                            enabled: (!ember.busy || ember.speaking) &&
+                                                     (!ember.listening || ember.dictationActive)
                                             onPressed: ember.startDictation()
                                             onReleased: ember.stopDictation()
                                             onCanceled: ember.stopDictation()

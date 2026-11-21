@@ -1030,8 +1030,15 @@ void EmberBackend::stopDictation() {
     if (m_listening && m_captureDictation) stopRecording();
 }
 void EmberBackend::startCapture(bool dictation) {
-    if ((!dictation && !m_brainReady) || m_busy || m_listening) {
-        setStatus("Finish the current task before recording voice.");
+    const bool interruptibleSpeech = m_speaking || m_speechSequence ||
+        bool(m_pcmSink) || bool(m_speechReply) ||
+        m_tts.state() != QProcess::NotRunning;
+    const bool recognitionRunning = m_cliAsrActive || bool(m_nativeAsrReply) ||
+        m_transcribingDictation || m_whisper.state() != QProcess::NotRunning;
+    if ((!dictation && !m_brainReady) ||
+        !EmberCore::captureAllowedWithInterruption(
+            m_busy, m_listening, interruptibleSpeech, recognitionRunning)) {
+        setStatus("Finish transcription or recording before starting the microphone.");
         return;
     }
     if (m_recognitionEngine == 0 &&

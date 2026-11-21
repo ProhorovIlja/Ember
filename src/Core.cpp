@@ -11,6 +11,10 @@
 #include <cstring>
 #include <numbers>
 namespace EmberCore {
+bool captureAllowedWithInterruption(bool busy, bool listening,
+                                    bool speechActive, bool recognitionActive) {
+    return !listening && !recognitionActive && (!busy || speechActive);
+}
 QByteArray pcmToWav(const QByteArray &pcm, int sampleRate) {
     if (pcm.isEmpty() || (pcm.size() % 2) || pcm.size() > 32 * 1024 * 1024 ||
         sampleRate < 8000 || sampleRate > 96000) return {};

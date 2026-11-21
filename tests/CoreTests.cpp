@@ -9,6 +9,16 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void interruptingVoiceNeverInterruptsTranscription() {
+        using EmberCore::captureAllowedWithInterruption;
+        QVERIFY(captureAllowedWithInterruption(false, false, false, false));
+        QVERIFY(captureAllowedWithInterruption(false, false, true, false));
+        QVERIFY(captureAllowedWithInterruption(true, false, true, false));
+        QVERIFY(!captureAllowedWithInterruption(true, false, false, false));
+        QVERIFY(!captureAllowedWithInterruption(true, true, true, false));
+        QVERIFY(!captureAllowedWithInterruption(true, false, true, true));
+        QVERIFY(!captureAllowedWithInterruption(false, false, false, true));
+    }
     void privateTextModeNeverReceivesSqliteWritePermission() {
         QVERIFY(!EmberCore::shouldPersistConversation(true, "previous-chat"));
         QVERIFY(!EmberCore::shouldPersistConversation(true, ""));
