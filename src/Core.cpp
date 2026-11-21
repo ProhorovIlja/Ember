@@ -251,6 +251,39 @@ QStringList speechChunks(const QString &input, int maxCharacters) {
     }
     return chunks;
 }
+QString joinTranscriptionSegments(const QStringList &segments) {
+    QStringList combined;
+    auto normalized = [](QString word) {
+        while (!word.isEmpty() && !word.front().isLetterOrNumber())
+            word.remove(0, 1);
+        while (!word.isEmpty() && !word.back().isLetterOrNumber())
+            word.chop(1);
+        return word.toCaseFolded();
+    };
+    for (const QString &source : segments) {
+        const QStringList incoming = source.simplified().split(' ', Qt::SkipEmptyParts);
+        if (incoming.isEmpty()) continue;
+        int duplicate = 0;
+        const int maximum = std::min({12, int(combined.size()), int(incoming.size())});
+        // Only deduplicate at least two full lexical words. A single "the"
+        // or "и" may genuinely repeat at a chunk boundary.
+        for (int count = maximum; count >= 2; --count) {
+            bool same = true;
+            for (int i = 0; i < count; ++i) {
+                const QString left = normalized(combined[combined.size() - count + i]);
+                const QString right = normalized(incoming[i]);
+                if (left.isEmpty() || right.isEmpty() || left != right) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) { duplicate = count; break; }
+        }
+        for (int i = duplicate; i < incoming.size(); ++i)
+            combined.append(incoming[i]);
+    }
+    return combined.join(' ');
+}
 StreamResult consumeChatStream(QByteArray &buffer, const QByteArray &incoming) {
     StreamResult result;
     if (incoming.size() > 128 * 1024 || buffer.size() + incoming.size() > 256 * 1024) {
