@@ -44,3 +44,11 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Voice cancellation and Windows output-device switch/hot-unplug pathways release PCM sink and reject stale HTTP replies.
 - [ ] Demonstrate actual low latency on RTX 4070 with reproducible first-audible-sample timestamps; tests must include long sentences, speech faster/slower than playback, underrun recovery and audio-device hotplug.
 - [ ] Verify the exact Qt 6.8.3 PCM pipeline on clean Windows 10 physical hardware, including support for 24 kHz mono PCM, and confirm no audible artifacts at chunk boundaries.
+
+### SSE-first-sentence voice overlap 2026-11-21
+
+- [x] Source code can commit completed SSE text sentences, synthesize those sentences while the local llama.cpp LLM is still generating, and stream native speech.cpp PCM16 to Qt output with a deterministic bounded cursor. Original text archive is unchanged.
+- [x] Source tests cover SSE sentence boundary stability, no duplicate/repeated speech, long unpunctuated drafts, title abbreviations, fenced code, `<think>` exclusion and short Cyrillic-dominant speech suppression.
+- [x] Long voice segment watchdog now budgets expected PCM playback duration and extra recovery margin, not a false eight-second total audio cap.
+- [ ] Audit concurrency race cases with a real native speech.cpp and llama-server pair, including user cancellation mid-sentence, disk failure, synthetic HTTP disconnect and no double playback.
+- [ ] Record physical first sound and per-stage latency on Ryzen 5 5600 / RTX 4070, compare listening-quality of Vivian, Serena, Kokoro and other licensed female English options; confirm no glitches from GPU contention.
