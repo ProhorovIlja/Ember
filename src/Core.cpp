@@ -211,12 +211,38 @@ bool safeScratchSessionName(const QString &name) {
 bool validPcmSampleRate(int rate) {
     return rate >= 8000 && rate <= 96000;
 }
+QString nativeDeliveryInstructions(int style) {
+    switch (style) {
+    case 1: return "Speak warmly and naturally, with subtle expressive inflection and relaxed conversational rhythm.";
+    case 2: return "Speak gently and softly, with clear diction and a calm, intimate tone.";
+    case 3: return "Speak with bright curiosity, lively natural emphasis and playful energy, without overacting.";
+    case 4: return "Narrate vividly with controlled dramatic expression, clear dialogue and natural changes of emphasis.";
+    default: return {};
+    }
+}
+bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate,
+                        qint64 processedUsecs) {
+    if (submittedBytes <= 0 || (submittedBytes % 2) != 0 ||
+        !validPcmSampleRate(sampleRate) || processedUsecs < 0)
+        return false;
+    // A 3 ms scheduling tolerance avoids truncating up to 20 ms of final
+    // syllables, while Windows' IdleState still has to be observed separately.
+    const qint64 expected = (submittedBytes * 1000000LL) /
+                            (qint64(sampleRate) * 2);
+    return processedUsecs + 3000 >= expected;
+}
 QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice,
-                                     const QString &text) {
+                                     const QString &text, int deliveryStyle) {
     auto request = speechRequest(model, voice, text);
     request.insert("response_format", "pcm");
     request.insert("stream_format", "audio");
     request.insert("language", "en"); // managed speech.cpp can force English
+    // The 0.6B CustomVoice model does NOT support natural-language delivery
+    // instructions, and speech.cpp rejects unknown fields rather than ignoring.
+    if (model == "qwen3-tts-1.7b") {
+        const QString instruction = nativeDeliveryInstructions(deliveryStyle);
+        if (!instruction.isEmpty()) request.insert("instructions", instruction);
+    }
     return request;
 }
 // Validate a bounded, ordinary PCM16 RIFF/WAV before writing to private

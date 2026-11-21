@@ -445,6 +445,37 @@ private slots:
         QVERIFY(!EmberCore::validPcmSampleRate(192000));
         QVERIFY(!payload.contains("url"));
     }
+    void expressiveNativeVoiceStylesAreModelSafe() {
+        const QString sentence = "Hello there. How are you today?";
+        const auto lightweight = EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-0.6b", "vivian", sentence, 4);
+        QVERIFY(!lightweight.contains("instructions")); // 0.6B refuses them
+        QCOMPARE(lightweight.value("language").toString(), QString("en"));
+        const auto expressive = EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-1.7b", "serena", sentence, 1);
+        QVERIFY(expressive.value("instructions").toString().contains("warmly"));
+        QCOMPARE(expressive.value("response_format").toString(), QString("pcm"));
+        QCOMPARE(expressive.value("voice").toString(), QString("serena"));
+        QVERIFY(!EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-1.7b", "serena", sentence, 0).contains("instructions"));
+        QVERIFY(!EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-1.7b", "serena", sentence, 99).contains("instructions"));
+        QVERIFY(!EmberCore::streamingPcmSpeechRequest(
+            "third-party-tts", "other", sentence, 4).contains("instructions"));
+        QVERIFY(EmberCore::nativeDeliveryInstructions(-1).isEmpty());
+        QVERIFY(EmberCore::nativeDeliveryInstructions(4).contains("Narrate vividly"));
+    }
+    void pcmDrainKeepsEndOfUtteranceIntact() {
+        constexpr qint64 oneSecond24k = 48000;
+        QVERIFY(!EmberCore::pcmPlaybackDrained(oneSecond24k, 24000, 950000));
+        QVERIFY(!EmberCore::pcmPlaybackDrained(oneSecond24k, 24000, 995000));
+        QVERIFY(EmberCore::pcmPlaybackDrained(oneSecond24k, 24000, 998000));
+        QVERIFY(EmberCore::pcmPlaybackDrained(oneSecond24k, 24000, 1000000));
+        QVERIFY(!EmberCore::pcmPlaybackDrained(0, 24000, 1000000));
+        QVERIFY(!EmberCore::pcmPlaybackDrained(47999, 24000, 1000000));
+        QVERIFY(!EmberCore::pcmPlaybackDrained(48000, 192000, 1000000));
+        QVERIFY(!EmberCore::pcmPlaybackDrained(48000, 24000, -1));
+    }
     void rejectsInvalidSpeechAudio() {
         const auto good = EmberCore::pcmToWav(QByteArray::fromHex("0100020003000400"), 24000);
         QVERIFY(EmberCore::validSpeechWav(good));

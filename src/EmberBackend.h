@@ -47,6 +47,8 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(int recognitionEngine READ recognitionEngine WRITE setRecognitionEngine NOTIFY configurationChanged)
     Q_PROPERTY(int voiceId READ voiceId WRITE setVoiceId NOTIFY configurationChanged)
     Q_PROPERTY(int voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY configurationChanged)
+    Q_PROPERTY(int deliveryStyle READ deliveryStyle WRITE setDeliveryStyle NOTIFY configurationChanged)
+    Q_PROPERTY(int outputVolume READ outputVolume WRITE setOutputVolume NOTIFY configurationChanged)
     Q_PROPERTY(bool earlySpeechEnabled READ earlySpeechEnabled WRITE setEarlySpeechEnabled NOTIFY configurationChanged)
     Q_PROPERTY(QString localVoice READ localVoice WRITE setLocalVoice NOTIFY configurationChanged)
     Q_PROPERTY(QString voiceSample READ voiceSample WRITE setVoiceSample NOTIFY configurationChanged)
@@ -82,6 +84,8 @@ public:
     int recognitionEngine() const { return m_recognitionEngine; }
     int voiceId() const { return m_voiceId; }
     int voiceEngine() const { return m_voiceEngine; }
+    int deliveryStyle() const { return m_deliveryStyle; }
+    int outputVolume() const { return m_outputVolume; }
     bool earlySpeechEnabled() const { return m_earlySpeechEnabled; }
     QString localVoice() const { return m_localVoice; }
     QString voiceSample() const { return m_voiceSample; }
@@ -99,6 +103,8 @@ public:
     Q_INVOKABLE void setRecognitionEngine(int index);
     Q_INVOKABLE void setVoiceId(int index);
     Q_INVOKABLE void setVoiceEngine(int index);
+    Q_INVOKABLE void setDeliveryStyle(int style);
+    Q_INVOKABLE void setOutputVolume(int percent);
     Q_INVOKABLE void setEarlySpeechEnabled(bool value);
     Q_INVOKABLE void setLocalVoice(const QString &value);
     Q_INVOKABLE void setVoiceSample(const QString &value);
@@ -196,6 +202,7 @@ private:
     QList<EmberCore::Turn> m_history;
     int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0, m_chatMode = 0;
     int m_recognitionLanguage = 0, m_recognitionEngine = 0;
+    int m_deliveryStyle = 0, m_outputVolume = 85;
     bool m_brainReady = false, m_busy = false, m_listening = false;
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
     bool m_cliAsrActive = false;

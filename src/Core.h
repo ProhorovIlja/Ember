@@ -18,7 +18,10 @@ bool allowedLocalAsrEndpoint(const QString &url);
 QString nativeAsrModel(int recognitionEngine);
 QString recognitionLanguageTag(int languageChoice);
 QJsonObject speechRequest(const QString &model, const QString &voice, const QString &text);
-QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice, const QString &text);
+QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice,
+                                      const QString &text, int deliveryStyle = 0);
+QString nativeDeliveryInstructions(int style);
+bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate, qint64 processedUsecs);
 bool validPcmSampleRate(int rate);
 bool safeScratchSessionName(const QString &name);
 bool validSpeechWav(const QByteArray &wav);

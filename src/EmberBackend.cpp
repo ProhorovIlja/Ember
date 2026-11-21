@@ -106,6 +106,8 @@ EmberBackend::EmberBackend(QObject *parent)
     m_network.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     m_voiceId = qBound(0, m_voiceId, 10);
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
+    m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 4);
+    m_outputVolume = qBound(0, m_settings.value("audio/outputVolume", 85).toInt(), 100);
     m_earlySpeechEnabled = m_settings.value("voice/earlySpeech", true).toBool();
     m_localModel = m_settings.value("voice/localModel", "qwen3-tts-0.6b").toString();
     m_localVoice = m_settings.value("voice/localVoice", "vivian").toString();
@@ -144,7 +146,7 @@ EmberBackend::EmberBackend(QObject *parent)
         }
     });
     m_mediaPlayer.setAudioOutput(&m_audioOutput);
-    m_audioOutput.setVolume(0.85);
+    m_audioOutput.setVolume(m_outputVolume / 100.0);
     // Do not activate a stale/disconnected output device.
     const auto output = QMediaDevices::audioOutputs();
     for (const auto &device : output) {
@@ -416,6 +418,31 @@ void EmberBackend::setEarlySpeechEnabled(bool value) {
     emit configurationChanged();
     setStatus(value ? "Early native speech enabled: synthesize after each complete sentence."
                     : "Early native speech disabled: use the full text answer before TTS.");
+}
+void EmberBackend::setDeliveryStyle(int style) {
+    if (style < 0 || style > 4 || style == m_deliveryStyle) return;
+    if (m_busy || m_listening || m_speaking) {
+        setStatus("Finish the current voice turn before changing delivery style.");
+        return;
+    }
+    m_deliveryStyle = style;
+    m_settings.setValue("voice/deliveryStyle", style);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(m_localModel == "qwen3-tts-1.7b"
+        ? "Native Qwen3 1.7B delivery style updated for the next sentence."
+        : "Delivery style saved. Expressive controls require native Qwen3-TTS 1.7B.");
+}
+void EmberBackend::setOutputVolume(int percent) {
+    const int safe = qBound(0, percent, 100);
+    if (safe == m_outputVolume) return;
+    m_outputVolume = safe;
+    const qreal level = safe / 100.0;
+    m_audioOutput.setVolume(level);
+    if (m_pcmSink) m_pcmSink->setVolume(level);
+    m_settings.setValue("audio/outputVolume", safe);
+    m_settings.sync();
+    emit configurationChanged();
 }
 void EmberBackend::setLocalVoice(const QString &value) {
     const QRegularExpression safe("^[A-Za-z0-9_-]{1,80}$");
@@ -1443,7 +1470,7 @@ void EmberBackend::synthesizeStreamingPcm(const QString &text) {
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Accept", "audio/pcm");
     const QJsonObject payload = EmberCore::streamingPcmSpeechRequest(
-        m_localModel, m_localVoice, text);
+        m_localModel, m_localVoice, text, m_deliveryStyle);
     auto *reply = m_network.post(
         request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     // Backpressure: Qt must not buffer an entire multi-minute synthesized
@@ -1512,7 +1539,7 @@ void EmberBackend::readPcmResponse(QNetworkReply *reply) {
         }
         m_pcmSampleRate = rate;
         m_pcmSink = std::make_unique<QAudioSink>(selected, format);
-        m_pcmSink->setVolume(m_audioOutput.volume());
+        m_pcmSink->setVolume(m_outputVolume / 100.0);
         m_pcmSink->setBufferSize(rate / 2); // ~250 ms mono PCM16 audio buffer
         m_pcmDevice = m_pcmSink->start();
         if (!m_pcmDevice || m_pcmSink->error() != QAudio::NoError) {
@@ -1585,7 +1612,8 @@ void EmberBackend::pumpPcmPlayback() {
         if (!m_pcmDrainElapsed.isValid()) m_pcmDrainElapsed.start();
         const qint64 expectedUs = m_pcmBytesSubmitted * 1000000LL /
                                   (qint64(m_pcmSampleRate) * 2);
-        const bool consumed = m_pcmSink->processedUSecs() + 20000 >= expectedUs;
+        const bool consumed = EmberCore::pcmPlaybackDrained(
+            m_pcmBytesSubmitted, m_pcmSampleRate, m_pcmSink->processedUSecs());
         if (consumed && m_pcmSink->state() == QAudio::IdleState) {
             resetPcmPlayback();
             setSpeaking(false);

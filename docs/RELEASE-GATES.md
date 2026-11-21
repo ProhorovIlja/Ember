@@ -90,3 +90,11 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [ ] Run real Qwen3-ASR 0.6B, 1.7B and Whisper comparative RU/EN voice tests under the same conditions on Windows 10 RTX 4070; inspect hallucinations on silence and GPU contention.
 
 - [x] New microphone turns stop any old still-playing PCM stream before capture, instead of permitting previous assistant audio to be recorded into the next turn.
+
+### Native delivery model correctness and PCM tail preservation (21 November 2026)
+
+- [x] Managed Qwen3-TTS 1.7B can opt into bounded predefined delivery instructions; 0.6B or generic server payloads never receive unsupported instructions.
+- [x] English native model presets distinguish smaller 0.6B from more expressive 1.7B; existing default remains 0.6B for device headroom.
+- [x] Playback volume persists locally, controls existing WAV and currently active PCM sink, and never requests Internet connectivity.
+- [x] PCM duration-to-drain guard requires Qt processed audio within 3 ms of intended segment length, plus audio IdleState, not the earlier 20 ms tolerance.
+- [ ] Validate subjective female English voice naturalness, pronunciation, sentence-to-sentence prosody and physical device tails on actual Windows 10 RTX 4070 headphones/speakers. Do not publish previews.

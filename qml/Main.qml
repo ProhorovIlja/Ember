@@ -1027,7 +1027,7 @@ ApplicationWindow {
                                 }
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    implicitHeight: 168
+                                    implicitHeight: 225
                                     radius: 14
                                     color: window.cardColor
                                     border.color: window.borderColor
@@ -1160,8 +1160,62 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 12
+                                            Text {
+                                                text: "Playback volume"
+                                                color: "#C3D5DF"
+                                                font.pixelSize: 13
+                                                Layout.preferredWidth: 125
+                                            }
+                                            Slider {
+                                                id: speechVolumeSlider
+                                                Layout.fillWidth: true
+                                                implicitHeight: 31
+                                                from: 0
+                                                to: 100
+                                                stepSize: 1
+                                                value: ember.outputVolume
+                                                onMoved: ember.outputVolume = Math.round(value)
+                                                background: Rectangle {
+                                                    x: speechVolumeSlider.leftPadding
+                                                    y: speechVolumeSlider.topPadding +
+                                                       speechVolumeSlider.availableHeight / 2 - height / 2
+                                                    width: speechVolumeSlider.availableWidth
+                                                    height: 5
+                                                    radius: 3
+                                                    color: "#142B47"
+                                                    Rectangle {
+                                                        width: parent.width * speechVolumeSlider.visualPosition
+                                                        height: parent.height
+                                                        radius: parent.radius
+                                                        color: window.mint
+                                                    }
+                                                }
+                                                handle: Rectangle {
+                                                    x: speechVolumeSlider.leftPadding +
+                                                       speechVolumeSlider.visualPosition *
+                                                       (speechVolumeSlider.availableWidth - width)
+                                                    y: speechVolumeSlider.topPadding +
+                                                       speechVolumeSlider.availableHeight / 2 - height / 2
+                                                    width: 17
+                                                    height: 17
+                                                    radius: 9
+                                                    color: "#D4EFFF"
+                                                    border.color: "#4A99DB"
+                                                }
+                                            }
+                                            Text {
+                                                text: ember.outputVolume + "%"
+                                                color: "#C3D5DF"
+                                                Layout.preferredWidth: 43
+                                                horizontalAlignment: Text.AlignRight
+                                                font.pixelSize: 12
+                                            }
+                                        }
                                         Text {
-                                            text: "Device choices are stored locally; disconnected devices fall back to Windows default."
+                                            text: "Output volume and device selections stay on this PC."
                                             color: "#889FAD"
                                             font.pixelSize: 11
                                             Layout.fillWidth: true
@@ -1340,7 +1394,7 @@ ApplicationWindow {
                                 Rectangle {
                                     visible: ember.voiceEngine === 1
                                     Layout.fillWidth: true
-                                    implicitHeight: 243
+                                    implicitHeight: ember.localModel === "qwen3-tts-1.7b" ? 388 : 338
                                     color: window.cardColor
                                     radius: 13
                                     border.color: window.borderColor
@@ -1377,6 +1431,36 @@ ApplicationWindow {
                                                     color: "#0A192D"
                                                     radius: 9
                                                     border.color: "#254A73"
+                                                }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 7
+                                            Text {
+                                                text: "Resident TTS"
+                                                Layout.fillWidth: true
+                                                color: "#9AB8CF"
+                                                font.pixelSize: 11
+                                            }
+                                            PillButton {
+                                                text: "Light · 0.6B"
+                                                implicitWidth: 131
+                                                implicitHeight: 31
+                                                enabled: !ember.busy && !ember.speaking && !ember.speechServerRunning
+                                                onClicked: {
+                                                    ember.localModel = "qwen3-tts-0.6b"
+                                                    externalModel.text = "qwen3-tts-0.6b"
+                                                }
+                                            }
+                                            PillButton {
+                                                text: "Expressive · 1.7B"
+                                                implicitWidth: 153
+                                                implicitHeight: 31
+                                                enabled: !ember.busy && !ember.speaking && !ember.speechServerRunning
+                                                onClicked: {
+                                                    ember.localModel = "qwen3-tts-1.7b"
+                                                    externalModel.text = "qwen3-tts-1.7b"
                                                 }
                                             }
                                         }
@@ -1436,8 +1520,63 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        RowLayout {
+                                            visible: ember.localModel === "qwen3-tts-1.7b"
+                                            Layout.fillWidth: true
+                                            spacing: 14
+                                            Text {
+                                                text: "Delivery"
+                                                Layout.preferredWidth: 94
+                                                color: window.silver
+                                                font.pixelSize: 13
+                                            }
+                                            ComboBox {
+                                                id: deliveryPicker
+                                                Layout.fillWidth: true
+                                                implicitHeight: 36
+                                                model: [
+                                                    "Natural · model default",
+                                                    "Warm conversation",
+                                                    "Soft and gentle",
+                                                    "Bright and curious",
+                                                    "Expressive narrator"
+                                                ]
+                                                currentIndex: ember.deliveryStyle
+                                                enabled: !ember.busy && !ember.speaking
+                                                onActivated: ember.deliveryStyle = currentIndex
+                                                font.pixelSize: 12
+                                                contentItem: Text {
+                                                    text: deliveryPicker.displayText
+                                                    leftPadding: 11
+                                                    color: "#E6F4FF"
+                                                    font.pixelSize: 12
+                                                    verticalAlignment: Text.AlignVCenter
+                                                }
+                                                background: Rectangle {
+                                                    radius: 9
+                                                    color: "#0A192D"
+                                                    border.color: "#254A73"
+                                                }
+                                                delegate: ItemDelegate {
+                                                    required property int index
+                                                    required property string modelData
+                                                    width: deliveryPicker.width
+                                                    height: 36
+                                                    text: modelData
+                                                    contentItem: Text {
+                                                        text: parent.text
+                                                        color: "#E6F4FF"
+                                                        font.pixelSize: 12
+                                                        verticalAlignment: Text.AlignVCenter
+                                                    }
+                                                    background: Rectangle {
+                                                        color: parent.highlighted ? "#15446A" : "#0C1C31"
+                                                    }
+                                                }
+                                            }
+                                        }
                                         Text {
-                                            text: "Use any compatible local TTS server on this port, or start native speech.cpp below. PCM16 WAV only; no redirects or remote hosts."
+                                            text: "Qwen3-TTS 1.7B supports delivery instructions; 0.6B does not. Native speech.cpp streams PCM16, other compatible local servers use validated WAV."
                                             color: "#86A4BD"
                                             font.pixelSize: 11
                                             Layout.fillWidth: true
