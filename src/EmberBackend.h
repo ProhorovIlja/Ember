@@ -209,7 +209,7 @@ private:
     std::unique_ptr<QAudioSink> m_pcmSink;
     QIODevice *m_pcmDevice = nullptr;
     QByteArray m_pcmPending;
-    qint64 m_pcmTotalReceived = 0;
+    qint64 m_pcmTotalReceived = 0, m_pcmBytesSubmitted = 0;
     int m_pcmSampleRate = 0;
     bool m_pcmHttpDone = false, m_pcmStarted = false;
     QNetworkAccessManager m_network;
@@ -223,7 +223,7 @@ private:
     quint64 m_captureSession = 0;
     QElapsedTimer m_brainElapsed, m_speechServerElapsed;
     quint64 m_brainSession = 0, m_speechServerSession = 0;
-    QElapsedTimer m_asrElapsed, m_llmElapsed, m_ttsElapsed, m_voiceTurnElapsed;
+    QElapsedTimer m_asrElapsed, m_llmElapsed, m_ttsElapsed, m_voiceTurnElapsed, m_pcmDrainElapsed;
     qint64 m_asrLastMs = -1, m_llmLastMs = -1, m_ttsLastMs = -1;
     qint64 m_llmFirstTokenMs = -1, m_voiceFirstPlaybackMs = -1;
     bool m_voiceTurnActive = false;
