@@ -46,6 +46,6 @@ The private `data\\ember-chats.sqlite` database stores only text and session met
 
 - Text now streams over loopback SSE; audio is still not live full-duplex and each ASR/TTS chunk starts its own process except for the optional persistent TTS server.
 - Common 44.1/48 kHz mono/stereo microphones are resampled to 16 kHz with anti-alias filtering. Native input/output selection, persisted device IDs, capture memory watchdog and basic device-disconnection handling are implemented, but actual USB/Bluetooth fault testing, VAD, echo cancellation, barge-in and full-duplex remain pending.
-- The first Kokoro model is English. Russian synthesis and multilingual quality require a verified compatible engine/model path.
+- Spoken output is intentionally English-only. English/Russian speech **input** and typed text are supported via multilingual Whisper; Russian TTS is not a current release requirement.
 - No model weight, audio or Windows packaging QA has been run on the user's own RTX 4070. A successful CI compile is not that test.
 - No file/tool control, autonomous Internet/GitHub/Drive, multimodal vision or content generation is included in the first milestone.

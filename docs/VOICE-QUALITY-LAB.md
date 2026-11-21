@@ -32,7 +32,7 @@ Russian multilingual: "Сейчас я проверю русский текст,
 
 Settings now offer an editable comparison script, saved locally in `data/ember.ini` and played through the selected voice engine. Use the same script for each candidate, and record speaker ID/model version in the benchmark notes. Tests can reproduce the exact text rather than relying on a fixed hard-coded English greeting.
 
-Do not use English Kokoro v0.19 to grade Russian pronunciation. Compare Russian only on engines/models whose official cards support it.
+Russian speech output is **not required** for Ember's current product specification. The Russian prompts above are optional research controls for multilingual model analysis; the mandatory spoken voice quality gate is English female naturalness. Do not use English Kokoro v0.19 to grade Russian pronunciation. Compare Russian only on engines/models whose official cards support it.
 
 ## Methodology and acceptance
 
