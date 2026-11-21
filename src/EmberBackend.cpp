@@ -46,6 +46,8 @@ EmberBackend::EmberBackend(QObject *parent)
     QDir().mkpath(QDir(appFolder()).filePath("cache"));
     m_work = std::make_unique<QTemporaryDir>(
         QDir(appFolder()).filePath("cache/session-XXXXXX"));
+    m_store = std::make_unique<SessionStore>(
+        QDir(appFolder()).filePath("data/ember-chats.sqlite"));
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_voiceId = m_settings.value("voiceId", 0).toInt();
     // Ignore Windows/system proxies for both local inference services.
@@ -83,8 +85,10 @@ EmberBackend::EmberBackend(QObject *parent)
             releaseCapture();
             m_pcm.clear();
             setStatus("Microphone stopped unexpectedly. Check device and Windows permissions.");
-        } else if (m_pcm.size() > 30 * 1024 * 1024) {
-            stopRecording();  // bounded memory even for 96-kHz multichannel inputs
+        } else if (m_captureFile.isOpen() && m_captureFile.size() >= 1024LL * 1024 * 1024) {
+            // Long dictation has a disk quota, but no 30-second time cap.
+            // Finalize rather than silently overwriting user audio.
+            stopRecording();
         }
     });
     m_mediaPlayer.setAudioOutput(&m_audioOutput);
@@ -142,34 +146,32 @@ EmberBackend::EmberBackend(QObject *parent)
 
     connect(&m_whisper, &QProcess::finished, this,
             [this](int code, QProcess::ExitStatus how) {
-                if (!m_busy) return; // Cancelled tasks never trigger a message.
+                if (!m_busy) return; // cancelled tasks never deliver stale text
                 if (how != QProcess::NormalExit || code != 0) {
+                    m_transcribingDictation = false;
                     setBusy(false);
-                    setStatus("Speech recognition failed. Check whisper.cpp and the chosen model.");
+                    setStatus("Speech recognition failed. Check whisper.cpp and the selected model.");
                     return;
                 }
                 QFile file(workFile("recognition.txt"));
-                if (!file.open(QIODevice::ReadOnly) || file.size() > 32768) {
+                if (!file.open(QIODevice::ReadOnly) || file.size() > 65536) {
+                    m_transcribingDictation = false;
                     setBusy(false);
                     setStatus("Speech recognition produced no readable transcript.");
                     return;
                 }
-                const QString transcript = QString::fromUtf8(file.readAll()).trimmed();
-                if (transcript.isEmpty()) {
-                    setBusy(false);
-                    setStatus("No speech was recognized. Try recording again.");
-                    return;
+                const QString part = QString::fromUtf8(file.readAll()).trimmed();
+                if (!part.isEmpty()) m_transcriptionSegments.append(part);
+                if (m_transcriptionOffset < m_transcriptionSize) {
+                    transcribeNextChunk();
+                } else {
+                    completeTranscription();
                 }
-                m_asrLastMs = m_asrElapsed.isValid() ? m_asrElapsed.elapsed() : -1;
-                emit voiceTimingsChanged();
-                m_transcript = transcript;
-                emit transcriptChanged();
-                setBusy(false);
-                submit(transcript, true);
             });
     connect(&m_whisper, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) {
                 if (m_busy) {
+                    m_transcribingDictation = false;
                     setBusy(false);
                     setStatus("whisper-cli did not start. Check its executable and DLL files.");
                 }
@@ -202,7 +204,16 @@ EmberBackend::EmberBackend(QObject *parent)
                     setStatus("sherpa-onnx TTS could not start. Check its executable and DLLs.");
                 }
             });
-    setStatus("Select local engines in Settings, then start the brain.");
+    if (m_store && m_store->ready()) {
+        const QVariantList saved = m_store->sessions(1);
+        const QString latest = saved.isEmpty() ? m_store->createSession()
+            : saved.first().toMap().value("id").toString();
+        if (!latest.isEmpty()) openSession(latest);
+    }
+    setStatus(m_store && m_store->ready()
+        ? "Private local chat archive ready. Configure local engines to begin."
+        : "Chat archive unavailable; this conversation remains in memory. "
+          "Check the SQLite plugin and writable data folder.");
 }
 
 EmberBackend::~EmberBackend() {
@@ -452,8 +463,13 @@ void EmberBackend::setBrainReady(bool value) {
 }
 void EmberBackend::appendMessage(const QString &role, const QString &text) {
     m_messages.append(QVariantMap{{"role", role}, {"body", text}});
-    // Only current-session, bounded transcript. Never silently save to disk.
-    while (m_messages.size() > 24) m_messages.removeFirst();
+    // UI is bounded while SQLite keeps all text in this selected conversation.
+    while (m_messages.size() > 300) m_messages.removeFirst();
+    if (m_store && m_store->ready() && !m_sessionId.isEmpty()) {
+        if (!m_store->append(m_sessionId, role, text))
+            setStatus("Chat archive write failed; this turn is held only in memory.");
+        refreshSessions();
+    }
     emit messagesChanged();
 }
 
@@ -540,7 +556,15 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     appendMessage("you", text);
     setBusy(true);
     setStatus(voice ? "Thinking about what you said…" : "Generating a local response…");
-    const QJsonObject payload = EmberCore::chatRequest(m_persona, m_history, text);
+    // Spoken responses always use English; typed replies follow the user's
+    // English/Russian choice naturally. Text is never filtered by TTS.
+    const QString effectivePersona = voice
+        ? m_persona + " In voice conversations, always answer in natural English, "
+          "even when the user's recognized input is Russian. "
+          "Keep the delivery conversational, clear and speakable."
+        : m_persona;
+    const QJsonObject payload = EmberCore::chatRequest(
+        effectivePersona, m_history, text);
     const QString url = "http://127.0.0.1:43821/v1/chat/completions";
     if (!EmberCore::allowedLocalEndpoint(url)) {
         setBusy(false);
@@ -844,8 +868,43 @@ void EmberBackend::cancelWork() {
     setBusy(false);
     setStatus("Cancelled. No microphone capture or pending reply remains.");
 }
+void EmberBackend::refreshSessions() {
+    m_sessions = m_store && m_store->ready() ? m_store->sessions() : QVariantList();
+    emit sessionsChanged();
+}
+void EmberBackend::rebuildConversationHistory() {
+    m_history.clear();
+    QString pending;
+    for (const auto &v : m_messages) {
+        const auto item = v.toMap();
+        if (item.value("role").toString() == "you") {
+            pending = item.value("body").toString();
+        } else if (item.value("role").toString() == "ember" && !pending.isEmpty()) {
+            m_history.append(EmberCore::Turn{pending, item.value("body").toString()});
+            pending.clear();
+        }
+    }
+    while (m_history.size() > 8) m_history.removeFirst();
+}
+void EmberBackend::openSession(const QString &id) {
+    if (!m_store || !m_store->ready() || !m_store->exists(id)) return;
+    cancelWork();
+    m_sessionId = id;
+    m_messages = m_store->messages(id);
+    rebuildConversationHistory();
+    m_pendingUser.clear();
+    m_lastReply.clear();
+    m_transcript.clear();
+    emit messagesChanged();
+    emit lastReplyChanged();
+    emit transcriptChanged();
+    refreshSessions();
+    setStatus("Local conversation loaded. No text was uploaded.");
+}
 void EmberBackend::clearConversation() {
     cancelWork();
+    m_sessionId = m_store && m_store->ready()
+        ? m_store->createSession() : QString();
     m_history.clear();
     m_messages.clear();
     m_pendingUser.clear();
@@ -854,5 +913,20 @@ void EmberBackend::clearConversation() {
     emit messagesChanged();
     emit lastReplyChanged();
     emit transcriptChanged();
-    setStatus("New private session. Conversation memory was cleared.");
+    refreshSessions();
+    setStatus("New conversation. Older chats remain saved locally.");
+}
+void EmberBackend::deleteCurrentSession() {
+    if (!m_store || !m_store->ready() || m_sessionId.isEmpty()) return;
+    cancelWork();
+    if (!m_store->remove(m_sessionId)) {
+        setStatus("Could not delete the selected local conversation.");
+        return;
+    }
+    const QVariantList remaining = m_store->sessions(1);
+    const QString next = remaining.isEmpty() ? m_store->createSession()
+        : remaining.first().toMap().value("id").toString();
+    if (!next.isEmpty()) openSession(next);
+    else clearConversation();
+    setStatus("Deleted one selected conversation from local SQLite history.");
 }
