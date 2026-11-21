@@ -427,3 +427,7 @@ Example hint for a story or development chat: `Mara, Yharnam, RTX 4070, C++, Qwe
 ## 22 November — streaming Markdown code-fence parity
 
 Native early-speech segmentation now recognizes both Markdown fenced-code delimiters (triple backticks and triple tildes), waits for a matching closing delimiter while SSE tokens are still arriving, and substitutes a short spoken notice instead of reading code aloud. The textual assistant answer remains unchanged. Regression tests cover partial tilde fences, mismatched delimiters within code, successful completion and final partial code. This is source-level voice-safety behavior, not an acoustic or model-quality benchmark.
+
+## 22 November — image references in English speech
+
+When an answer contains Markdown image syntax, Ember's spoken renderer now says `an image in the text chat` rather than reading the alt text as an image analysis or as the spoken `!` marker. Ordinary Markdown links still speak their link labels. Images remain visible in unchanged written replies; this is a deterministic presentation rule, not vision-model inference. New Qt regression covers external and local image-reference syntax.
