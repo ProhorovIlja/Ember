@@ -19,6 +19,12 @@ Qwen API candidates: https://github.com/second-state/qwen3_audio_api and https:/
 Chatterbox API: https://github.com/devnen/Chatterbox-TTS-Server
 Kokoro official v0.19: https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html
 
+## Local text-engine latency comparison (no recorded conversations)
+
+The new tools/text_benchmark.py performs a bounded localhost-only SSE run against an already-started llama-server listening on 127.0.0.1:43821. Run it in a trusted Python environment as `python tools/text_benchmark.py --samples 8 --output text-metrics.json`. The report contains only TTFT, total time, returned token usage when provided, character throughput, simple deterministic instruction-check outcome and selected scenario names. It does not persist generated answers or chats. The prompt set includes English story continuity style, technical diagnosis, Russian output and a strict instruction check. Run the same prompts on independent model configurations to compare speed before making any quality claim.
+
+This is a latency/protocol probe, NOT a blind evaluation of creativity, factual correctness, long-context memory or human-quality dialogue. Without server-reported completion tokens, it reports characters/s as a proxy and labels it explicitly. A dedicated RTX4070 paired voice and model benchmark still needs physical hardware; sample server claims are not Ember benchmarks.
+
 ## Listening prompts — keep identical across voices
 
 English neutral: "The train is leaving in fifteen minutes. Would you like me to check the next connection?"

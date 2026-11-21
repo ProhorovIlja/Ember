@@ -34,6 +34,11 @@ jobs:
         run: |
           python tools/asr_benchmark.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Local Qwen3-ASR mock protocol test failed.' }
+      - name: Validate local-only text streaming benchmark
+        shell: pwsh
+        run: |
+          python tools/text_benchmark.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Local text benchmark self-test failed.' }
       - name: Install Qt 6.8.3 dynamic development modules
         uses: jurplel/install-qt-action@v4
         with:
