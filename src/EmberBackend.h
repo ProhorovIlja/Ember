@@ -6,6 +6,8 @@
 #include <QAudioFormat>
 #include <QAudioOutput>
 #include <QAudioSource>
+#include <QAudioSink>
+#include <QIODevice>
 #include <QBuffer>
 #include <QElapsedTimer>
 #include <QMediaDevices>
@@ -151,6 +153,10 @@ private:
     void playNextSpeechChunk();
     void synthesize(const QString &text);
     void synthesizeViaLocalServer(const QString &text);
+    void synthesizeStreamingPcm(const QString &text);
+    void readPcmResponse(QNetworkReply *reply);
+    void pumpPcmPlayback();
+    void resetPcmPlayback();
     void playSynthesizedFile();
     QString speechFile(int slot) const;
     void stopSpeechOnError(const QString &error);
@@ -200,6 +206,12 @@ private:
     QAudioFormat m_captureFormat;
     QAudioOutput m_audioOutput;
     QMediaPlayer m_mediaPlayer;
+    std::unique_ptr<QAudioSink> m_pcmSink;
+    QIODevice *m_pcmDevice = nullptr;
+    QByteArray m_pcmPending;
+    qint64 m_pcmTotalReceived = 0;
+    int m_pcmSampleRate = 0;
+    bool m_pcmHttpDone = false, m_pcmStarted = false;
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;
     QPointer<QNetworkReply> m_speechReply;
@@ -207,6 +219,7 @@ private:
     QTimer m_healthTimer, m_speechHealthTimer;
     QTimer m_captureWatchdog;
     QTimer m_chatRenderTimer;
+    QTimer m_pcmPumpTimer;
     quint64 m_captureSession = 0;
     QElapsedTimer m_brainElapsed, m_speechServerElapsed;
     quint64 m_brainSession = 0, m_speechServerSession = 0;
