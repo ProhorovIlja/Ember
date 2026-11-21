@@ -4,6 +4,10 @@
 - User-selected local llama.cpp GGUF runner (loopback 127.0.0.1 only).
 - Explicit microphone recording (30 second cap), whisper.cpp speech recognition handoff and Kokoro/sherpa-onnx TTS command pipeline.
 - Portable runtime settings stored beside the executable under `data`; bounded in-memory conversations and model limits.
-- Testable C++ core with PCM WAV serialization and local-only request checks.
+- Testable C++ core with PCM WAV serialization, bounded RIFF/PCM16 validation, local-only request checks and safe sentence segmentation.
+- Native Windows microphone/speaker selection stored by device identity; unplugged devices abort active capture and revert to Windows default, with a capture memory watchdog and per-session recording timer.
+- Additional offline TTS provider: opt-in OpenAI-compatible Qwen3/Chatterbox speech API on fixed `127.0.0.1:43822` (no remote URLs, proxies or redirects); configurable local model alias and voice; response must be 16-bit PCM WAV.
+- Readouts for last successful local speech recognition, LLM completion and TTS-chunk generation latency. These are **local timings, not quality scores**.
+- Complete spoken replies are segmented on sentence boundaries instead of silently truncating after 700 characters; queued audio can be cancelled and its prior file handle is released before regenerating.
 
 Limitations: requires separate models and binaries; hardware and audio quality unverified; no real-time full-duplex calls or automatic installers. This document is a draft and must not be published as a stable download.

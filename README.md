@@ -7,11 +7,11 @@ This repository currently contains a **development foundation**. It compiles an 
 ## Design priorities
 
 - Speech first: choose a real Windows microphone → local `whisper.cpp` transcription → local `llama.cpp` response → either offline `sherpa-onnx` Kokoro or a separate **localhost-only** OpenAI-compatible Qwen3-TTS/Chatterbox service → selected Windows speakers.
-- Text chat: the same local LLM can be used without a microphone. Current session is held in memory, not silently uploaded.
-- Efficient native UI: GPU-rendered Qt Quick, subtle animations, dark colors, original procedural voice stage, keyboard-controlled composer. No runtime web UI.
+- Text chat: the same local LLM can be used without a microphone. Current session is held in memory, not silently uploaded. Long voice replies are segmented on natural punctuation instead of dropping text after an arbitrary 700-character cutoff.
+- Efficient native UI: GPU-rendered Qt Quick, subtle animations, dark colors, original procedural voice stage, keyboard-controlled composer, named audio-device and female-speaker selectors, local last-stage timing readouts. No runtime web UI.
 - Replaceable intelligence: independently choose the voice backend (fast CPU Kokoro or higher-end local TTS API), the speaker and the local reasoner. Benchmark each component; model weight blending is a separate research path, not an assumed feature.
 - Portable storage under `D:\Games\Ember` by default, including `data/ember.ini`, per-session cache, engines and GGUF/ONNX weights. The actual install location is user-selected.
-- Permission boundaries for future local files, programs, Internet and GitHub/Drive automation. No universal implicit access is granted by a text prompt.
+- Permission boundaries for future local files, programs, Internet and GitHub/Drive automation. No universal implicit access is granted by a text prompt. All current AI HTTP traffic is direct loopback with system proxies and redirects disabled.
 
 ## Current behavior
 

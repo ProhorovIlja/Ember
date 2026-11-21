@@ -1,6 +1,6 @@
 # Ember architecture and development sequence
 
-**Native shell:** Qt 6 Quick + C++20 using Qt Network, Multimedia and Widgets solely for native file dialogs. Qt DLLs are deployed dynamically while respecting relevant LGPL obligations. No WebView2/Chromium or Android layer. Input/output hardware is enumerated by `QMediaDevices` and preferences are saved as opaque device IDs; removed devices invalidate selection instead of silently accessing an unrelated device. Native capture is capped by a watchdog and by a 30-second per-recording timer with a session generation check.
+**Native shell:** Qt 6 Quick + C++20 using Qt Network, Multimedia and Widgets solely for native file dialogs. Qt DLLs are deployed dynamically while respecting relevant LGPL obligations. No WebView2/Chromium or Android layer. Input/output hardware is enumerated by `QMediaDevices` and preferences are saved as opaque device IDs; removed devices invalidate selection instead of silently accessing an unrelated device. The local Qt network manager explicitly bypasses system proxies, refuses redirects on health/chat/speech, and uses a brain-session generation counter to ignore stale health replies. Native capture is capped by a watchdog and by a 30-second per-recording timer with a session generation check.
 
 **Logical layers:**
 ```text
@@ -13,6 +13,7 @@ QML native workspace
        ├─ sherpa-onnx CLI + Kokoro -> WAV
        └─ localhost only (127.0.0.1:43822) OpenAI speech API -> bounded PCM16 WAV
        -> selected QAudioOutput / QMediaPlayer
+       -> queue natural sentence/word segments if the LLM answer exceeds the engine limit
          Shared C++ backend / bounded in-memory transcript / portable settings
 ```
 
@@ -37,5 +38,5 @@ Provider-independent persona text is configurable locally. Ember applies no addi
 
 - Naturalness, emotional range, punctuation prosody, speech rhythm and absence of metallic/robotic artifacts judged blindly in A/B listening.
 - ASR word error rate for real noise, Russian and English; interruption and speech endpointing.
-- First audible response latency / total turn latency, speaker selection consistency and resource use.
+- First audible response latency / total turn latency, speaker selection consistency and resource use. The live UI currently exposes only completed ASR, LLM and TTS-chunk timings: these do **not** measure time-to-first-sound or end-to-end audio quality. Future benchmark instrumentation must add those measurements before claiming low latency.
 - Stable operation after 100+ turns, memory bounds, audio devices unplug/replug, DPI scaling 100/125/150%.
