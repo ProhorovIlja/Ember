@@ -60,8 +60,6 @@ private slots:
     }
     void assemblesCyrillicServerTokensAcrossByteBoundaries() {
         QByteArray pending;
-        const QByteArray a = QByteArray("data: {\\"choices\\":[{\\"delta\\":{\\"content\\":\\"Привет\\\"}}]}\\n\\n");
-        const QByteArray b = QByteArray("data: {\\"choices\\":[{\\"delta\\":{\\"content\\":\\" world\\\"}}]}\\r\\n\\r\\n");
         // Use literal UTF-8 bytes and actual event separators; source may be
         // split inside a multi-byte Cyrillic character during network reads.
         const QByteArray events = QByteArray("data: ") +
@@ -73,8 +71,6 @@ private slots:
                 QJsonObject{{"delta", QJsonObject{{"content"," мир"}}}}
             }}}).toJson(QJsonDocument::Compact) + "\r\n\r\n" +
             QByteArray("data: [DONE]\n\n");
-        Q_UNUSED(a);
-        Q_UNUSED(b);
         QString got;
         bool finished = false;
         for (int i = 0; i < events.size(); i += 3) {
