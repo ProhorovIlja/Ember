@@ -17,6 +17,7 @@ D:\Games\Ember\
     models\
         llm\model.gguf
         stt\ggml-base.bin
+        stt\ggml-silero-v6.2.0.bin   (optional, for speech activity detection)
         tts\kokoro-en-v0_19\
             model.onnx
             voices.bin
@@ -26,6 +27,7 @@ D:\Games\Ember\
 
 1. Get **Windows x64/CUDA** `llama-server` from the upstream [llama.cpp](https://github.com/ggml-org/llama.cpp) releases or compile its CMake project with CUDA support. Preserve its accompanying DLL files next to the executable. Select a *verified GGUF conversion* of an open-license chat model; for a 12 GB RTX 4070, start benchmarking an approximately 8–9B-class model at Q4 rather than assuming all 16-bit weights will fit. There is no bundled or automatically downloaded model.
 2. Get `whisper-cli` from [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (build with optional CUDA) and a multilingual GGML model (e.g. `ggml-base.bin` from upstream). The microphone first requests 16 kHz mono Int16. If that is unavailable, the app accepts the device's preferred UInt8/Int16/Int32/Float PCM format and uses a bounded windowed-sinc filter to resample it into 16 kHz mono PCM for Whisper.
+   Optional: download the GGML Silero VAD v6.2 model from the official [whisper.cpp](https://github.com/ggml-org/whisper.cpp#voice-activity-detection-vad) instructions. In Settings, choose **Silero speech detection · optional**, or place it at `models/stt/ggml-silero-v6.2.0.bin`. When the readable model is present, Ember passes `--vad -vm <model>` to whisper-cli. This lets Whisper skip detected nonspeech spans within a recording. Older whisper-cli builds without VAD support should leave this file absent. Real RU/EN recognition/false-positive rates still need hardware measurements.
 3. Get the offline TTS executable and an **English Kokoro** model pack from [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). The app expects `model.onnx`, `voices.bin`, `tokens.txt`, and the **`espeak-ng-data` subfolder** from the original English **v0.19** package. The official v0.19 command uses `--kokoro-data-dir` and **does not require a lexicon file**. Retain the upstream licenses. The native selector names all eleven verified IDs (0–10): af, Bella, Nicole, Sarah, Sky, Adam, Michael, Emma, Isabella, George and Lewis. Settings include an **editable voice comparison script** (up to 1200 characters); save it and choose **Test voice** to hear identical content on each candidate. For multilingual output, a separate Kokoro pack and extra phoneme resources will require a reviewed adapter.
 4. Build the Qt app with MSVC / Qt 6 or use a successful unsigned CI **development artifact**. Run `windeployqt --qmldir qml --release build\Release\Ember.exe`. Copy its deployed output to your preferred D-drive folder.
 5. Open **Settings**, choose your **Microphone** and **Speakers** by name, and use the native **Browse** buttons for each selected model/engine. Device preferences persist by opaque system ID rather than list position; if hardware disappears, Ember stops the affected capture or playback and falls back to Windows defaults.
@@ -45,6 +47,7 @@ The private `data\\ember-chats.sqlite` database stores only text and session met
 ### Known limitations
 
 - Text now streams over loopback SSE; audio is still not live full-duplex and each ASR/TTS chunk starts its own process except for the optional persistent TTS server.
+- Optional Silero VAD preprocessing is wired for whisper-cli when VAD weights are configured. It is not a streaming VAD, echo cancellation or latency guarantee. The detector can miss unusually quiet speech; compare with VAD disabled if it does.
 - Common 44.1/48 kHz mono/stereo microphones are resampled to 16 kHz with anti-alias filtering. Native input/output selection, persisted device IDs, capture memory watchdog and basic device-disconnection handling are implemented, but actual USB/Bluetooth fault testing, VAD, echo cancellation, barge-in and full-duplex remain pending.
 - Spoken output is intentionally English-only. English/Russian speech **input** and typed text are supported via multilingual Whisper; Russian TTS is not a current release requirement.
 - No model weight, audio or Windows packaging QA has been run on the user's own RTX 4070. A successful CI compile is not that test.
