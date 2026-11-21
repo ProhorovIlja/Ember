@@ -470,3 +470,24 @@ absence of recognized text/paths from the result. This does **not** measure
 real recognition accuracy or confirm Windows audio hardware. Stable Releases
 remain gated on actual physical listening, measurable RU/EN WER, benchmark and
 redistribution/licensing acceptance.
+
+## 22 November — robust early and fallback speech for Markdown code blocks
+
+Ember's voice-only Markdown renderer now matches fenced code openings/closings
+by **the same delimiter type** (`backtick` or `tilde`) and by the **entire
+opening marker length**, rather than treating any three repeated characters
+as the end of code. A closing fence must occupy its own line and may have
+up to three spaces of indentation, following the
+[CommonMark fenced-code rules](https://spec.commonmark.org/current/#fenced-code-blocks).
+A stray wrong-type fence, a shorter fence embedded inside four-backtick/four-tilde
+code, or three backticks inside an inline source expression must not release
+hidden code into synthetic female English audio.
+
+Both live sentence-by-sentence TTS and full-answer Kokoro/WAV fallback retain
+the original textual/code answer, while speaking a single neutral
+`The code example is in the text chat.` marker. Deterministic Qt regressions
+cover mixed markers, four-marker fences, inline markers, 0–3-space indented
+closers and nonclosers with four spaces. This is a presentation correctness
+fix, **not** a measured MOS, expressiveness or first-acoustic-audio improvement.
+As with other changes, this only passes the acceptance gate after exact-HEAD
+Windows CI plus a later physical listening test.
