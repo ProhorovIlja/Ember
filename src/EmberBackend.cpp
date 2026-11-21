@@ -1520,6 +1520,23 @@ void EmberBackend::transcribeNextChunk() {
         }
     }
     const QByteArray wav = EmberCore::whisperWav(raw, m_captureFormat);
+    if (EmberCore::nearSilentAsrWav(wav)) {
+        // Skip only digitally near-zero segments. Running Whisper/Qwen on
+        // muted input can invent perfectly fluent words that were not spoken.
+        // An event-loop hop avoids deep recursion for long hold-to-dictate
+        // recordings that happen to contain many silent chunks.
+        m_transcriptionOffset += freshBytes;
+        if (m_transcriptionOffset >= m_transcriptionSize) {
+            completeTranscription();
+        } else {
+            const auto revision = m_voiceScratchRevision;
+            QTimer::singleShot(0, this, [this, revision] {
+                if (m_voiceScratchRevision == revision && m_transcriptionSize > 0)
+                    transcribeNextChunk();
+            });
+        }
+        return;
+    }
     QFile output(workFile("microphone.wav"));
     if (wav.isEmpty() || !output.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
         output.write(wav) != wav.size()) {
