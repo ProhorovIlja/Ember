@@ -72,7 +72,7 @@ private slots:
         const auto good = EmberCore::pcmToWav(QByteArray::fromHex("0100020003000400"), 24000);
         QVERIFY(EmberCore::validSpeechWav(good));
         QVERIFY(!EmberCore::validSpeechWav({}));
-        QVERIFY(!EmberCore::validSpeechWav(QByteArray("{\\"error\\":\\"server failed\\"}")));
+        QVERIFY(!EmberCore::validSpeechWav(QByteArray("JSON response from server")));
         QByteArray corrupted = good;
         corrupted[4] = char(1);
         QVERIFY(!EmberCore::validSpeechWav(corrupted));
