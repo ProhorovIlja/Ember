@@ -516,3 +516,37 @@ quality benchmark report and no public model weights are bundled.
 This is a deterministic pre-inference filter for the native Windows application,
 not evidence of lower measured hallucination rate on real microphones, nor an
 acoustic voice-quality improvement. Keep stable release gates unchanged.
+
+## 22 November — identical text/voice Markdown fences and interrupted long dictation
+
+The native Qt Markdown display and both early/fallback TTS presentation paths
+now share one bounded CommonMark-style fence parser for **three or more**
+backticks or tildes, at most three spaces of indentation, matching closing
+character and closing width at least as long as the opener. A shorter or wrong
+marker stays as visible escaped source code, not a closing delimiter. A
+triple-backtick marker embedded within a normal sentence is not treated as an
+opening fence by streaming TTS, eliminating unnecessary speech latency and
+omitted narration. No external HTML/remote resource loading is enabled.
+Regressions cover 3/4-character markers, mixed types, indented closing,
+unclosed code and inline literal fences.
+
+Long push-to-release RU/EN dictation now **recovers already completed recognition
+segments when a later Whisper or native Qwen3-ASR chunk fails**. The joined
+prefix is delivered to the **editable local text composer**, with explicit
+status that the ending may be missing; it is never sent automatically.
+An ordinary live voice request does not use partial recovery, avoiding a
+conversation driven by a truncated command. Explicit user cancellation still
+discards pending segments. This is particularly relevant to long recordings
+where transcription is sequential and a single late CLI/API failure previously
+discarded every earlier segment. Recovery shares existing overlap-aware
+lexical dedup and keeps temporary audio transient. Tests cover bilingual
+overlap and mode isolation. This is an error-path resilience improvement,
+not an ASR accuracy claim or a promise of unlimited disk capture.
+
+External behavior references:
+https://spec.commonmark.org/current/#fenced-code-blocks
+https://github.com/ggml-org/whisper.cpp/blob/master/examples/cli/README.md
+
+No real target-machine microphone, acoustic quality, hallucination reduction,
+GPU/VRAM contention, or complete offline licensing acceptance is implied by
+CI fixtures. Stable release gates remain closed.
