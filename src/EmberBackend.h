@@ -29,6 +29,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString transcript READ transcript NOTIFY transcriptChanged)
     Q_PROPERTY(QString lastReply READ lastReply NOTIFY lastReplyChanged)
+    Q_PROPERTY(bool incompleteReply READ incompleteReply NOTIFY lastReplyChanged)
     Q_PROPERTY(QString voiceTimings READ voiceTimings NOTIFY voiceTimingsChanged)
     Q_PROPERTY(QVariantList messages READ messages NOTIFY messagesChanged)
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
@@ -74,6 +75,7 @@ public:
     QString status() const { return m_status; }
     QString transcript() const { return m_transcript; }
     QString lastReply() const { return m_lastReply; }
+    bool incompleteReply() const { return m_lastReplyIncomplete; }
     QString voiceTimings() const;
     QVariantList messages() const { return m_messages; }
     QVariantList sessions() const { return m_sessions; }
@@ -137,6 +139,7 @@ public:
     Q_INVOKABLE void startSpeechServer();
     Q_INVOKABLE void stopSpeechServer();
     Q_INVOKABLE void submitText(const QString &text);
+    Q_INVOKABLE void continueIncompleteReply();
     Q_INVOKABLE void chooseImage();
     Q_INVOKABLE void pasteImage();
     Q_INVOKABLE void attachImageUrl(const QString &url);
@@ -239,6 +242,7 @@ private:
     QByteArray m_chatStreamBuffer;
     bool m_chatStreamDone = false, m_chatStreamInvalid = false;
     bool m_chatStreamTruncated = false;
+    bool m_lastReplyIncomplete = false;
     bool m_chatPreviewActive = false;
     QVariantList m_sessions;
     std::unique_ptr<SessionStore> m_store;
