@@ -119,3 +119,18 @@ The PCM drain watchdog was corrected to allow the total expected audio duration 
 **Pending real acceptance:** instrument microphone-release → first **acoustic** sound and compare with the old full-answer TTS route on the user's RTX 4070 12 GB; benchmark combined GGUF/TTS VRAM and natural prosody, hotplug and overnight stability. SSE-first-sentence audio is not full-duplex and does not support mic barge-in or the model revising an already-spoken sentence. Never claim these hardware results based solely on QtTest/Windows CI.
 
 References: https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md and https://github.com/nyosegawa/speech.cpp/blob/main/docs/server.md.
+
+## LOCAL VOICE BENCHMARK 2026-11-21
+
+A new standard-library-only development probe, `tools/voice_benchmark.py`, measures a **user-started native local speech.cpp** service without saving generated audio. It requests the same `response_format:pcm`/`stream_format:audio` contract as Ember, validates `X-Sample-Rate`, signed PCM16 frame alignment and 12 MiB output limits, disables proxies/redirects, and accepts only loopback HTTP. Windows CI invokes `python tools/voice_benchmark.py --self-test` against a mock localhost server, including malformed sample-rate/frame cases, so the client never needs an external benchmark API.
+
+After installing local model binaries/weights on the **target RTX 4070 PC** and starting the TTS service in Ember, run:
+
+```powershell
+python tools/voice_benchmark.py --voice vivian --samples 12 --output .\benchmark-vivian.json
+python tools/voice_benchmark.py --voice serena --samples 12 --output .\benchmark-serena.json
+```
+
+The probe cycles fixed neutral, expressive, technical and question prompts and reports first **HTTP PCM byte** p50/p95, full synthesis wall time and audio duration/wall-time throughput per sample. It does not store PCM, microphone recordings, transcripts or private chats. The optional JSON contains only names, numeric timing and sample-rate metadata. The same machine and GPU/LLM load are needed for fair comparisons; results from a non-4070 system do not establish target performance. **These measurements are not subjective naturalness scores or acoustic speaker onset.**
+
+An optional **Early Speech** toggle in the native Settings is persisted locally. ON: synthesize first stable SSE sentence while the LLM is generating with resident speech.cpp. OFF: wait for full text, preserving GPU headroom when LLM and TTS compete on 12 GB VRAM. Both modes continue to stream PCM from the managed native server once synthesis begins.
