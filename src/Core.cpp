@@ -300,6 +300,18 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
             const QChar c = remaining[i];
             if ((c == '.' || c == '!' || c == '?' || c == ';') &&
                 remaining[i + 1].isSpace()) {
+                if (c == '.') {
+                    qsizetype start = i;
+                    while (start > 0 &&
+                           (remaining[start - 1].isLetter() ||
+                            remaining[start - 1] == '.')) --start;
+                    const QString word = remaining.mid(start, i - start).toCaseFolded();
+                    static const QStringList abbreviations{
+                        "mr", "mrs", "ms", "dr", "prof", "sr", "jr",
+                        "st", "vs", "e.g", "i.e", "etc", "no"
+                    };
+                    if (abbreviations.contains(word)) continue;
+                }
                 boundary = i + 1;
                 break;
             }
