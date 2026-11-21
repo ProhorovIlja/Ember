@@ -276,6 +276,19 @@ private slots:
         QCOMPARE(payload.value("model").toString(), QString("qwen3-tts"));
         QCOMPARE(payload.value("response_format").toString(), QString("wav"));
         QCOMPARE(payload.value("input").toString(), QString("Hello, Ember"));
+        const auto pcm = EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-0.6b", "vivian", "Hello, Ember");
+        QCOMPARE(pcm.value("model").toString(), QString("qwen3-tts-0.6b"));
+        QCOMPARE(pcm.value("voice").toString(), QString("vivian"));
+        QCOMPARE(pcm.value("input").toString(), QString("Hello, Ember"));
+        QCOMPARE(pcm.value("response_format").toString(), QString("pcm"));
+        QCOMPARE(pcm.value("stream_format").toString(), QString("audio"));
+        QVERIFY(!payload.contains("stream_format")); // generic local WAV API stays intact
+        QVERIFY(EmberCore::validPcmSampleRate(24000));
+        QVERIFY(EmberCore::validPcmSampleRate(48000));
+        QVERIFY(!EmberCore::validPcmSampleRate(0));
+        QVERIFY(!EmberCore::validPcmSampleRate(4000));
+        QVERIFY(!EmberCore::validPcmSampleRate(192000));
         QVERIFY(!payload.contains("url"));
     }
     void rejectsInvalidSpeechAudio() {
