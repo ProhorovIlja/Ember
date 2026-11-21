@@ -37,3 +37,10 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Speech rendering removes Markdown URLs/code fences while preserving the exact text chat; reject malformed WAV byte rates/unaligned PCM. Predominantly Cyrillic voice output is skipped rather than pronounced in Russian.
 - [ ] Benchmark actual Qwen3-TTS/Kokoro/Chatterbox female English voices, cold/warm model loads, VRAM co-residency, p50/p95 end-to-end spoken latency and real audio clipping/underruns on target RTX 4070.
 - [ ] Deliver native push-mode streaming PCM output with bounded buffering, first audible audio as soon as a model emits it, safe device-change/cancel handling, and robust fallback. Do not label current WAV playback as streaming audio.
+
+### Managed PCM streaming implementation gate
+
+- [x] Source path added: `speech.cpp` managed TTS now streams raw PCM16 to `QAudioSink` without first saving a full WAV, validates local endpoint/rate/content-type, applies bounded producer backpressure and preserves complete-WAV support for other engines.
+- [x] Voice cancellation and Windows output-device switch/hot-unplug pathways release PCM sink and reject stale HTTP replies.
+- [ ] Demonstrate actual low latency on RTX 4070 with reproducible first-audible-sample timestamps; tests must include long sentences, speech faster/slower than playback, underrun recovery and audio-device hotplug.
+- [ ] Verify the exact Qt 6.8.3 PCM pipeline on clean Windows 10 physical hardware, including support for 24 kHz mono PCM, and confirm no audible artifacts at chunk boundaries.
