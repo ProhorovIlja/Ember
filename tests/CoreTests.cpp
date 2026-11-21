@@ -195,7 +195,9 @@ private slots:
         prior.append(EmberCore::Turn{"Question", "Previous answer"});
         const auto payload = EmberCore::chatRequest("Talk naturally", prior, "Do not merge me into system", 900, 0.7);
         QCOMPARE(payload.value("model").toString(), QString("ember"));
-        QCOMPARE(payload.value("max_tokens").toInt(), 768);
+        QCOMPARE(payload.value("max_tokens").toInt(), 900);
+        QCOMPARE(EmberCore::chatRequest("Assistant", {}, "Long story", 9999)
+                     .value("max_tokens").toInt(), 2048);
         const auto messages = payload.value("messages").toArray();
         QCOMPARE(messages.size(), 4);
         QCOMPARE(messages.at(0).toObject().value("role").toString(), QString("system"));
