@@ -1770,6 +1770,40 @@ void EmberBackend::exportCurrentSession() {
         ? "Complete text conversation exported locally. No audio was saved."
         : "Could not export the selected conversation.");
 }
+
+void EmberBackend::exportCompactHistory() {
+    if (m_privateMode || m_busy || m_listening || m_speaking ||
+        !m_store || !m_store->ready()) {
+        setStatus("Finish the current task and exit Private session before backing up.");
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(
+        nullptr, "Save all local conversations",
+        QDir::home().filePath("Ember-chats.emberbackup"),
+        "Ember compressed backup (*.emberbackup)");
+    if (path.isEmpty()) return;
+    setStatus(m_store->exportCompactBackup(path)
+        ? "Local compressed chat backup saved. Not encrypted; keep the file private."
+        : "Could not create compressed chat backup. Existing chats were not changed.");
+}
+void EmberBackend::restoreCompactHistory() {
+    if (m_privateMode || m_busy || m_listening || m_speaking ||
+        !m_store || !m_store->ready()) {
+        setStatus("Finish the current task and exit Private session before restoring.");
+        return;
+    }
+    const QString path = QFileDialog::getOpenFileName(
+        nullptr, "Restore a local Ember backup", QDir::homePath(),
+        "Ember compressed backup (*.emberbackup)");
+    if (path.isEmpty()) return;
+    if (!m_store->restoreCompactBackup(path)) {
+        setStatus("Backup was not restored. File may be damaged; existing chats are unchanged.");
+        return;
+    }
+    refreshSessions();
+    setStatus("Chats restored as separate copies. Existing conversations were preserved.");
+}
+
 void EmberBackend::setContinuityNotes(const QString &text) {
     if (!m_store || !m_store->ready() || m_sessionId.isEmpty()) {
         setStatus("Local story memory requires a writable SQLite conversation.");
