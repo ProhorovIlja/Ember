@@ -123,7 +123,7 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
     }
     messages.append(QJsonObject{{"role", "user"}, {"content", user.left(4096)}});
     return QJsonObject{{"model", "ember"}, {"messages", messages},
-                       {"max_tokens", std::clamp(maxTokens, 64, 768)},
+                       {"max_tokens", std::clamp(maxTokens, 64, 2048)},
                        {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
                        {"stream", false}};
 }

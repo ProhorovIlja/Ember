@@ -51,6 +51,7 @@ EmberBackend::EmberBackend(QObject *parent)
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_chatMode = qBound(0, m_settings.value("chat/mode", 0).toInt(), 3);
     m_chatRenderTimer.setInterval(40);
+    m_chatRenderTimer.setSingleShot(true);
     connect(&m_chatRenderTimer, &QTimer::timeout,
             this, &EmberBackend::renderChatStream);
     m_voiceId = m_settings.value("voiceId", 0).toInt();
@@ -500,7 +501,7 @@ void EmberBackend::startBrain() {
     m_brain.setProgram(binary);
     m_brain.setArguments({"--model", model, "--alias", "ember",
                           "--host", "127.0.0.1", "--port", "43821",
-                          "--ctx-size", "4096", "--n-gpu-layers", "99",
+                          "--ctx-size", "8192", "--n-gpu-layers", "99",
                           "--parallel", "1"});
     m_brain.start();
     m_brainElapsed.start();
