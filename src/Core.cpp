@@ -818,43 +818,36 @@ bool nearSilentAsrWav(const QByteArray &wav) {
     }
     return true;
 }
-QString visibleAssistantText(const QString &draft) {
-    // Some local model/template combinations embed <think> in delta.content
-    // instead of a separate reasoning_content field. This function is called
-    // on the accumulated bounded SSE content, never on a single token alone.
-    // Only the returned visible text can reach the UI, SQLite, or TTS.
-    if (draft.size() > 16384) return {};
+QString consumeVisibleAssistantDelta(VisibleAssistantStream &state,
+                                     const QString &delta) {
+    // Process each QChar once. At most the current 7/8-character partial
+    // marker is retained across SSE chunks, never the model's hidden text.
+    // A partial opener does not flash as text before the next SSE event.
     const QString opener = QStringLiteral("<think>");
     const QString closing = QStringLiteral("</think>");
     QString visible;
-    visible.reserve(draft.size());
-    qsizetype pos = 0;
-    while (pos < draft.size()) {
-        const qsizetype start = draft.indexOf(opener, pos, Qt::CaseInsensitive);
-        if (start < 0) {
-            qsizetype safeEnd = draft.size();
-            // A streamed opener may end at any character boundary: do not
-            // render "<th" before the next network packet completes "<think>".
-            // Withholding at most six characters never erases real prose.
-            for (qsizetype width = std::min<qsizetype>(opener.size() - 1,
-                                                       draft.size() - pos);
-                 width > 0; --width) {
-                if (draft.right(width).compare(
-                        opener.left(width), Qt::CaseInsensitive) == 0) {
-                    safeEnd -= width;
-                    break;
-                }
-            }
-            if (safeEnd > pos) visible += draft.mid(pos, safeEnd - pos);
-            return visible;
+    visible.reserve(delta.size());
+    for (const QChar ch : delta) {
+        const QString &marker = state.insideThought ? closing : opener;
+        state.possibleTag.append(ch);
+        while (!state.possibleTag.isEmpty() &&
+               !marker.startsWith(state.possibleTag, Qt::CaseInsensitive)) {
+            if (!state.insideThought) visible.append(state.possibleTag.front());
+            state.possibleTag.remove(0, 1);
         }
-        visible += draft.mid(pos, start - pos);
-        const qsizetype end = draft.indexOf(
-            closing, start + opener.size(), Qt::CaseInsensitive);
-        if (end < 0) return visible; // unfinished thought: withhold all
-        pos = end + closing.size();
+        if (state.possibleTag.size() == marker.size()) {
+            // On opening suppress all later characters until the complete
+            // matching closing tag; on closing resume normal visible prose.
+            state.possibleTag.clear();
+            state.insideThought = !state.insideThought;
+        }
     }
     return visible;
+}
+QString visibleAssistantText(const QString &draft) {
+    if (draft.size() > 16384) return {};
+    VisibleAssistantStream state;
+    return consumeVisibleAssistantDelta(state, draft);
 }
 QString speechFriendlyText(const QString &markdown) {
     if (markdown.size() > 16384) return {};
