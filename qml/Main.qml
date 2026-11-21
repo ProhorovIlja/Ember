@@ -1169,6 +1169,7 @@ ApplicationWindow {
                                             "Qwen3 / Chatterbox · local API"
                                         ]
                                         currentIndex: ember.voiceEngine
+                                        enabled: !ember.busy && !ember.listening && !ember.speaking
                                         onActivated: ember.voiceEngine = currentIndex
                                         contentItem: Text {
                                             leftPadding: 14
@@ -1231,6 +1232,7 @@ ApplicationWindow {
                                             "Lewis · Male · UK"
                                         ]
                                         currentIndex: ember.voiceId
+                                        enabled: !ember.busy && !ember.listening && !ember.speaking
                                         onActivated: ember.voiceId = currentIndex
                                         contentItem: Text {
                                             text: voiceSelector.displayText
@@ -1313,6 +1315,7 @@ ApplicationWindow {
                                             TextField {
                                                 id: externalModel
                                                 Layout.fillWidth: true
+                                                enabled: !ember.busy && !ember.speaking && !ember.speechServerRunning
                                                 text: ember.localModel
                                                 maximumLength: 80
                                                 color: "#EAF5FF"
@@ -1338,6 +1341,7 @@ ApplicationWindow {
                                             TextField {
                                                 id: externalVoice
                                                 Layout.fillWidth: true
+                                                enabled: !ember.busy && !ember.speaking
                                                 text: ember.localVoice
                                                 maximumLength: 80
                                                 color: "#EAF5FF"
