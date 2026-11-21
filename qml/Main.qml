@@ -784,6 +784,7 @@ ApplicationWindow {
                                         { key: "brainModel", label: "Language model · GGUF" },
                                         { key: "asrExe", label: "whisper-cli executable" },
                                         { key: "asrModel", label: "Speech recognition weights" },
+                                        { key: "asrVadModel", label: "Silero speech detection · optional" },
                                         { key: "ttsExe", label: "sherpa-onnx TTS executable" },
                                         { key: "ttsDir", label: "Kokoro model folder" }
                                     ]
