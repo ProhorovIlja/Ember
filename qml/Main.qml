@@ -21,6 +21,7 @@ ApplicationWindow {
         id: deleteChatDialog
         parent: Overlay.overlay
         anchors.centerIn: parent
+        width: 430
         modal: true
         title: "Delete local chat?"
         standardButtons: Dialog.Yes | Dialog.Cancel
@@ -31,12 +32,16 @@ ApplicationWindow {
             border.color: "#225688"
             border.width: 1
         }
-        contentItem: Text {
-            width: 340
-            text: "Only this conversation will be deleted from the local SQLite archive. The other chats will remain available."
-            wrapMode: Text.WordWrap
-            font.pixelSize: 13
-            color: "#D8EBFB"
+        contentItem: Item {
+            implicitWidth: 365
+            implicitHeight: 83
+            Text {
+                anchors.fill: parent
+                text: "Only this conversation will be deleted from the local SQLite archive. The other chats will remain available."
+                wrapMode: Text.WordWrap
+                font.pixelSize: 13
+                color: "#D8EBFB"
+            }
         }
     }
     Connections {
