@@ -45,6 +45,8 @@ bool captureAllowedWithInterruption(bool busy, bool listening,
 // A recording must never exceed its scratch quota or end on a partial PCM frame.
 qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
                            int bytesPerFrame, qint64 quota = 1024LL * 1024 * 1024);
+// Render a restricted local-only subset of Markdown. No external-resource HTML.
+QString safeMarkdownHtml(const QString &markdown);
 bool validSpeechWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
 QString speechFriendlyText(const QString &markdown);

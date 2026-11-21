@@ -124,6 +124,7 @@ public:
     Q_INVOKABLE void startSpeechServer();
     Q_INVOKABLE void stopSpeechServer();
     Q_INVOKABLE void submitText(const QString &text);
+    Q_INVOKABLE QString formatReply(const QString &text) const;
     Q_INVOKABLE void startRecording();
     Q_INVOKABLE void startDictation();
     Q_INVOKABLE void setAutoEndOnSilence(bool enabled);

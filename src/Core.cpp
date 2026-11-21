@@ -95,6 +95,105 @@ qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
     return (std::min(requested, quota - alreadyWritten) / bytesPerFrame)
             * bytesPerFrame;
 }
+
+static QString escapedInlineMarkdown(const QString &source) {
+    QString out;
+    out.reserve(source.size() * 2);
+    for (qsizetype i = 0; i < source.size();) {
+        // No Markdown parser is ever handed raw HTML. Everything outside the
+        // explicit safe tags below passes through QString::toHtmlEscaped().
+        if (source.at(i) == QLatin1Char(96)) {
+            const qsizetype end = source.indexOf(QLatin1Char(96), i + 1);
+            if (end > i + 1) {
+                out += QStringLiteral(
+                    "<code style=\"font-family:Consolas,monospace;color:#A8D7FF\">");
+                out += source.mid(i + 1, end - i - 1).toHtmlEscaped();
+                out += QStringLiteral("</code>");
+                i = end + 1;
+                continue;
+            }
+        }
+        bool formatted = false;
+        for (const QString &marker : {QStringLiteral("**"),
+                                      QStringLiteral("__"),
+                                      QStringLiteral("*"),
+                                      QStringLiteral("_")}) {
+            if (source.mid(i, marker.size()) != marker) continue;
+            const qsizetype end = source.indexOf(marker, i + marker.size());
+            if (end <= i + marker.size()) continue;
+            const QString tag = marker.size() == 2
+                ? QStringLiteral("b") : QStringLiteral("i");
+            out += QLatin1Char('<') + tag + QLatin1Char('>');
+            out += source.mid(i + marker.size(), end - i - marker.size()).toHtmlEscaped();
+            out += QStringLiteral("</") + tag + QLatin1Char('>');
+            i = end + marker.size();
+            formatted = true;
+            break;
+        }
+        if (formatted) continue;
+        out += source.mid(i, 1).toHtmlEscaped();
+        ++i;
+    }
+    return out;
+}
+QString safeMarkdownHtml(const QString &markdown) {
+    // Qt Quick RichText can fetch remote images when directly given LLM text.
+    // Build only self-contained formatting tags, with NO img/a/style/script
+    // tags, user-defined attributes, links, images or file URLs.
+    const QStringList lines = markdown.left(32768).split(QLatin1Char('\n'));
+    QString html = QStringLiteral("<div style=\"color:#EEF3F9\">");
+    bool fenced = false;
+    const QString backFence(3, QLatin1Char(96));
+    for (const QString &line : lines) {
+        const QString trimmed = line.trimmed();
+        if (trimmed.startsWith(backFence) ||
+            trimmed.startsWith(QLatin1String("~~~"))) {
+            if (fenced) {
+                html += QStringLiteral("</pre>");
+                fenced = false;
+            } else {
+                html += QStringLiteral(
+                    "<pre style=\"font-family:Consolas,monospace;"
+                    "color:#BBE0FF;background-color:#0A1929;"
+                    "white-space:pre-wrap\">");
+                fenced = true;
+            }
+            continue;
+        }
+        if (fenced) {
+            html += line.toHtmlEscaped() + QLatin1Char('\n');
+            continue;
+        }
+        if (trimmed.isEmpty()) {
+            html += QStringLiteral("<br/>");
+            continue;
+        }
+        int headingLength = 0;
+        while (headingLength < 3 && headingLength < trimmed.size() &&
+               trimmed.at(headingLength) == QLatin1Char('#')) ++headingLength;
+        if (headingLength > 0 && headingLength < trimmed.size() &&
+            trimmed.at(headingLength) == QLatin1Char(' ')) {
+            html += QStringLiteral("<p style=\"margin:3px 0;color:#D9ECFF\"><b>")
+                 + escapedInlineMarkdown(trimmed.mid(headingLength + 1))
+                 + QStringLiteral("</b></p>");
+        } else if (trimmed.startsWith(QLatin1String("- ")) ||
+                   trimmed.startsWith(QLatin1String("* "))) {
+            html += QStringLiteral("<p style=\"margin:1px 0\">&#8226; ")
+                 + escapedInlineMarkdown(trimmed.mid(2))
+                 + QStringLiteral("</p>");
+        } else if (trimmed.startsWith(QLatin1String("> "))) {
+            html += QStringLiteral(
+                "<p style=\"margin:2px 0;color:#9EBAD5\">&#10072; ")
+                 + escapedInlineMarkdown(trimmed.mid(2))
+                 + QStringLiteral("</p>");
+        } else {
+            html += escapedInlineMarkdown(trimmed) + QStringLiteral("<br/>");
+        }
+    }
+    if (fenced) html += QStringLiteral("</pre>");
+    return html + QStringLiteral("</div>");
+}
+
 QByteArray pcmToWav(const QByteArray &pcm, int sampleRate) {
     if (pcm.isEmpty() || (pcm.size() % 2) || pcm.size() > 32 * 1024 * 1024 ||
         sampleRate < 8000 || sampleRate > 96000) return {};

@@ -1142,6 +1142,9 @@ void EmberBackend::setAutoEndOnSilence(bool enabled) {
         ? "Experimental pause ending enabled for voice only; quiet speech can be missed."
         : "Voice requires manual Stop; dictation remains hold-to-record.");
 }
+QString EmberBackend::formatReply(const QString &text) const {
+    return EmberCore::safeMarkdownHtml(text);
+}
 void EmberBackend::startRecording() { startCapture(false); }
 void EmberBackend::startDictation() { startCapture(true); }
 void EmberBackend::stopDictation() {

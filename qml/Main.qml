@@ -828,8 +828,12 @@ ApplicationWindow {
                                             }
                                             Text {
                                                 width: parent.width
-                                                text: modelData.body
-                                                textFormat: Text.PlainText
+                                                text: modelData.role === "ember"
+                                                    ? ember.formatReply(modelData.body)
+                                                    : modelData.body
+                                                textFormat: modelData.role === "ember"
+                                                    ? Text.RichText : Text.PlainText
+                                                selectByMouse: true
                                                 wrapMode: Text.Wrap
                                                 color: "#EEF3F9"
                                                 font.pixelSize: 14

@@ -23,6 +23,35 @@ private slots:
         QCOMPARE(allowedCaptureBytes(0, 100, 0), qint64(0));
         QCOMPARE(allowedCaptureBytes(16, 100, 4, 18), qint64(0));
     }
+
+    void safeChatFormattingNeverEmbedsRemoteImagesOrUntrustedHtml() {
+        const QString fence(3, QLatin1Char(96));
+        const QString sample = QString::fromUtf8(
+            "# Привет, Ember\n"
+            "Use **bold**, *emphasis* and ") + QLatin1Char(96)
+            + QStringLiteral("QAudioSink") + QLatin1Char(96)
+            + QStringLiteral(".\n![private](https://example.com/tracker.png)\n"
+                 "<img src='https://bad.example/pixel'>\n"
+                 "[source](https://docs.example/article)\n")
+            + fence + QStringLiteral("cpp\nif (x < 3 && y > 0) emit();\n")
+            + fence + QLatin1Char('\n');
+        const QString html = EmberCore::safeMarkdownHtml(sample);
+        QVERIFY(html.contains(QString::fromUtf8("Привет, Ember")));
+        QVERIFY(html.contains(QStringLiteral("<b>bold</b>")));
+        QVERIFY(html.contains(QStringLiteral("<i>emphasis</i>")));
+        QVERIFY(html.contains(QStringLiteral("QAudioSink")));
+        QVERIFY(html.contains(QStringLiteral("&lt;img")));
+        QVERIFY(html.contains(QStringLiteral("&lt; 3")));
+        QVERIFY(html.contains(QStringLiteral("<pre")));
+        QVERIFY(!html.contains(QStringLiteral("<img")));
+        QVERIFY(!html.contains(QStringLiteral("<a ")));
+        QVERIFY(!html.contains(QStringLiteral("<script")));
+        QVERIFY(!html.contains(QStringLiteral("<iframe")));
+        QVERIFY(!html.contains(QStringLiteral("<object")));
+        QVERIFY(html.contains(QStringLiteral("https://example.com/tracker.png")));
+        QCOMPARE(EmberCore::safeMarkdownHtml(QStringLiteral("plain & <script>")),
+                 QStringLiteral("<div style=\"color:#EEF3F9\">plain &amp; &lt;script&gt;<br/></div>"));
+    }
     void measuresCaptureEnergyAcrossWindowsPcmFormats() {
         QAudioFormat format;
         format.setSampleRate(16000);
