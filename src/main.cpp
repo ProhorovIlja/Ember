@@ -6,6 +6,7 @@
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QResource>
 #include <QQuickStyle>
 #include <QStringList>
 #include <QTimer>
@@ -47,6 +48,15 @@ int main(int argc, char *argv[]) {
     if (engine.rootObjects().isEmpty() || !qmlDiagnostics.isEmpty()) {
         writeDiagnostics("QML initialization failed");
         return 1;
+    }
+    if (smokeTest && !backend.localHistoryReady()) {
+        writeDiagnostics("SQLite driver or writable private data folder unavailable");
+        return 3;
+    }
+    if (smokeTest &&
+        !QResource(":/qt/qml/Ember/assets/ember-emblem.svg").isValid()) {
+        writeDiagnostics("Original Ember icon asset was not embedded");
+        return 4;
     }
     if (smokeTest) {
         writeDiagnostics("QML initialized");
