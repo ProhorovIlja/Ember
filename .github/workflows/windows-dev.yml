@@ -1,0 +1,56 @@
+name: Ember native Windows development
+
+on:
+  push:
+    branches: [voice-foundation]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-native:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 6.8.3 dynamic development modules
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
+      - name: Configure CMake / MSVC x64
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+      - name: Compile application and core tests
+        shell: pwsh
+        run: cmake --build build --config Release --parallel 2
+      - name: Execute core regressions
+        shell: pwsh
+        run: ctest --test-dir build --config Release --output-on-failure
+      - name: Deploy dynamic Qt runtime
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path 'build/Release/Ember.exe'
+          windeployqt --release --qmldir qml $exe
+          if (!(Test-Path $exe)) { throw 'Native EXE missing' }
+          if (!(Test-Path 'build/Release/Qt6Core.dll')) { throw 'Dynamic Qt deployment missing' }
+      - name: Package unsigned development build
+        shell: pwsh
+        run: |
+          Copy-Item README.md build/Release/README.md
+          Copy-Item LICENSE build/Release/LICENSE
+          Copy-Item docs/SETUP.md build/Release/SETUP.md
+          Compress-Archive -Path 'build/Release/*' -DestinationPath 'Ember-dev-win64.zip' -CompressionLevel Optimal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ember-native-dev-win64-${{ github.sha }}
+          path: Ember-dev-win64.zip
+          retention-days: 7
+          if-no-files-found: error
