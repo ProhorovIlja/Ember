@@ -22,6 +22,8 @@ public:
     bool remove(const QString &session);
     bool exists(const QString &session) const;
     qint64 totalMessages(const QString &session) const;
+    QString notes(const QString &session) const;
+    bool setNotes(const QString &session, const QString &notes);
 private:
     bool execute(const QString &statement);
     QString m_connectionName;
