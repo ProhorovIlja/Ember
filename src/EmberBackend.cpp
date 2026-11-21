@@ -1180,6 +1180,8 @@ void EmberBackend::resetPcmPlayback() {
     }
     m_pcmPending.clear();
     m_pcmTotalReceived = 0;
+    m_pcmBytesSubmitted = 0;
+    m_pcmDrainElapsed.invalidate();
     m_pcmSampleRate = 0;
     m_pcmHttpDone = false;
     m_pcmStarted = false;
@@ -1318,6 +1320,7 @@ void EmberBackend::pumpPcmPlayback() {
             return;
         }
         if (written > 0) {
+            m_pcmBytesSubmitted += written;
             m_pcmPending.remove(0, qsizetype(written));
             if (!m_pcmStarted) {
                 m_pcmStarted = true;
@@ -1332,14 +1335,24 @@ void EmberBackend::pumpPcmPlayback() {
             }
         }
     }
-    // Continue only after HTTP completion AND the queued samples are heard.
+    // Qt starts push mode in IdleState before it has played a single sample.
+    // A response that completes in one packet must not be torn down before
+    // the buffered audio has actually had time to reach the device.
     if (m_pcmHttpDone && !m_speechReply && m_pcmPending.isEmpty() &&
-        m_pcmStarted && m_pcmSink->state() == QAudio::IdleState) {
-        resetPcmPlayback();
-        setSpeaking(false);
-        setBusy(false);
-        m_ttsOutputSlot = -1;
-        playNextSpeechChunk();
+        m_pcmStarted && m_pcmSampleRate > 0) {
+        if (!m_pcmDrainElapsed.isValid()) m_pcmDrainElapsed.start();
+        const qint64 expectedUs = m_pcmBytesSubmitted * 1000000LL /
+                                  (qint64(m_pcmSampleRate) * 2);
+        const bool consumed = m_pcmSink->processedUSecs() + 20000 >= expectedUs;
+        if (consumed && m_pcmSink->state() == QAudio::IdleState) {
+            resetPcmPlayback();
+            setSpeaking(false);
+            setBusy(false);
+            m_ttsOutputSlot = -1;
+            playNextSpeechChunk();
+        } else if (m_pcmDrainElapsed.elapsed() > 8000) {
+            stopSpeechOnError("Windows PCM output did not finish draining within eight seconds.");
+        }
     }
 }
 void EmberBackend::synthesizeViaLocalServer(const QString &text) {
