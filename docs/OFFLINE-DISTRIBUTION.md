@@ -16,7 +16,7 @@ python tools/offline_bundle.py inventory --root D:\EmberInputs --manifest D:\off
 python tools/offline_bundle.py verify --root D:\EmberInputs --manifest D:\offline-review.json
 ```
 
-Inventory output includes SHA-256 and sizes but deliberately marks **every item unapproved** with blank source/license evidence. A maintainer must investigate its upstream license, fill `source_url` (HTTPS), `license_path` (a matching manifest-listed `licenses/` file), its `component` and explicitly set `redistribution_approved=true` only where allowed. Approval flags are a human attestation, **not a license detector**.
+Inventory output includes SHA-256 and sizes but deliberately marks **every item unapproved** with blank source/license evidence. A maintainer must investigate its upstream license, fill `source_url` (HTTPS), `license_path` (a matching manifest-listed `licenses/` file), its `component` and explicitly set `redistribution_approved=true` only where allowed. Approval flags are a human attestation, **not a license detector**. A verified approved package must contain at least one LLM, ASR and TTS model plus corresponding native engine components (a shared engine may serve more than one task). This is a structural minimum only; speech quality, working codecs, CUDA/Vulkan DLLs and all licenses still require separate acceptance.
 
 Only after that explicit review:
 

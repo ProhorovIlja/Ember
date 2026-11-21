@@ -183,6 +183,22 @@ def verify(root, manifest_path, approved=False):
         for name, entry in items.items():
             if not name.startswith("licenses/") and entry["license_path"] not in license_files:
                 raise ValueError(f"No bundled license text: {name}")
+        # This is a structural minimum, not a substitute for a human QA run.
+        # Avoid calling a model-only / single-feature payload a complete release.
+        components = {"llm", "asr", "tts"}
+        available_models = {
+            entry["component"] for name, entry in items.items()
+            if name.startswith("models/")
+        }
+        if not components.issubset(available_models):
+            raise ValueError("Full offline package requires LLM, ASR and TTS model weights")
+        engine_components = {
+            entry["component"] for name, entry in items.items()
+            if name.startswith("engines/")
+        }
+        for component in components:
+            if component not in engine_components and "shared" not in engine_components:
+                raise ValueError(f"Required {component} engine executable missing")
     return len(entries)
 
 
@@ -214,16 +230,20 @@ def self_test():
         root = Path(temporary)
         payload = root / "source"
         for path, data in {
-            "engines/llama/llama-server.exe": b"synthetic demo binary",
-            "models/llm/model.gguf": b"synthetic demo model",
+            "engines/llama/llama-server.exe": b"synthetic demo LLM executable",
+            "models/llm/model.gguf": b"synthetic demo LLM model",
+            "engines/whisper/whisper-cli.exe": b"synthetic demo ASR executable",
+            "models/stt/ggml-base.bin": b"synthetic demo ASR model",
+            "engines/speech/speech.exe": b"synthetic demo TTS executable",
+            "models/speech/qwen3-tts-0.6b.gguf": b"synthetic demo TTS model",
             "licenses/demo.txt": b"Synthetic test license; NOT a real grant",
         }.items():
             file = payload / path
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_bytes(data)
         manifest = root / "inventory.json"
-        assert inventory(payload, manifest) == 3
-        assert verify(payload, manifest) == 3
+        assert inventory(payload, manifest) == 7
+        assert verify(payload, manifest) == 7
         try:
             stage(payload, manifest, root / "unapproved")
             raise AssertionError("Unsigned redistribution was accepted")
@@ -233,18 +253,20 @@ def self_test():
         for item in content["assets"]:
             item["source_url"] = "https://example.org/synthetic-test-evidence"
             item["redistribution_approved"] = True
-            if item["path"].startswith("engines/"):
+            if "/llama/" in item["path"] or "/llm/" in item["path"]:
                 item["component"] = "llm"
-            elif item["path"].startswith("models/"):
-                item["component"] = "llm"
+            elif "/whisper/" in item["path"] or "/stt/" in item["path"]:
+                item["component"] = "asr"
+            elif "/speech/" in item["path"]:
+                item["component"] = "tts"
             if not item["path"].startswith("licenses/"):
                 item["license_path"] = "licenses/demo.txt"
         approved = root / "approved.json"
         approved.write_text(json.dumps(content), encoding="utf-8")
-        assert verify(payload, approved, approved=True) == 3
+        assert verify(payload, approved, approved=True) == 7
         stage(payload, approved, root / "stage")
         assert verify(root / "stage", root / "stage" / "offline-assets.json",
-                      approved=True) == 3
+                      approved=True) == 7
         (payload / "models/llm/model.gguf").write_bytes(b"modified model bytes")
         try:
             verify(payload, approved, approved=True)
