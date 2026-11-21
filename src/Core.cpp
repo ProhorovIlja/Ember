@@ -733,6 +733,26 @@ bool validSpeechWav(const QByteArray &wav) {
     }
     return format && data && pos == wav.size();
 }
+bool nearSilentAsrWav(const QByteArray &wav) {
+    // Only Ember's canonical resampled Whisper input is eligible. This is
+    // deliberately much more conservative than VAD: it rejects muted input,
+    // not quiet speech or audio with ordinary room noise.
+    if (wav.size() < 46 || wav.size() > 32 * 1024 * 1024 ||
+        !validSpeechWav(wav) || wav.mid(12, 4) != "fmt " ||
+        wav.mid(36, 4) != "data" || wav.mid(20, 2) != QByteArray::fromHex("0100") ||
+        wav.mid(22, 2) != QByteArray::fromHex("0100") ||
+        wav.mid(24, 4) != QByteArray::fromHex("803e0000") ||
+        wav.mid(34, 2) != QByteArray::fromHex("1000") ||
+        ((wav.size() - 44) % 2) != 0) return false;
+    // 32/32768 = -60.2 dBFS peak. A single sample above it is retained.
+    for (qsizetype i = 44; i + 1 < wav.size(); i += 2) {
+        const quint16 bits = quint16(quint8(wav[i])) |
+            (quint16(quint8(wav[i + 1])) << 8);
+        const int sample = int(qint16(bits));
+        if (sample < -32 || sample > 32) return false;
+    }
+    return true;
+}
 QString speechFriendlyText(const QString &markdown) {
     if (markdown.size() > 16384) return {};
     QString speechSource = markdown;
