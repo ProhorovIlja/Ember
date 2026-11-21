@@ -361,7 +361,7 @@ void EmberBackend::setInputDeviceIndex(int index) {
     if (selected == m_inputId) return;
     if (m_listening) {
         releaseCapture();
-        m_pcm.clear();
+        QFile::remove(m_captureFile.fileName());
     }
     m_inputId = selected;
     if (m_inputId.isEmpty()) m_settings.remove("audio/inputId");
@@ -398,7 +398,7 @@ void EmberBackend::onInputInventoryChanged() {
     }
     if (!recordingDeviceExists) {
         releaseCapture();
-        m_pcm.clear();
+        QFile::remove(m_captureFile.fileName());
         setStatus("Selected microphone disconnected; recording was discarded.");
     }
     if (!selectedExists) {
