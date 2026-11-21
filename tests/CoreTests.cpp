@@ -1,10 +1,62 @@
 #include "Core.h"
+#include "SessionStore.h"
+#include <QTemporaryDir>
 #include <QJsonArray>
 #include <QTest>
 #include <cstring>
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void localSqliteHistoryPersistsAndDeletesOnlySelectedSession() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString filename = dir.filePath("chats.sqlite");
+        QString alice;
+        QString bob;
+        {
+            SessionStore store(filename);
+            QVERIFY2(store.ready(), qPrintable(store.error()));
+            alice = store.createSession();
+            bob = store.createSession();
+            QVERIFY(!alice.isEmpty());
+            QVERIFY(!bob.isEmpty());
+            QVERIFY(alice != bob);
+            QVERIFY(store.append(alice, "you", "My first storytelling idea."));
+            QVERIFY(store.append(alice, "ember", "Tell me more about your character."));
+            QVERIFY(store.append(alice, "you", "She explores a city."));
+            QVERIFY(store.append(bob, "you", "Separate troubleshooting chat"));
+            QCOMPARE(store.totalMessages(alice), qint64(3));
+            QCOMPARE(store.totalMessages(bob), qint64(1));
+            QVERIFY(!store.append(bob, "system", "forbidden role"));
+            QVERIFY(!store.append("wrong-id", "you", ""));
+            const auto first = store.messages(alice);
+            QCOMPARE(first.size(), 3);
+            QCOMPARE(first.first().toMap().value("role").toString(), "you");
+            QCOMPARE(first.last().toMap().value("body").toString(), "She explores a city.");
+            QVERIFY(store.sessions().size() >= 2);
+            QVERIFY(store.sessions().size() <= 200);
+        }
+        {
+            SessionStore restored(filename);
+            QVERIFY2(restored.ready(), qPrintable(restored.error()));
+            QVERIFY(restored.exists(alice));
+            QCOMPARE(restored.totalMessages(alice), qint64(3));
+            const auto summaries = restored.sessions();
+            bool named = false;
+            for (const auto &item : summaries) {
+                auto row = item.toMap();
+                if (row.value("id").toString() == alice) {
+                    named = row.value("title").toString() == "My first storytelling idea.";
+                }
+            }
+            QVERIFY(named);
+            QVERIFY(restored.remove(alice));
+            QVERIFY(!restored.exists(alice));
+            QCOMPARE(restored.totalMessages(alice), qint64(0));
+            QVERIFY(restored.exists(bob));
+            QCOMPARE(restored.totalMessages(bob), qint64(1));
+        }
+    }
     void wavHeaderAndAudio() {
         const QByteArray pcm = QByteArray::fromHex("0000ff7f00800040");
         const auto wav = EmberCore::pcmToWav(pcm, 16000);
