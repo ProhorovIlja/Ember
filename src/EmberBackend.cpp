@@ -45,7 +45,7 @@ EmberBackend::EmberBackend(QObject *parent)
         QDir(appFolder()).filePath("cache/session-XXXXXX"));
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_voiceId = m_settings.value("voiceId", 0).toInt();
-    m_voiceId = qBound(0, m_voiceId, 100);
+    m_voiceId = qBound(0, m_voiceId, 10);
 
     m_mediaPlayer.setAudioOutput(&m_audioOutput);
     m_audioOutput.setVolume(0.85);
@@ -194,7 +194,7 @@ void EmberBackend::setPersona(const QString &persona) {
     storeConfig();
 }
 void EmberBackend::setVoiceId(int index) {
-    if (index < 0 || index > 100 || index == m_voiceId) return;
+    if (index < 0 || index > 10 || index == m_voiceId) return;
     m_voiceId = index;
     storeConfig();
 }
@@ -444,10 +444,10 @@ void EmberBackend::synthesize(const QString &text) {
     const QString model = folder.filePath("model.onnx");
     const QString voices = folder.filePath("voices.bin");
     const QString tokens = folder.filePath("tokens.txt");
-    const QString lexicon = folder.filePath("lexicon-en-us.txt");
+    const QString dataDir = folder.filePath("espeak-ng-data");
     if (!isRegularFile(configPath("ttsExe")) || !isRegularFile(model) ||
-        !isRegularFile(voices) || !isRegularFile(tokens) || !isRegularFile(lexicon)) {
-        setStatus("Text is ready. Configure sherpa-onnx and all Kokoro model files to hear it.");
+        !isRegularFile(voices) || !isRegularFile(tokens) || !QFileInfo(dataDir).isDir()) {
+        setStatus("Configure sherpa-onnx and the complete Kokoro v0.19 pack, including espeak-ng-data.");
         return;
     }
     QFile::remove(workFile("voice.wav"));
@@ -456,7 +456,7 @@ void EmberBackend::synthesize(const QString &text) {
     m_tts.setArguments({"--kokoro-model=" + model,
                         "--kokoro-voices=" + voices,
                         "--kokoro-tokens=" + tokens,
-                        "--kokoro-lexicon=" + lexicon,
+                        "--kokoro-data-dir=" + dataDir,
                         "--num-threads=2",
                         "--sid=" + QString::number(m_voiceId),
                         "--output-filename=" + workFile("voice.wav"),
