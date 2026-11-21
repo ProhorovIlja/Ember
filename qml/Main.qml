@@ -479,8 +479,63 @@ ApplicationWindow {
                             spacing: 15
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "LOCAL CONVERSATION"; color: "#8EACA8"; font.pixelSize: 11; font.letterSpacing: 1.2 }
+                                Text { text: "LOCAL CONVERSATION"; color: "#9CB8D4"; font.pixelSize: 11; font.letterSpacing: 1.2 }
                                 Item { Layout.fillWidth: true }
+                                ComboBox {
+                                    id: conversationMode
+                                    model: ["Conversation", "Story studio", "Troubleshooting", "Development"]
+                                    currentIndex: ember.chatMode
+                                    onActivated: ember.chatMode = currentIndex
+                                    Layout.preferredWidth: 174
+                                    implicitHeight: 36
+                                    font.pixelSize: 12
+                                    contentItem: Text {
+                                        leftPadding: 11
+                                        text: conversationMode.displayText
+                                        color: "#D8EFFF"
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
+                                        font.pixelSize: 12
+                                    }
+                                    background: Rectangle {
+                                        color: "#0B223A"
+                                        radius: 10
+                                        border.color: "#275D8E"
+                                    }
+                                    delegate: ItemDelegate {
+                                        required property int index
+                                        required property string modelData
+                                        width: conversationMode.width
+                                        height: 38
+                                        text: modelData
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: "#DFEEFF"
+                                            font.pixelSize: 12
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                        background: Rectangle {
+                                            color: parent.highlighted ? "#184B79" : "#0C2237"
+                                        }
+                                    }
+                                    popup: Popup {
+                                        y: conversationMode.height + 4
+                                        width: conversationMode.width
+                                        padding: 3
+                                        implicitHeight: contentItem.implicitHeight + 6
+                                        background: Rectangle {
+                                            color: "#0B1D31"
+                                            radius: 10
+                                            border.color: "#2D69A0"
+                                        }
+                                        contentItem: ListView {
+                                            model: conversationMode.popup.visible ? conversationMode.delegateModel : null
+                                            currentIndex: conversationMode.highlightedIndex
+                                            implicitHeight: contentHeight
+                                            clip: true
+                                        }
+                                    }
+                                }
                                 PillButton {
                                     text: "Stop reply"
                                     implicitWidth: 119
@@ -584,7 +639,12 @@ ApplicationWindow {
                                         color: "#ECF4F8"
                                         font.pixelSize: 14
                                         wrapMode: TextEdit.Wrap
-                                        placeholderText: ember.brainReady ? "Ask Ember anything…" : "Start the local brain to write a message"
+                                        placeholderText: ember.brainReady ?
+                                                         (ember.chatMode === 1 ? "Continue your story, build characters, or write a scene…" :
+                                                          ember.chatMode === 2 ? "Describe the problem, symptoms, and observations…" :
+                                                          ember.chatMode === 3 ? "Describe the code, repository, or feature…" :
+                                                          "Ask Ember anything…") :
+                                                          "Start the local brain to write a message"
                                         placeholderTextColor: "#748C9C"
                                         background: Rectangle { color: "transparent" }
                                         Keys.onPressed: function(event) {
@@ -607,6 +667,9 @@ ApplicationWindow {
                                             onPressed: ember.startDictation()
                                             onReleased: ember.stopDictation()
                                             onCanceled: ember.stopDictation()
+                                            ToolTip.visible: hovered && !ember.dictationActive
+                                            ToolTip.delay: 800
+                                            ToolTip.text: "Hold, speak English or Russian, then release. The transcript appears in your composer."
                                         }
                                         PillButton {
                                             text: ember.busy ? "Working…" : "Send message"
