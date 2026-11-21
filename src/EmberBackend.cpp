@@ -30,6 +30,7 @@ QString defaultPath(const QString &key) {
     if (key == "asrModel") return root.filePath("models/stt/ggml-base.bin");
     if (key == "asrVadModel") return root.filePath("models/stt/ggml-silero-v6.2.0.bin");
     if (key == "ttsExe") return root.filePath("engines/sherpa/sherpa-onnx-offline-tts.exe");
+    if (key == "speechExe") return root.filePath("engines/speech/speech.exe");
     if (key == "ttsDir") return root.filePath("models/tts/kokoro-en-v0_19");
     return {};
 }
@@ -63,12 +64,12 @@ EmberBackend::EmberBackend(QObject *parent)
     m_network.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     m_voiceId = qBound(0, m_voiceId, 10);
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
-    m_localModel = m_settings.value("voice/localModel", "qwen3-tts").toString();
-    m_localVoice = m_settings.value("voice/localVoice", "Vivian").toString();
+    m_localModel = m_settings.value("voice/localModel", "qwen3-tts-0.6b").toString();
+    m_localVoice = m_settings.value("voice/localVoice", "vivian").toString();
     const QRegularExpression modelRx("^[A-Za-z0-9_./-]{1,80}$");
     const QRegularExpression voiceRx("^[A-Za-z0-9_-]{1,80}$");
-    if (!modelRx.match(m_localModel).hasMatch()) m_localModel = "qwen3-tts";
-    if (!voiceRx.match(m_localVoice).hasMatch()) m_localVoice = "Vivian";
+    if (!modelRx.match(m_localModel).hasMatch()) m_localModel = "qwen3-tts-0.6b";
+    if (!voiceRx.match(m_localVoice).hasMatch()) m_localVoice = "vivian";
     const QString defaultSample =
         "Hello. I'm Ember, your local voice assistant. "
         "Let's make something interesting together.";
@@ -134,6 +135,32 @@ EmberBackend::EmberBackend(QObject *parent)
 
     m_healthTimer.setInterval(1200);
     connect(&m_healthTimer, &QTimer::timeout, this, &EmberBackend::pollBrain);
+    m_speechHealthTimer.setInterval(1300);
+    connect(&m_speechHealthTimer, &QTimer::timeout, this, &EmberBackend::pollSpeechServer);
+    m_speechServer.setProcessChannelMode(QProcess::MergedChannels);
+    // Model download/status logs must not accumulate unboundedly in RAM and
+    // speech text / log output is intentionally never archived to disk.
+    connect(&m_speechServer, &QProcess::readyReadStandardOutput,
+            this, [this] { m_speechServer.readAllStandardOutput(); });
+    connect(&m_speechServer, &QProcess::started, this, [this] {
+        emit speechServerChanged();
+        setStatus("Native speech.cpp is loading; its first model run may download weights.");
+    });
+    connect(&m_speechServer, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+        m_speechHealthTimer.stop();
+        setSpeechServerReady(false);
+        emit speechServerChanged();
+        if (m_speechSequence && m_voiceEngine == 1)
+            stopSpeechOnError("The managed native speech engine exited during synthesis.");
+        else
+            setStatus("Managed native speech engine stopped.");
+    });
+    connect(&m_speechServer, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        m_speechHealthTimer.stop();
+        setSpeechServerReady(false);
+        emit speechServerChanged();
+        setStatus("speech.exe could not start. Check the Windows binary, GPU and model.");
+    });
     connect(&m_brain, &QProcess::finished, this,
             [this](int, QProcess::ExitStatus) {
                 m_healthTimer.stop();
@@ -214,6 +241,11 @@ EmberBackend::~EmberBackend() {
     if (m_brain.state() != QProcess::NotRunning) {
         m_brain.kill();
         m_brain.waitForFinished(1500);
+    }
+    m_speechHealthTimer.stop();
+    if (m_speechServer.state() != QProcess::NotRunning) {
+        m_speechServer.kill();
+        m_speechServer.waitForFinished(1500);
     }
 }
 
@@ -529,6 +561,78 @@ void EmberBackend::pollBrain() {
             m_healthTimer.stop();
             setBrainReady(true);
             setStatus("Local brain online · RTX acceleration requested.");
+        }
+    });
+}
+void EmberBackend::setSpeechServerReady(bool ready) {
+    if (m_speechServerReady == ready) return;
+    m_speechServerReady = ready;
+    emit speechServerChanged();
+}
+void EmberBackend::startSpeechServer() {
+    if (m_speechServer.state() != QProcess::NotRunning) {
+        setStatus(m_speechServerReady ? "Native speech engine is ready."
+                                    : "Native speech engine is already loading.");
+        return;
+    }
+    const QString binary = configPath("speechExe");
+    if (!isRegularFile(binary)) {
+        setStatus("Choose a trusted native speech.exe in Settings before starting.");
+        return;
+    }
+    // The user explicitly starts this optional process. speech.cpp may fetch
+    // model weights on its first run; Ember never automatically starts it.
+    const QRegularExpression modelRx("^[A-Za-z0-9_-]{1,80}$");
+    if (!modelRx.match(m_localModel).hasMatch()) {
+        setStatus("Choose a speech.cpp catalog model name, e.g. qwen3-tts-0.6b.");
+        return;
+    }
+    ++m_speechServerSession;
+    setSpeechServerReady(false);
+    m_speechServer.setWorkingDirectory(QFileInfo(binary).absolutePath());
+    m_speechServer.setProgram(binary);
+    m_speechServer.setArguments({"serve", m_localModel,
+                                 "--host", "127.0.0.1", "--port", "43822",
+                                 "--device", "auto", "--threads", "4"});
+    m_speechServerElapsed.start();
+    m_speechHealthTimer.start();
+    m_speechServer.start();
+    emit speechServerChanged();
+    setStatus("Launching native local speech synthesis. First use may download model weights.");
+}
+void EmberBackend::stopSpeechServer() {
+    ++m_speechServerSession;
+    m_speechHealthTimer.stop();
+    setSpeechServerReady(false);
+    if (m_speechSequence && m_voiceEngine == 1)
+        stopSpeechOnError("Managed native voice synthesis was stopped.");
+    if (m_speechServer.state() != QProcess::NotRunning) {
+        m_speechServer.kill();
+        m_speechServer.waitForFinished(1000);
+    }
+    emit speechServerChanged();
+    setStatus("Managed speech engine stopped; local text chat remains available.");
+}
+void EmberBackend::pollSpeechServer() {
+    if (m_speechServer.state() == QProcess::NotRunning || m_speechServerReady)
+        return;
+    if (m_speechServerElapsed.isValid() && m_speechServerElapsed.elapsed() > 180000)
+        setStatus("Speech model startup is taking longer than three minutes; check model download/GPU.");
+    const quint64 session = m_speechServerSession;
+    QNetworkRequest request{QUrl("http://127.0.0.1:43822/health")};
+    request.setTransferTimeout(1000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    QNetworkReply *reply = m_network.get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, session] {
+        const bool ok = reply->error() == QNetworkReply::NoError &&
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200;
+        reply->deleteLater();
+        if (ok && session == m_speechServerSession &&
+            m_speechServer.state() == QProcess::Running) {
+            m_speechHealthTimer.stop();
+            setSpeechServerReady(true);
+            setStatus("Native local speech model ready on 127.0.0.1:43822.");
         }
     });
 }
