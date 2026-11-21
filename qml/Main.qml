@@ -849,7 +849,7 @@ ApplicationWindow {
                                         Text { text: "PORTABLE LOCAL SETUP"; color: window.mint; font.pixelSize: 12; font.bold: true; font.letterSpacing: 1 }
                                         Text {
                                             width: parent.width
-                                            text: "Default installation: D:\\Games\\Ember. Choose trusted local engines and model files. Nothing downloads automatically."
+                                            text: "Default installation: D:\\Games\\Ember. Choose trusted local engines and models; optional model downloads begin only when you explicitly start a service."
                                             color: "#CFDFF1"
                                             wrapMode: Text.WordWrap
                                             font.pixelSize: 13
@@ -865,6 +865,7 @@ ApplicationWindow {
                                         { key: "asrModel", label: "Speech recognition weights" },
                                         { key: "asrVadModel", label: "Silero speech detection · optional" },
                                         { key: "ttsExe", label: "sherpa-onnx TTS executable" },
+                                        { key: "speechExe", label: "speech.cpp native TTS executable · optional" },
                                         { key: "ttsDir", label: "Kokoro model folder" }
                                     ]
                                     delegate: Rectangle {
@@ -1295,7 +1296,7 @@ ApplicationWindow {
                                         anchors.margins: 16
                                         spacing: 9
                                         Text {
-                                            text: "EXTERNAL LOCAL ENGINE · 127.0.0.1:43822"
+                                            text: "LOCAL SPEECH API · 127.0.0.1:43822"
                                             color: window.mint
                                             font.pixelSize: 11
                                             font.letterSpacing: 1
@@ -1315,7 +1316,7 @@ ApplicationWindow {
                                                 text: ember.localModel
                                                 maximumLength: 80
                                                 color: "#EAF5FF"
-                                                placeholderText: "qwen3-tts"
+                                                placeholderText: "qwen3-tts-0.6b"
                                                 font.pixelSize: 13
                                                 onEditingFinished: ember.localModel = text
                                                 background: Rectangle {
@@ -1340,7 +1341,7 @@ ApplicationWindow {
                                                 text: ember.localVoice
                                                 maximumLength: 80
                                                 color: "#EAF5FF"
-                                                placeholderText: "Vivian"
+                                                placeholderText: "vivian"
                                                 font.pixelSize: 13
                                                 onEditingFinished: ember.localVoice = text
                                                 background: Rectangle {
@@ -1351,11 +1352,73 @@ ApplicationWindow {
                                             }
                                         }
                                         Text {
-                                            text: "Start your own OpenAI-compatible TTS server on 43822. Output must be PCM16 WAV; redirects and remote hosts are blocked."
+                                            text: "Use any compatible local TTS server on this port, or start native speech.cpp below. PCM16 WAV only; no redirects or remote hosts."
                                             color: "#86A4BD"
                                             font.pixelSize: 11
                                             Layout.fillWidth: true
                                             wrapMode: Text.WordWrap
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    visible: ember.voiceEngine === 1
+                                    Layout.fillWidth: true
+                                    implicitHeight: 167
+                                    radius: 14
+                                    color: window.cardColor
+                                    border.color: window.borderColor
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 15
+                                        spacing: 11
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 8
+                                            Text {
+                                                text: "NATIVE speech.cpp · VULKAN"
+                                                color: window.mint
+                                                font.pixelSize: 11
+                                                font.letterSpacing: 0.9
+                                                Layout.fillWidth: true
+                                            }
+                                            Rectangle {
+                                                width: 7
+                                                height: 7
+                                                radius: 4
+                                                color: ember.speechServerReady ? "#7DCAFE" : "#4A6077"
+                                            }
+                                            Text {
+                                                text: ember.speechServerReady ? "Ready" :
+                                                      ember.speechServerRunning ? "Loading" : "Stopped"
+                                                color: "#A9C9E4"
+                                                font.pixelSize: 12
+                                            }
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: "Optional native Qwen3 speech service. Install speech.exe above; first start may download licensed model weights. Only model downloads use the internet; inference stays on loopback."
+                                            wrapMode: Text.WordWrap
+                                            color: "#8EABC5"
+                                            font.pixelSize: 12
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Item { Layout.fillWidth: true }
+                                            PillButton {
+                                                text: ember.speechServerRunning ? "Stop native TTS" : "Start native TTS"
+                                                implicitWidth: 170
+                                                implicitHeight: 38
+                                                enabled: ember.speechServerRunning || !ember.busy
+                                                onClicked: {
+                                                    if (ember.speechServerRunning) {
+                                                        ember.stopSpeechServer()
+                                                    } else {
+                                                        ember.localModel = externalModel.text.trim()
+                                                        ember.localVoice = externalVoice.text.trim()
+                                                        ember.startSpeechServer()
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1396,7 +1459,7 @@ ApplicationWindow {
                                         RowLayout {
                                             Layout.fillWidth: true
                                             Text {
-                                                text: "Use the same script for each voice; Russian requires a multilingual model."
+                                                text: "Compare female voices with the same English script. Sound quality requires real listening tests."
                                                 color: "#819CAA"
                                                 font.pixelSize: 11
                                                 Layout.fillWidth: true
