@@ -637,7 +637,8 @@ void EmberBackend::appendMessage(const QString &role, const QString &text) {
     m_messages.append(QVariantMap{{"role", role}, {"body", text}});
     // UI is bounded while SQLite keeps all text in this selected conversation.
     while (m_messages.size() > 300) m_messages.removeFirst();
-    if (m_store && m_store->ready() && !m_sessionId.isEmpty()) {
+    if (m_store && m_store->ready() &&
+        EmberCore::shouldPersistConversation(m_privateMode, m_sessionId)) {
         if (!m_store->append(m_sessionId, role, text))
             setStatus("Chat archive write failed; this turn is held only in memory.");
         refreshSessions();
@@ -968,7 +969,9 @@ void EmberBackend::finishChatStream(bool interrupted) {
         renderChatStream();
         m_lastReply = m_chatStreamText;
         emit lastReplyChanged();
-        if (m_store && m_store->ready() && m_chatStreamSession == m_sessionId) {
+        if (m_store && m_store->ready() &&
+            EmberCore::shouldPersistConversation(m_privateMode, m_sessionId) &&
+            m_chatStreamSession == m_sessionId) {
             if (!m_store->append(m_sessionId, "ember", m_chatStreamText))
                 setStatus("Failed to save a streamed answer to local SQLite.");
             refreshSessions();
@@ -999,8 +1002,11 @@ void EmberBackend::finishChatStream(bool interrupted) {
             beginSpeech(response);
         }
     } else {
-        setStatus(interrupted ? "Generation interrupted; partial text saved locally."
-                              : "Local streaming reply complete and archived.");
+        setStatus(m_privateMode
+            ? (interrupted ? "Private reply stopped; text kept in RAM only."
+                           : "Private reply complete; no chat text archived.")
+            : (interrupted ? "Generation interrupted; partial text saved locally."
+                           : "Local streaming reply complete and archived."));
     }
     m_voiceEarlyActive = false;
 }
@@ -1747,6 +1753,10 @@ QVariantList EmberBackend::searchHistory(const QString &text) const {
     return m_store && m_store->ready() ? m_store->search(text) : QVariantList();
 }
 void EmberBackend::exportCurrentSession() {
+    if (m_privateMode) {
+        setStatus("Private conversation export disabled to prevent accidental disk writes.");
+        return;
+    }
     if (!m_store || !m_store->ready() || m_sessionId.isEmpty()) {
         setStatus("Local history is not available for export.");
         return;
@@ -1816,9 +1826,35 @@ void EmberBackend::rebuildConversationHistory() {
     }
     while (m_history.size() > 48) m_history.removeFirst();
 }
+void EmberBackend::setPrivateMode(bool enabled) {
+    if (enabled == m_privateMode) return;
+    cancelWork();
+    if (!enabled) {
+        m_privateMode = false;
+        emit privateModeChanged();
+        // Restore an ordinary saved chat without copying private text.
+        const QVariantList existing = m_store && m_store->ready()
+            ? m_store->sessions(1) : QVariantList();
+        const QString previous = existing.isEmpty() ? QString()
+            : existing.first().toMap().value("id").toString();
+        if (!previous.isEmpty()) openSession(previous);
+        else clearConversation();
+        setStatus("Private mode ended. Restored ordinary local conversation.");
+        return;
+    }
+    m_privateMode = true;
+    emit privateModeChanged();
+    clearConversation(); // discard in-memory history; do not create SQLite chat
+    setStatus("Private text chat stays in RAM, not SQLite. "
+              "Microphone transcription still uses temporary local audio files.");
+}
 void EmberBackend::openSession(const QString &id) {
     if (!m_store || !m_store->ready() || !m_store->exists(id)) return;
     cancelWork();
+    if (m_privateMode) {
+        m_privateMode = false;
+        emit privateModeChanged();
+    }
     m_sessionId = id;
     m_continuityNotes = m_store->notes(id);
     emit continuityNotesChanged();
@@ -1837,7 +1873,7 @@ void EmberBackend::openSession(const QString &id) {
 }
 void EmberBackend::clearConversation() {
     cancelWork();
-    m_sessionId = m_store && m_store->ready()
+    m_sessionId = !m_privateMode && m_store && m_store->ready()
         ? m_store->createSession() : QString();
     m_history.clear();
     m_messages.clear();
@@ -1852,9 +1888,15 @@ void EmberBackend::clearConversation() {
     emit lastReplyChanged();
     emit transcriptChanged();
     refreshSessions();
-    setStatus("New conversation. Older chats remain saved locally.");
+    setStatus(m_privateMode ? "New private conversation in RAM; no chat text archived."
+                            : "New conversation. Older chats remain saved locally.");
 }
 void EmberBackend::deleteCurrentSession() {
+    if (m_privateMode) {
+        clearConversation();
+        setStatus("Private conversation discarded from live memory.");
+        return;
+    }
     if (!m_store || !m_store->ready() || m_sessionId.isEmpty()) return;
     cancelWork();
     if (!m_store->remove(m_sessionId)) {

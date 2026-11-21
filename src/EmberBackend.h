@@ -31,6 +31,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QVariantList messages READ messages NOTIFY messagesChanged)
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY sessionsChanged)
+    Q_PROPERTY(bool privateMode READ privateMode WRITE setPrivateMode NOTIFY privateModeChanged)
     Q_PROPERTY(QString continuityNotes READ continuityNotes NOTIFY continuityNotesChanged)
     Q_PROPERTY(QString recognitionHints READ recognitionHints NOTIFY recognitionHintsChanged)
     Q_PROPERTY(bool localHistoryReady READ localHistoryReady CONSTANT)
@@ -69,6 +70,7 @@ public:
     QVariantList messages() const { return m_messages; }
     QVariantList sessions() const { return m_sessions; }
     QString currentSessionId() const { return m_sessionId; }
+    bool privateMode() const { return m_privateMode; }
     QString continuityNotes() const { return m_continuityNotes; }
     QString recognitionHints() const { return m_recognitionHints; }
     bool localHistoryReady() const { return m_store && m_store->ready(); }
@@ -125,6 +127,7 @@ public:
     Q_INVOKABLE void testVoice();
     Q_INVOKABLE void cancelWork();
     Q_INVOKABLE void clearConversation();
+    Q_INVOKABLE void setPrivateMode(bool enabled);
     Q_INVOKABLE void openSession(const QString &id);
     Q_INVOKABLE void deleteCurrentSession();
     Q_INVOKABLE void setContinuityNotes(const QString &text);
@@ -138,6 +141,7 @@ signals:
     void voiceTimingsChanged();
     void messagesChanged();
     void sessionsChanged();
+    void privateModeChanged();
     void continuityNotesChanged();
     void recognitionHintsChanged();
     void dictationChanged();
@@ -208,6 +212,7 @@ private:
     int m_recognitionLanguage = 0, m_recognitionEngine = 0;
     int m_deliveryStyle = 0, m_outputVolume = 85;
     bool m_brainReady = false, m_busy = false, m_listening = false;
+    bool m_privateMode = false; // never stored in QSettings
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
     bool m_cliAsrActive = false;
     bool m_speechSequence = false;

@@ -25,6 +25,7 @@ QString nativeDeliveryInstructions(int style);
 bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate, qint64 processedUsecs);
 bool validPcmSampleRate(int rate);
 bool safeScratchSessionName(const QString &name);
+bool shouldPersistConversation(bool privateMode, const QString &sessionId);
 bool validSpeechWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
 QString speechFriendlyText(const QString &markdown);

@@ -9,6 +9,12 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void privateTextModeNeverReceivesSqliteWritePermission() {
+        QVERIFY(!EmberCore::shouldPersistConversation(true, "previous-chat"));
+        QVERIFY(!EmberCore::shouldPersistConversation(true, ""));
+        QVERIFY(!EmberCore::shouldPersistConversation(false, ""));
+        QVERIFY(EmberCore::shouldPersistConversation(false, "ordinary-chat"));
+    }
     void localSqliteHistoryPersistsAndDeletesOnlySelectedSession() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

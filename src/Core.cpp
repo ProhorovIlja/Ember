@@ -207,6 +207,9 @@ QJsonObject speechRequest(const QString &model, const QString &voice,
         {"response_format", "wav"}
     };
 }
+bool shouldPersistConversation(bool privateMode, const QString &sessionId) {
+    return !privateMode && !sessionId.isEmpty();
+}
 bool safeScratchSessionName(const QString &name) {
     // Never pass arbitrary user paths into abandoned-audio cleanup.
     static const QRegularExpression pattern("^[A-Za-z0-9]{6}$");
