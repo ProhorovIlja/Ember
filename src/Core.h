@@ -106,6 +106,9 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
 bool mostlyCyrillic(const QString &text);
 // Merge overlapped speech-recognition chunks without duplicating shared words.
 QString joinTranscriptionSegments(const QStringList &segments);
+// Preserve already recognized RU/EN dictation on a late model failure.
+// Never salvage voice requests that would be submitted automatically.
+QString partialDictationOnError(bool dictation, const QStringList &segments);
 // Safely assemble fragmented OpenAI/llama.cpp server-sent events; the buffer
 // retains partial UTF-8 frames while the caller decides how to render text.
 struct StreamResult { QString text; bool done = false; bool error = false; };
