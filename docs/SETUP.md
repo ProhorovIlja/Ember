@@ -59,3 +59,19 @@ The private `data\\ember-chats.sqlite` database stores only text and session met
 - Spoken output is intentionally English-only. English/Russian speech **input** and typed text are supported via multilingual Whisper; Russian TTS is not a current release requirement.
 - No model weight, audio or Windows packaging QA has been run on the user's own RTX 4070. A successful CI compile is not that test.
 - No file/tool control, autonomous Internet/GitHub/Drive, multimodal vision or content generation is included in the first milestone.
+
+## Native speech.cpp voice model (explicitly user-started)
+
+An optional [speech.cpp](https://github.com/nyosegawa/speech.cpp) installation provides a native GGML/Vulkan-compatible Qwen3-TTS server. Place a **trusted Windows x64** `speech.exe` plus its required runtime files at `engines/speech/speech.exe`, or choose the executable under **Model routing** in Settings. Set **Synthesis engine** to **Qwen3 / Chatterbox · local API**, **Model alias** to `qwen3-tts-0.6b` and **Voice ID** to `vivian` (both names are case-sensitive for speech.cpp). Click **Start native TTS**. Ember starts the owned process with:
+
+```text
+speech.exe serve qwen3-tts-0.6b --host 127.0.0.1 --port 43822 --device auto --threads 4
+```
+
+The native server stays resident for subsequent sentences, uses the local health endpoint, is stopped explicitly or at Ember exit, and requires **no browser**. It is **not** started on application launch. On its first run speech.cpp may download GGUF model weights from Hugging Face. The Settings UI states this before the user starts the process. Inference requests are sent only to `127.0.0.1:43822`; the model download is an external network operation and may require internet access. Verify the engine release and the particular GGUF **model license** before use. You may instead start a compatible third-party local TTS server; that option remains supported without Ember managing its lifecycle. No weights or speech.exe are currently bundled.
+
+### Speech playback improvements
+
+Long speech responses now use **two alternating private WAV slots**. While Windows plays one synthesized sentence block, the next can be produced in the opposite slot. Prefetch capacity is bounded to one ready block; output is never overwritten while the media player owns it. WAVs are deleted on normal completion, cancellation and ordinary engine errors; abrupt termination, Windows sharing violations and actual audio-device unplugging still require real-machine acceptance. API playback still waits for each **complete** PCM16 WAV: early incremental PCM audio, true full-duplex, microphone barge-in while TTS is synthesizing and perfect continuity are **not** implemented.
+
+Text-only Markdown/code/link formatting remains intact in the chat archive. For spoken replies, Ember strips headings, emphasis, inline link URLs and fenced code blocks, replacing code blocks with a short spoken explanation. An approximate Cyrillic-majority guard declines Russian-dominant **spoken** synthesis and keeps the original text available; it is not a full language identifier or an automatic translator.
