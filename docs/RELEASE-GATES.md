@@ -196,3 +196,17 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [ ] Evaluate archived Chatterbox only with pinned sources and full
   dependency licenses; consider LuxTTS as a CPU/low-VRAM candidate.
   Neither is installed or benchmarked by this research document.
+
+### 22 November 2026 — safe interrupted microphone capture recovery
+
+- [x] Input-selection change, input-device disappearance and QtAudio source
+  error now attempt editable-only dictation prefix recovery when the closed
+  scratch capture passes disk-size, 100ms and complete-frame checks; invalid
+  audio is discarded. Interruption flag is cleared on new take/cancel/ASR end.
+- [x] Truncated **voice** commands are never auto-submitted; disk-write
+  failures bypass recovery. Deterministic 16k mono and 48k stereo QtTests
+  cover integrity, too-short capture and failure conditions.
+- [ ] Physical Windows 10 unplug/replug, Bluetooth loss, default-device
+  switch, low-disk capture and long RU/EN dictation with ASR actually running.
+  Confirm readable editable prefix, missing-ending warning, no automatic
+  message, no orphaned microphone scratch and no stale QAudioSource.
