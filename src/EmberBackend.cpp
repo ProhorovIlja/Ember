@@ -793,8 +793,12 @@ void EmberBackend::stopRecording() {
     }
     m_transcriptionSize = recording.size();
     m_transcriptionOffset = 0;
-    m_transcriptionChunkSize = (bytesPerSecond * 25 /
-        m_captureFormat.bytesPerFrame()) * m_captureFormat.bytesPerFrame();
+    // Bound a single 25-second segment by the Core resampler's 32 MiB
+    // raw-input limit even on 8-channel/96 kHz/float capture hardware.
+    const qint64 frameBytes = m_captureFormat.bytesPerFrame();
+    const qint64 rawBudget = 30LL * 1024 * 1024;
+    m_transcriptionChunkSize = (std::min(bytesPerSecond * 25, rawBudget) /
+        frameBytes) * frameBytes;
     m_transcriptionSegments.clear();
     m_transcribingDictation = wasDictation;
     m_asrElapsed.start();
