@@ -287,6 +287,39 @@ bool attachLocalVisionData(QJsonObject &request, const QByteArray &dataUri) {
     return true;
 }
 
+// CommonMark's 0-3 space, same-character, same-or-wider code fences.
+// Keep text and speech presentation consistent without remote Markdown HTML.
+struct MarkdownFenceLine {
+    QChar marker;
+    qsizetype width = 0;
+    qsizetype indent = 0;
+    bool valid = false;
+    bool bare = false;
+};
+static MarkdownFenceLine markdownFenceLine(const QString &line) {
+    qsizetype indent = 0;
+    while (indent < line.size() && line[indent] == ' ' && indent < 4) ++indent;
+    if (indent > 3 || indent >= line.size()) return {};
+    const QChar marker = line[indent];
+    if (marker != QLatin1Char(96) && marker != QLatin1Char('~')) return {};
+    qsizetype end = indent;
+    while (end < line.size() && line[end] == marker) ++end;
+    if (end - indent < 3) return {};
+    const QString tail = line.mid(end);
+    if (marker == QLatin1Char(96) && tail.contains(QLatin1Char(96))) return {};
+    return {marker, end - indent, indent, true, tail.trimmed().isEmpty()};
+}
+static qsizetype nextMarkdownFence(const QString &text) {
+    for (qsizetype start = 0; start < text.size();) {
+        const qsizetype newline = text.indexOf('\n', start);
+        const qsizetype end = newline < 0 ? text.size() : newline;
+        const auto info = markdownFenceLine(text.mid(start, end - start));
+        if (info.valid) return start + info.indent;
+        if (newline < 0) break;
+        start = newline + 1;
+    }
+    return -1;
+}
 QString safeMarkdownHtml(const QString &markdown) {
     // Qt Quick RichText can fetch remote images when directly given LLM text.
     // Build only self-contained formatting tags, with NO img/a/style/script
@@ -294,25 +327,29 @@ QString safeMarkdownHtml(const QString &markdown) {
     const QStringList lines = markdown.left(32768).split(QLatin1Char('\n'));
     QString html = QStringLiteral("<div style=\"color:#EEF3F9\">");
     bool fenced = false;
-    const QString backFence(3, QLatin1Char(96));
+    QChar fenceMarker;
+    qsizetype fenceWidth = 0;
     for (const QString &line : lines) {
         const QString trimmed = line.trimmed();
-        if (trimmed.startsWith(backFence) ||
-            trimmed.startsWith(QLatin1String("~~~"))) {
-            if (fenced) {
+        const auto delimiter = markdownFenceLine(line);
+        if (fenced) {
+            if (delimiter.valid && delimiter.bare &&
+                delimiter.marker == fenceMarker && delimiter.width >= fenceWidth) {
                 html += QStringLiteral("</pre>");
                 fenced = false;
             } else {
-                html += QStringLiteral(
-                    "<pre style=\"font-family:Consolas,monospace;"
-                    "color:#BBE0FF;background-color:#0A1929;"
-                    "white-space:pre-wrap\">");
-                fenced = true;
+                html += line.toHtmlEscaped() + QLatin1Char('\n');
             }
             continue;
         }
-        if (fenced) {
-            html += line.toHtmlEscaped() + QLatin1Char('\n');
+        if (delimiter.valid) {
+            html += QStringLiteral(
+                "<pre style=\"font-family:Consolas,monospace;"
+                "color:#BBE0FF;background-color:#0A1929;"
+                "white-space:pre-wrap\">");
+            fenced = true;
+            fenceMarker = delimiter.marker;
+            fenceWidth = delimiter.width;
             continue;
         }
         if (trimmed.isEmpty()) {
@@ -769,27 +806,22 @@ QString speechFriendlyText(const QString &markdown) {
     QChar openFence;
     qsizetype openFenceWidth = 0;
     for (const QString &raw : speechSource.split('\n')) {
-        QString line = raw.trimmed();
-        // Markdown closing fences must use the SAME character and at least
-        // the opening width. A stray backtick fence inside a tilde block
-        // (or a shorter one inside a four-backtick block) is still code.
-        if (!line.isEmpty() && (line.front() == '`' || line.front() == '~')) {
-            qsizetype width = 0;
-            while (width < line.size() && line[width] == line.front()) ++width;
-            if (width >= 3) {
-                if (!insideCode) {
-                    insideCode = true;
-                    openFence = line.front();
-                    openFenceWidth = width;
-                    spokenLines.append("The code example is in the text chat.");
-                } else if (line.front() == openFence && width >= openFenceWidth &&
-                           line.mid(width).trimmed().isEmpty()) {
-                    insideCode = false;
-                }
-                continue;
-            }
+        const auto delimiter = markdownFenceLine(raw);
+        if (insideCode) {
+            if (delimiter.valid && delimiter.bare &&
+                delimiter.marker == openFence && delimiter.width >= openFenceWidth)
+                insideCode = false;
+            continue;
         }
-        if (insideCode || line.isEmpty()) continue;
+        if (delimiter.valid) {
+            insideCode = true;
+            openFence = delimiter.marker;
+            openFenceWidth = delimiter.width;
+            spokenLines.append("The code example is in the text chat.");
+            continue;
+        }
+        QString line = raw.trimmed();
+        if (line.isEmpty()) continue;
         line.remove(QRegularExpression(R"(^#{1,6}\s+)"));
         line.remove(QRegularExpression(R"(^>\s*)"));
         line.remove(QRegularExpression(R"(^[-*+]\s+)"));
@@ -828,12 +860,7 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
         // Markdown accepts both backtick and tilde fences. Treat a streamed
         // code block as a single non-spoken unit, and do not consume it until
         // the matching closing marker has actually arrived.
-        const qsizetype backticks = remaining.indexOf("```");
-        const qsizetype tildes = remaining.indexOf("~~~");
-        const qsizetype fence = backticks >= 0 && tildes >= 0
-            ? std::min(backticks, tildes)
-            : (backticks >= 0 ? backticks : tildes);
-        const QString marker = fence == backticks ? "```" : "~~~";
+        const qsizetype fence = nextMarkdownFence(remaining);
         if (fence == 0) {
             const QChar openingCharacter = remaining.front();
             qsizetype openingWidth = 0;
@@ -841,30 +868,22 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
                    remaining[openingWidth] == openingCharacter) ++openingWidth;
             qsizetype close = -1;
             qsizetype closingWidth = 0;
-            for (qsizetype pos = openingWidth; pos < remaining.size(); ++pos) {
-                // A closing fence occupies its own line; a marker in source
-                // code, an inline expression, or the wrong marker is not one.
-                if (remaining[pos] != openingCharacter) continue;
-                // Markdown allows up to three spaces before a fence line.
-                // Never mistake a marker inside a code expression for a
-                // closer, even if its remainder happens to look like whitespace.
-                const qsizetype before = remaining.lastIndexOf('\n', pos - 1);
-                if (before < 0 || pos - before - 1 > 3) continue;
-                bool indentationOnly = true;
-                for (qsizetype i = before + 1; i < pos; ++i)
-                    if (remaining[i] != ' ') { indentationOnly = false; break; }
-                if (!indentationOnly) continue;
-                qsizetype width = 0;
-                while (pos + width < remaining.size() &&
-                       remaining[pos + width] == openingCharacter) ++width;
-                if (width < openingWidth) continue;
-                const qsizetype newline = remaining.indexOf('\n', pos + width);
-                const qsizetype end = newline < 0 ? remaining.size() : newline;
-                if (!remaining.mid(pos + width, end - pos - width).trimmed().isEmpty())
-                    continue;
-                close = pos;
-                closingWidth = width;
-                break;
+            for (qsizetype pos = openingWidth; pos < remaining.size();) {
+                const qsizetype newline = remaining.indexOf('\n', pos);
+                if (newline < 0) break;
+                const qsizetype start = newline + 1;
+                const qsizetype next = remaining.indexOf('\n', start);
+                const qsizetype end = next < 0 ? remaining.size() : next;
+                const auto candidate = markdownFenceLine(
+                    remaining.mid(start, end - start));
+                if (candidate.valid && candidate.bare &&
+                    candidate.marker == openingCharacter &&
+                    candidate.width >= openingWidth) {
+                    close = start + candidate.indent;
+                    closingWidth = candidate.width;
+                    break;
+                }
+                pos = start;
             }
             if (close < 0 && !final) break;
             cursor += close >= 0 ? close + closingWidth : remaining.size();
