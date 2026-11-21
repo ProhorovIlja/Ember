@@ -134,6 +134,8 @@ public:
     Q_INVOKABLE void setRecognitionHints(const QString &text);
     Q_INVOKABLE QVariantList searchHistory(const QString &text) const;
     Q_INVOKABLE void exportCurrentSession();
+    Q_INVOKABLE void exportCompactHistory();
+    Q_INVOKABLE void restoreCompactHistory();
 signals:
     void statusChanged();
     void transcriptChanged();
