@@ -72,6 +72,7 @@ EmberBackend::EmberBackend(QObject *parent)
     m_network.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     m_voiceId = qBound(0, m_voiceId, 10);
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
+    m_earlySpeechEnabled = m_settings.value("voice/earlySpeech", true).toBool();
     m_localModel = m_settings.value("voice/localModel", "qwen3-tts-0.6b").toString();
     m_localVoice = m_settings.value("voice/localVoice", "vivian").toString();
     const QRegularExpression modelRx("^[A-Za-z0-9_./-]{1,80}$");
@@ -347,6 +348,19 @@ void EmberBackend::setVoiceEngine(int index) {
     setStatus(index == 0
         ? "Offline Kokoro selected. The next reply uses installed model files."
         : "Local speech service selected. Start a compatible server on 127.0.0.1:43822.");
+}
+void EmberBackend::setEarlySpeechEnabled(bool value) {
+    if (m_earlySpeechEnabled == value) return;
+    if (m_busy || m_speaking || m_listening) {
+        setStatus("Finish the current voice turn before changing early-speech mode.");
+        return;
+    }
+    m_earlySpeechEnabled = value;
+    m_settings.setValue("voice/earlySpeech", value);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(value ? "Early native speech enabled: synthesize after each complete sentence."
+                    : "Early native speech disabled: use the full text answer before TTS.");
 }
 void EmberBackend::setLocalVoice(const QString &value) {
     const QRegularExpression safe("^[A-Za-z0-9_-]{1,80}$");
@@ -698,7 +712,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_voiceEarlyFailed = false;
-    m_voiceEarlyActive = voice && m_voiceEngine == 1 &&
+    m_voiceEarlyActive = voice && m_earlySpeechEnabled && m_voiceEngine == 1 &&
         m_speechServerReady && m_speechServer.state() == QProcess::Running;
     m_liveSpeechCursor = 0;
     m_mediaPlayer.stop();
