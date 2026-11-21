@@ -759,6 +759,10 @@ QString speechFriendlyText(const QString &markdown) {
         line.remove(QRegularExpression(R"(^>\s*)"));
         line.remove(QRegularExpression(R"(^[-*+]\s+)"));
         line.remove(QRegularExpression(R"(^\d+[.)]\s+)"));
+        // Do not read image alt text as if Ember had inspected the pixels.
+        // Preserve the attachment in text; speak only a neutral location cue.
+        line.replace(QRegularExpression(R"(!\[[^\]\n]{0,180}\]\([^)]+\))"),
+                     "an image in the text chat");
         line.replace(QRegularExpression(R"(\[([^\]\n]{1,180})\]\([^)]+\))"), "\\1");
         line.replace(QRegularExpression(R"(https?://[^\s<>]+)"), "a reference link");
         line.remove(QRegularExpression(R"(\[[0-9]{1,3}\])"));
