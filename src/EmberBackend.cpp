@@ -1404,8 +1404,11 @@ void EmberBackend::pumpPcmPlayback() {
             setBusy(false);
             m_ttsOutputSlot = -1;
             playNextSpeechChunk();
-        } else if (m_pcmDrainElapsed.elapsed() > 8000) {
-            stopSpeechOnError("Windows PCM output did not finish draining within eight seconds.");
+        } else if (m_pcmDrainElapsed.elapsed() >
+                   std::max<qint64>(8000, expectedUs / 1000 + 8000)) {
+            // A full sentence may last far longer than eight seconds.
+            // Budget the expected audio duration plus a bounded 8 s margin.
+            stopSpeechOnError("Windows PCM output stalled beyond the audio-duration budget.");
         }
     }
 }
