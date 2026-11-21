@@ -10,6 +10,8 @@ Goal: determine an **actual best voice for the target Ryzen 5 5600 / RTX 4070 12
 | Qwen3-TTS 0.6B-CustomVoice via separate localhost API | Ten languages including Russian, 9 official speaker timbres, small relative GPU footprint | Requires running a separate compatible server and valid voice/model aliases; GPU co-residency with 8B LLM must be measured |
 | Qwen3-TTS 1.7B-CustomVoice / VoiceDesign | Style instruction, potentially richer multilingual naturalness and design | More VRAM/RAM and cold-start cost; do not assume it fits alongside the GGUF text model |
 | Chatterbox Turbo / Multilingual | Emotion/prosody options and voice consistency to compare | Variants have different language support; check individual license terms and output format |
+| Chatterbox Nano 110M | CPU-first English expressive TTS, useful when the RTX 4070 runs a larger GGUF | Publisher claims CPU throughput, not yet independently checked on Ryzen 5600; voice quality must be evaluated alongside Turbo |
+| MOSS-TTS family | High-quality conversational prosody and long-form consistency are worth blind testing | Larger models may not coexist with an 8–9B LLM on 12 GB VRAM; claims come from the publisher's own benchmarks |
 | Other future adapters | Use the same narrow, auditable local WAV contract to compare alternatives fairly | Must test against real audio output, not only a README benchmark |
 
 Qwen original models: https://github.com/QwenLM/Qwen3-TTS
@@ -56,9 +58,17 @@ Temporary audio is written only to Ember's private session cache; normal exit re
 
 ### ASR candidates added after multilingual model research
 
-- [Whisper.cpp](https://github.com/ggml-org/whisper.cpp/blob/master/examples/cli/README.md): the current engine; use **-l auto/en/ru**, pin RU or EN for very short clips, evaluate large-v3-turbo against base using matched microphone samples. Modern Whisper includes optional `--vad` and `--vad-model` using Silero VAD; future integration should measure false segmentation and interruption cost.
+- [Whisper.cpp](https://github.com/ggml-org/whisper.cpp/blob/master/examples/cli/README.md): the current engine; use **-l auto/en/ru**, pin RU or EN for very short clips, evaluate large-v3-turbo against base using matched microphone samples. Ember now enables `--vad -vm <path>` when an optional local GGML Silero model exists. Benchmark this preprocessing against no-VAD for low-volume speech and RU/EN word boundaries; it does not yet perform live streaming segmentation.
 - [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR): 0.6B / 1.7B multilingual ASR, including Russian and English. Official support is research evidence, **not** an integrated Ember backend.
 - [sherpa-onnx Qwen3-ASR](https://github.com/k2-fsa/sherpa-onnx/blob/master/cxx-api-examples/qwen3-asr-cxx-api.cc): native C++ API and INT8 ONNX weights; assess CPU speed, memory/VRAM coexistence and accuracy before turning it into an Ember adapter.
 - [ggml Qwen3-ASR-0.6B GGUF](https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF): an additional llama.cpp-compatible quantized option, separate from the text GGUF. It cannot share the existing text model process blindly.
 
 The speech **output** preference is English-only; Russian transcription and text responses are still required. A candidate winning WER on Russian is not automatically the best at English accents, latency or resource usage. Test the composite pipeline against each candidate rather than claiming incompatible weights can be merged losslessly.
+
+## 21 November 2026 — implementation and shortlist update
+
+The native client now exposes optional **GGML Silero VAD** in Settings, wired to whisper-cli for English/Russian transcription. It is not required for compatibility with older binaries. In matched tests, score both false omission of quiet words and reduction of hallucinations on silence; do not report it as an accuracy gain without recordings.
+
+The English female speech shortlist now includes **Chatterbox Nano (110M, CPU-focused)** and **Turbo (350M)** as lighter competitors to Kokoro, plus **MOSS-TTS** as a quality-oriented research candidate. Published company-model comparisons are hypotheses, not blind-listening results on this GPU. Use the same text prompts and report cold start, warm latency, VRAM co-residency, clip duration, audio clipping, accent stability and consistency across 3+ minute dialogues. Sources: https://github.com/resemble-ai/chatterbox and https://github.com/OpenMOSS/MOSS-TTS .
+
+A "Frankenstein" integration means **selecting and orchestrating verified specialized engines**, with separate ASR/LLM/TTS selection and stable local APIs. Incompatible checkpoints must not be averaged, concatenated, or represented as a proven merged model without architecture-aware training and quantitative evidence.
