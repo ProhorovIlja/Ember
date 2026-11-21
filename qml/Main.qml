@@ -339,6 +339,16 @@ ApplicationWindow {
                                     }
                                 }
                             }
+                            Text {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.maximumWidth: 670
+                                Layout.fillWidth: true
+                                text: ember.voiceTimings
+                                color: "#849FAF"
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
+                            }
                             Item { Layout.fillHeight: true }
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
