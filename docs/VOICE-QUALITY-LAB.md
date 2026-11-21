@@ -491,3 +491,28 @@ closers and nonclosers with four spaces. This is a presentation correctness
 fix, **not** a measured MOS, expressiveness or first-acoustic-audio improvement.
 As with other changes, this only passes the acceptance gate after exact-HEAD
 Windows CI plus a later physical listening test.
+
+## 22 November — conservative muted-microphone ASR suppression
+
+Both offline Whisper.cpp and the optional localhost Qwen3-ASR endpoint now skip
+inference for a resampled WAV only when it is canonical mono 16-kHz PCM16
+from Ember and **every sample** lies within ±32/32768 peak
+(approximately -60 dBFS). This cheaply avoids interpreting a completely
+muted microphone/digital-zero interval as fluent speech. The native ASR
+engine is not contacted for these segments; partial real dictation on either
+side remains in the transcription queue. An event-loop hop processes the next
+segment to avoid call-stack growth in long silent push-to-release recordings.
+
+The filter deliberately does **not** claim to recognize human speech. Any
+sample above the near-zero threshold retains the recording, including quiet
+speech and most ambient noise; reducing hallucinations on noise needs a real
+calibrated VAD, language-specific tests and user-controlled override.
+[Whisper.cpp's CLI documentation](https://github.com/ggml-org/whisper.cpp/blob/master/examples/cli/README.md)
+also warns that mostly silence or music can produce fluent phantom text.
+Qt tests cover all-zero recording, below/above-threshold samples, negative
+amplitude, 48-kHz mismatch and malformed WAV. No audio is saved in the voice
+quality benchmark report and no public model weights are bundled.
+
+This is a deterministic pre-inference filter for the native Windows application,
+not evidence of lower measured hallucination rate on real microphones, nor an
+acoustic voice-quality improvement. Keep stable release gates unchanged.
