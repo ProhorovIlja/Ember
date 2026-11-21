@@ -242,7 +242,7 @@ private slots:
         QString draft = "Hello there. The second sentence is still";
         QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false),
                  QStringList({"Hello there."}));
-        QCOMPARE(cursor, qsizetype(12));
+        QCOMPARE(cursor, qsizetype(13));
         QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, false).isEmpty());
         draft += " being generated. Third sentence";
         QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false),
@@ -255,11 +255,11 @@ private slots:
         QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, true).isEmpty());
 
         cursor = 0;
-        draft = "The sample follows.\\n```cpp\\nstd::cout << 1;";
+        draft = "The sample follows.\n```cpp\nstd::cout << 1;";
         QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false),
                  QStringList({"The sample follows."}));
         QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, false).isEmpty());
-        draft += "\\n```\\nAnd that concludes the example.";
+        draft += "\n```\nAnd that concludes the example.";
         const auto final = EmberCore::takeCommittedSpeech(draft, cursor, true);
         QCOMPARE(final, QStringList({"The code example is in the text chat.",
                                      "And that concludes the example."}));
