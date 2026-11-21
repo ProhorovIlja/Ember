@@ -13,3 +13,5 @@
 - A reproducible Inno Setup **development** installer and portable ZIP compiled by CI; silent install, actual QML launch and uninstall smoke test; installer SHA-256 in artifact. A separate **fail-closed stable release workflow** validates hardware, voice quality, licenses, notes and reviewer evidence before any final Release.
 
 Limitations: requires separate models and binaries; hardware and audio quality unverified; no real-time full-duplex calls or automatic installers. This document is a draft and must not be published as a stable download.
+
+Further development after first dev installer: private SQLite text history with multiple named sessions, explicit delete, RU/EN press-and-hold disk-backed dictation, native English-only voice preference, text SSE streaming, conversation/story/troubleshoot/development profiles, custom AMOLED-black/electric-blue Qt Quick design and original flame emblem. The user explicitly declined previews: **development CI no longer uploads artifacts**. Only the final human/hardware accepted GitHub Release is distributable.

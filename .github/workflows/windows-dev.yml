@@ -78,12 +78,4 @@ jobs:
       - name: Compile and validate unsigned developer installer
         shell: pwsh
         run: pwsh -NoProfile -File release/build-dev-installer.ps1 -VerifyInstall
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Ember-native-dev-win64-${{ github.sha }}
-          path: |
-            Ember-dev-win64.zip
-            dist/Ember-0.1.0-dev-Windows-x64.exe
-            dist/Ember-dev-installer-SHA256.txt
-          retention-days: 7
-          if-no-files-found: error
+      # No user-facing preview is uploaded. Release artifacts are published only\n      # through the separately gated stable-release.yml workflow.\n

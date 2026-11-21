@@ -40,3 +40,13 @@ Provider-independent persona text is configurable locally. Ember applies no addi
 - ASR word error rate for real noise, Russian and English; interruption and speech endpointing.
 - First audible response latency / total turn latency, speaker selection consistency and resource use. The live UI currently exposes only completed ASR, LLM and TTS-chunk timings: these do **not** measure time-to-first-sound or end-to-end audio quality. Future benchmark instrumentation must add those measurements before claiming low latency.
 - Stable operation after 100+ turns, memory bounds, audio devices unplug/replug, DPI scaling 100/125/150%.
+
+### Text history, dictation and responsive UI implementation
+
+`SessionStore` uses Qt SQLite (WAL, indexed sessions and message rows, text-only) and stores the archive under the executable's portable `data` directory. It restores the most recent chat on startup, supports explicit new/open/delete session actions and keeps a bounded UI message list while retaining all prior text in SQLite. The database is **not encrypted** and never synchronized to Google Drive without a future explicit module. SQLite's dynamic Windows driver is included in the actual native Qt dependency deployment.
+
+The chat request uses llama.cpp's OpenAI-compatible server-sent events with bounded incremental parsing, UTF-8-safe assembly and 40 ms batched QML updates. The last completed/partial answer is persisted to SQLite, but arbitrary intermediary token timing is not a benchmark. Writing presets separately cover general conversation, collaborative fiction, troubleshooting and code work. Only a few recent turns are returned to the model due the active context budget: an actual long-term retrieval/summary system remains future work.
+
+Dictation is intentionally independent of starting the LLM. QAudioSource writes to a temporary disk file rather than accumulating the whole recording in RAM. Stop/release transcribes consecutive bounded 25-second WAV windows using offline multilingual Whisper; the native UI inserts the final RU/EN text without submitting it. A 1 GiB raw capture safety limit bounds disk use. There is not yet VAD-aware segmentation, cross-window speaker diarization, or guaranteed transcription quality. A separate speech conversation path remains 30-second turn-based, with English-only TTS.
+
+AMOLED visual system is rendered by Qt Quick (no WebView2), using pure black/dark navy surfaces and blue accents, a custom native SVG emblem and restrained conditional motion. Final visual review across Windows 10/11, scaling, real NVIDIA drivers and font availability is outstanding.

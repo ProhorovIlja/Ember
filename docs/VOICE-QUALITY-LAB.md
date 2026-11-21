@@ -53,3 +53,12 @@ Model/audio data never reaches a remote inference endpoint from the Ember client
 Temporary audio is written only to Ember's private session cache; normal exit removes it, but forced termination can leave files and must be tested. No test dataset, voice reference clip or personally identifiable microphone recording should be committed to this public repository or uploaded to Google Drive without explicit intent.
 
 **Status:** No real listening comparisons or target-PC VRAM benchmarks have been completed at this checkpoint. The development UI exists and can measure stage latency after the user supplies compatible engines and weights.
+
+### ASR candidates added after multilingual model research
+
+- [Whisper.cpp](https://github.com/ggml-org/whisper.cpp/blob/master/examples/cli/README.md): the current engine; use **-l auto/en/ru**, pin RU or EN for very short clips, evaluate large-v3-turbo against base using matched microphone samples. Modern Whisper includes optional `--vad` and `--vad-model` using Silero VAD; future integration should measure false segmentation and interruption cost.
+- [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR): 0.6B / 1.7B multilingual ASR, including Russian and English. Official support is research evidence, **not** an integrated Ember backend.
+- [sherpa-onnx Qwen3-ASR](https://github.com/k2-fsa/sherpa-onnx/blob/master/cxx-api-examples/qwen3-asr-cxx-api.cc): native C++ API and INT8 ONNX weights; assess CPU speed, memory/VRAM coexistence and accuracy before turning it into an Ember adapter.
+- [ggml Qwen3-ASR-0.6B GGUF](https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF): an additional llama.cpp-compatible quantized option, separate from the text GGUF. It cannot share the existing text model process blindly.
+
+The speech **output** preference is English-only; Russian transcription and text responses are still required. A candidate winning WER on Russian is not automatically the best at English accents, latency or resource usage. Test the composite pipeline against each candidate rather than claiming incompatible weights can be merged losslessly.

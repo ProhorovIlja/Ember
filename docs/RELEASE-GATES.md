@@ -12,4 +12,12 @@ The first branch is a **source-first development foundation**. The unsigned deve
 - [ ] Validated release version, full release notes, SHA256 checksums, source ZIP/tar supplied by GitHub, license inventory and tested installer artifact.
 - [ ] Security review: no local shell/file/Internet tool access except explicitly approved capabilities; all AI network HTTP is loopback-only.
 
-GitHub Actions **development artifacts** may contain the unsigned Qt app without models, clearly marked incomplete. The main GitHub Releases page remains reserved for verified stable binaries.
+Development CI now runs native builds, installer round-trip checks and quality-gate tests **without uploading user-facing previews**. The main GitHub Releases page remains reserved for complete verified stable binaries, release notes and hashes.
+
+### Additional current acceptance checks
+
+- [ ] Real EN/RU dictation using 30-second and multi-minute microphone samples, including hardware hotplug and low-disk conditions; confirm no text is sent automatically and no audio remains in persistent chat history.
+- [ ] SQLite crash recovery, local chat reopen/navigation/delete, Win10 file permissions, backup/export and archive growth checks. Current archive is plaintext; verify uninstall does not silently erase it.
+- [ ] Long-form story coherence and recall over multiple sessions, dialogue naturalness, factual troubleshooting quality, code reliability, token-stream interruption and context overflow regression tests.
+- [ ] AMOLED blue UI/icon at 100/125/150/200% DPI, keyboard interaction and a real RTX 4070 visual/performance review.
+- [ ] No development previews are published; only an accepted stable Release can be downloadable under the release gating policy.

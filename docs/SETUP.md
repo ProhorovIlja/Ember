@@ -34,15 +34,17 @@ D:\Games\Ember\
 
 Engine paths are explicit, not dynamically downloaded. Never copy random executable builds from unknown repositories. All model inference and voice synthesis occur locally if you use the upstream binaries and configuration described.
 
-### Development installer
+### Local development and final distribution
 
-GitHub Actions builds `Ember-0.1.0-dev-Windows-x64.exe` plus the portable `Ember-dev-win64.zip` and a SHA-256 file. The per-user installer suggests `D:\Games\Ember` when a D drive exists and falls back to the user's local application directory. It has passed automatic install, native QML startup and uninstall on a Windows CI runner. The ZIP and installer **do not include model weights or third-party engine executables** and are only short-lived development artifacts, not stable GitHub Releases.
+The CI runner assembles and installs a per-user Inno Setup EXE to confirm that the native Qt interface actually starts and can be removed. **No preview artifact is uploaded or advertised.** The final, acceptance-gated GitHub Release will contain the verified Windows EXE, portable ZIP, SHA-256 checksums and versioned release notes. The default folder suggestion remains `D:\\Games\\Ember` if drive D exists.
 
-A later stable version requires human-reviewed hardware and voice benchmarks. The acceptance-gated tag workflow is in `.github/workflows/stable-release.yml` and only a corresponding version tag with `release/acceptance.json` and version-specific release notes can publish a stable release.
+The private `data\\ember-chats.sqlite` database stores only text and session metadata. It survives normal application restarts; it is not automatically deleted on uninstall. Audio capture, transcripts awaiting insertion and generated WAV files are kept in temporary session cache, not in SQLite. The text database is currently **not encrypted**; enable your Windows disk encryption or control access to that folder for additional local confidentiality. There is no Google Drive sync until an explicit opt-in module is implemented.
+
+**Dictation:** In Chat, hold **Hold to dictate**, speak English or Russian, then release. The transcript is inserted in the composer for editing; it is not sent to the LLM unless you press **Send message**. For better accuracy select English or Russian in Settings instead of Auto-detect. Voice conversations retain English spoken output; text and dictation accept both languages. Long dictation writes only to a temporary raw file (1 GiB quota, no 30-second stop) and is transcribed offline in bounded sequential chunks.
 
 ### Known limitations
 
-- Not live full-duplex or streaming audio; latency includes one process startup per ASR/TTS request.
+- Text now streams over loopback SSE; audio is still not live full-duplex and each ASR/TTS chunk starts its own process except for the optional persistent TTS server.
 - Common 44.1/48 kHz mono/stereo microphones are resampled to 16 kHz with anti-alias filtering. Native input/output selection, persisted device IDs, capture memory watchdog and basic device-disconnection handling are implemented, but actual USB/Bluetooth fault testing, VAD, echo cancellation, barge-in and full-duplex remain pending.
 - The first Kokoro model is English. Russian synthesis and multilingual quality require a verified compatible engine/model path.
 - No model weight, audio or Windows packaging QA has been run on the user's own RTX 4070. A successful CI compile is not that test.
