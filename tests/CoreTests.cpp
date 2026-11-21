@@ -290,7 +290,7 @@ private slots:
         cursor = 0;
         QCOMPARE(EmberCore::takeCommittedSpeech(
             "No. That is not the answer. ", cursor, false),
-            QStringList({"That is not the answer."}));
+            QStringList({"No. That is not the answer."}));
         // The very short "No." stays joined until a longer completed sentence.
     }
     void boundsSpeechCommitsForUnpunctuatedLongTokens() {
