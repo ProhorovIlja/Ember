@@ -219,6 +219,31 @@ private slots:
             "A short sentence ends.", "SENTENCE ENDS, and resumes."
         }), QString("A short sentence ends. and resumes."));
     }
+    void keepsMarkdownInArchiveButSpeaksNaturalText() {
+        QString response = "# Quick fix\n";
+        response += "Please see [official documentation](https://example.com/docs).\n";
+        response += "- **Try again** with `--verbose`.\n";
+        response += "```cpp\nint main() { return 0; }\n```\n";
+        response += "The next step is in [2].";
+        const QString spoken = EmberCore::speechFriendlyText(response);
+        QVERIFY(spoken.contains("Quick fix"));
+        QVERIFY(spoken.contains("official documentation"));
+        QVERIFY(spoken.contains("Try again with --verbose"));
+        QVERIFY(spoken.contains("The code example is in the text chat."));
+        QVERIFY(!spoken.contains("main()"));
+        QVERIFY(!spoken.contains("https://"));
+        QVERIFY(!spoken.contains("**"));
+        QVERIFY(!spoken.contains("[2]"));
+        QVERIFY(response.contains("int main()"));
+        QVERIFY(EmberCore::speechFriendlyText(QString(16385, 'x')).isEmpty());
+    }
+    void stopsPredominantlyRussianSynthesisForEnglishVoice() {
+        QVERIFY(EmberCore::mostlyCyrillic(QString::fromUtf8(
+            "Привет, сегодня у нас очень важная встреча, и мы поговорим об этом.")));
+        QVERIFY(!EmberCore::mostlyCyrillic(QString::fromUtf8(
+            "The characters Ivan and Мария are waiting for you in London.")));
+        QVERIFY(!EmberCore::mostlyCyrillic(QString("Speak to me in English, Ember.")));
+    }
     void longSpokenRepliesAreSplitWithoutSilentTruncation() {
         const QString input = QString("A thoughtful reply has a natural pause. ").repeated(70).trimmed();
         const auto chunks = EmberCore::speechChunks(input);
