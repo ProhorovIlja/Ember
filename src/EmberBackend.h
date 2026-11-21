@@ -192,6 +192,8 @@ private:
     quint64 m_captureSession = 0;
     QElapsedTimer m_brainElapsed;
     quint64 m_brainSession = 0;
-    QElapsedTimer m_asrElapsed, m_llmElapsed, m_ttsElapsed;
+    QElapsedTimer m_asrElapsed, m_llmElapsed, m_ttsElapsed, m_voiceTurnElapsed;
     qint64 m_asrLastMs = -1, m_llmLastMs = -1, m_ttsLastMs = -1;
+    qint64 m_llmFirstTokenMs = -1, m_voiceFirstPlaybackMs = -1;
+    bool m_voiceTurnActive = false;
 };
