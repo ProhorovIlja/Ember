@@ -84,6 +84,11 @@ bool captureAllowedWithInterruption(bool busy, bool listening,
 // A recording must never exceed its scratch quota or end on a partial PCM frame.
 qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
                            int bytesPerFrame, qint64 quota = 1024LL * 1024 * 1024);
+// A microphone hotplug/interruption can be salvaged as an EDITABLE dictation
+// draft only after close+integrity checks. Never salvage a voice command that
+// would be sent automatically or files with a partial PCM frame.
+bool canRecoverInterruptedDictation(bool dictation, bool writeFailed,
+    qint64 observedWrittenBytes, qint64 fileSize, const QAudioFormat &format);
 // Render a restricted local-only subset of Markdown. No external-resource HTML.
 QString safeMarkdownHtml(const QString &markdown);
 // Image references are local SHA-256 identifiers in text archive only.
