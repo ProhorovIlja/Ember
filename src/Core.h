@@ -16,4 +16,8 @@ bool allowedLocalSpeechEndpoint(const QString &url);
 QJsonObject speechRequest(const QString &model, const QString &voice, const QString &text);
 bool validSpeechWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
+// Safely assemble fragmented OpenAI/llama.cpp server-sent events; the buffer
+// retains partial UTF-8 frames while the caller decides how to render text.
+struct StreamResult { QString text; bool done = false; bool error = false; };
+StreamResult consumeChatStream(QByteArray &buffer, const QByteArray &incoming);
 }
