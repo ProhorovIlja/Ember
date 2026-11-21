@@ -1003,6 +1003,50 @@ private slots:
             "![scene](image://local-attachment)"),
             QString("an image in the text chat"));
     }
+    void constantMemoryVisibleReasoningStreamIsAppendOnly() {
+        EmberCore::VisibleAssistantStream state;
+        QString rendered;
+        const QStringList chunks{
+            "This is ", "visible. <TH", "INK>hide this fact ",
+            "in several separate chunks, including a closing prefix </t",
+            "hi", "nk>Visible after. "
+        };
+        for (const QString &chunk : chunks) {
+            const QString piece = EmberCore::consumeVisibleAssistantDelta(state, chunk);
+            QVERIFY(!piece.contains("hide this fact"));
+            QVERIFY(state.possibleTag.size() <= 7);
+            rendered += piece;
+        }
+        QCOMPARE(rendered, QString("This is visible. Visible after. "));
+        QVERIFY(!state.insideThought);
+        QVERIFY(state.possibleTag.isEmpty());
+
+        // An engine can emit far more hidden tokens than the 16,384-char
+        // visible response bound. The original implementation buffered all
+        // those private tokens and recomputed their projection on every SSE.
+        state = {};
+        QVERIFY(EmberCore::consumeVisibleAssistantDelta(
+            state, "<think>").isEmpty());
+        const QString longThought(200000, 'x');
+        for (qsizetype i = 0; i < longThought.size(); i += 97) {
+            QVERIFY(EmberCore::consumeVisibleAssistantDelta(
+                state, longThought.mid(i, 97)).isEmpty());
+            QVERIFY(state.possibleTag.size() <= 7);
+        }
+        QCOMPARE(EmberCore::consumeVisibleAssistantDelta(
+            state, "</think>The public answer is here."),
+            QString("The public answer is here."));
+        QVERIFY(!state.insideThought);
+        QVERIFY(state.possibleTag.isEmpty());
+
+        // A cancelled response must not poison the next response's parser.
+        state = {};
+        QCOMPARE(EmberCore::consumeVisibleAssistantDelta(
+            state, "New chat after cancellation. "),
+            QString("New chat after cancellation. "));
+        QCOMPARE(EmberCore::visibleAssistantText(
+            "<think>hidden</think>Visible."), QString("Visible."));
+    }
     void neverRendersOrPersistsStreamedLocalModelThinking() {
         using EmberCore::visibleAssistantText;
         QVERIFY(visibleAssistantText("<think>private note.").isEmpty());
