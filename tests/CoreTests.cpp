@@ -33,6 +33,13 @@ private slots:
             true, false, 100, 100, mono)); // under 100 ms
         QVERIFY(!EmberCore::canRecoverInterruptedDictation(
             true, false, 0, 0, mono));
+        const qint64 safetyQuota = 1024LL * 1024 * 1024;
+        // Quota exhaustion is also an involuntary stop: only a dictated
+        // editable draft can be recognized, never auto-send as voice chat.
+        QVERIFY(EmberCore::canRecoverInterruptedDictation(
+            true, false, safetyQuota, safetyQuota, mono));
+        QVERIFY(!EmberCore::canRecoverInterruptedDictation(
+            false, false, safetyQuota, safetyQuota, mono));
 
         QAudioFormat stereo;
         stereo.setSampleRate(48000);
