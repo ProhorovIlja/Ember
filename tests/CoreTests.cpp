@@ -163,6 +163,42 @@ private slots:
         }
         QCOMPARE(EmberCore::whisperWav(floats, format).size(), 44 + 160 * 2);
     }
+    void pinnedConversationNotesSurviveRestartAndDelete() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString path = tmp.filePath("story.sqlite");
+        QString story;
+        QString other;
+        {
+            SessionStore store(path);
+            QVERIFY2(store.ready(), qPrintable(store.error()));
+            story = store.createSession();
+            other = store.createSession();
+            QVERIFY(store.setNotes(story,
+                "Characters: Mira is a botanist.\nSetting: year 1890."));
+            QVERIFY(store.setNotes(other, "Unrelated technical notebook."));
+            QVERIFY(!store.setNotes(story, QString(1801, 'x')));
+            QVERIFY(!store.setNotes("nonexistent", "No cross-session write."));
+            QCOMPARE(store.notes(story), QString("Characters: Mira is a botanist.\nSetting: year 1890."));
+            const QString exported = tmp.filePath("story.md");
+            QVERIFY(store.exportMarkdown(story, exported));
+            QFile file(exported);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            const QString text = QString::fromUtf8(file.readAll());
+            QVERIFY(text.contains("## Saved continuity notes\n\nCharacters: Mira"));
+            QVERIFY(!text.contains("Unrelated technical notebook"));
+        }
+        {
+            SessionStore reopened(path);
+            QVERIFY(reopened.ready());
+            QCOMPARE(reopened.notes(story), QString("Characters: Mira is a botanist.\nSetting: year 1890."));
+            QVERIFY(reopened.remove(story));
+            QVERIFY(reopened.notes(story).isEmpty());
+            QCOMPARE(reopened.notes(other), QString("Unrelated technical notebook."));
+            QVERIFY(reopened.setNotes(other, ""));
+            QVERIFY(reopened.notes(other).isEmpty());
+        }
+    }
     void mergesOverlappingEnglishAndRussianDictation() {
         QCOMPARE(EmberCore::joinTranscriptionSegments({
             "I walked into the old city",
