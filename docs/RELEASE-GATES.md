@@ -179,3 +179,20 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [ ] Repeat with actual installed GGUF reasoning/long-story models and true
   multi-minute user input; quantify first-visible-token delay, response
   completion accuracy, CPU/VRAM and safe cancellation on the target PC.
+
+### 22 November 2026 — explicit story continuation and female English speech
+
+- [x] Qt Quick offers a contextual **Continue answer** action only
+  when the local model actually ended with `finish_reason: length`.
+  The action starts a user-approved ordinary local message, does
+  not silently request more tokens, preserves an unsent composer
+  draft, and is disabled during capture/generation/playback.
+- [ ] Windows 10 manual GUI/DPI acceptance for the contextual action,
+  including 900px window minimum, short/long conversation, private
+  chat, switch session and failure/retry.
+- [ ] Blind A/B of Qwen3 CustomVoice Vivian/Serena vs truly
+  English-native female alternatives (and any original VoiceDesign
+  voice) with identical text, real headphone playback and RTX 4070.
+- [ ] Evaluate archived Chatterbox only with pinned sources and full
+  dependency licenses; consider LuxTTS as a CPU/low-VRAM candidate.
+  Neither is installed or benchmarked by this research document.
