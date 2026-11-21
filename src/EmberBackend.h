@@ -29,6 +29,9 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(bool speaking READ speaking NOTIFY speakingChanged)
     Q_PROPERTY(QString persona READ persona WRITE setPersona NOTIFY configurationChanged)
     Q_PROPERTY(int voiceId READ voiceId WRITE setVoiceId NOTIFY configurationChanged)
+    Q_PROPERTY(int voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY configurationChanged)
+    Q_PROPERTY(QString localVoice READ localVoice WRITE setLocalVoice NOTIFY configurationChanged)
+    Q_PROPERTY(QString localModel READ localModel WRITE setLocalModel NOTIFY configurationChanged)
     Q_PROPERTY(int configurationRevision READ configurationRevision NOTIFY configurationChanged)
     Q_PROPERTY(QVariantList audioInputs READ audioInputs NOTIFY audioDevicesChanged)
     Q_PROPERTY(QVariantList audioOutputs READ audioOutputs NOTIFY audioDevicesChanged)
@@ -47,6 +50,9 @@ public:
     bool speaking() const { return m_speaking; }
     QString persona() const { return m_persona; }
     int voiceId() const { return m_voiceId; }
+    int voiceEngine() const { return m_voiceEngine; }
+    QString localVoice() const { return m_localVoice; }
+    QString localModel() const { return m_localModel; }
     int configurationRevision() const { return m_configurationRevision; }
     QVariantList audioInputs() const;
     QVariantList audioOutputs() const;
@@ -56,6 +62,9 @@ public:
     Q_INVOKABLE void choosePath(const QString &key);
     Q_INVOKABLE void setPersona(const QString &persona);
     Q_INVOKABLE void setVoiceId(int index);
+    Q_INVOKABLE void setVoiceEngine(int index);
+    Q_INVOKABLE void setLocalVoice(const QString &value);
+    Q_INVOKABLE void setLocalModel(const QString &value);
     Q_INVOKABLE void setInputDeviceIndex(int index);
     Q_INVOKABLE void setOutputDeviceIndex(int index);
     Q_INVOKABLE void startBrain();
@@ -87,6 +96,8 @@ private:
     void submit(const QString &text, bool asVoice);
     void transcribe();
     void synthesize(const QString &text);
+    void synthesizeViaLocalServer(const QString &text);
+    void playSynthesizedFile();
     void pollBrain();
     void storeConfig();
     QString configPath(const QString &key) const;
@@ -98,11 +109,12 @@ private:
     void onOutputInventoryChanged();
     QString m_status = "Ready to configure local engines.";
     QString m_transcript, m_lastReply, m_pendingUser, m_persona;
+    QString m_localVoice = "Vivian", m_localModel = "qwen3-tts";
     QVariantList m_messages;
     QList<EmberCore::Turn> m_history;
-    int m_voiceId = 0, m_configurationRevision = 0;
+    int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0;
     bool m_brainReady = false, m_busy = false, m_listening = false;
-    bool m_speaking = false, m_voicePending = false;
+    bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
     QSettings m_settings;
     QMediaDevices m_mediaDevices;
     QByteArray m_inputId, m_outputId, m_captureDeviceId;
@@ -115,6 +127,7 @@ private:
     QMediaPlayer m_mediaPlayer;
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;
+    QPointer<QNetworkReply> m_speechReply;
     QProcess m_brain, m_whisper, m_tts;
     QTimer m_healthTimer;
     QTimer m_captureWatchdog;
