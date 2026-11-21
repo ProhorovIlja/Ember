@@ -26,7 +26,11 @@ QString offlineSpeechModelFile(const QString &applicationRoot, const QString &al
     const QFileInfo candidate(QDir(folder.absoluteFilePath()).filePath(alias + ".gguf"));
     if (!candidate.isFile() || candidate.isSymLink() || candidate.size() < 64) return {};
     const QString canonical = candidate.canonicalFilePath();
-    if (!canonical.startsWith(canonicalFolder + QDir::separator())) return {};
+    // Qt normalizes native separators differently across Windows backends.
+    const QString normalizedFolder = QDir::fromNativeSeparators(canonicalFolder);
+    const QString normalizedModel = QDir::fromNativeSeparators(canonical);
+    if (!normalizedModel.startsWith(normalizedFolder + QLatin1Char('/'),
+                                    Qt::CaseInsensitive)) return {};
     QFile file(canonical);
     if (!file.open(QIODevice::ReadOnly) || file.read(4) != "GGUF") return {};
     return canonical;
