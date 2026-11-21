@@ -624,3 +624,46 @@ every possible model-internal reasoning format will be recognized; changing
 upstream chat templates or output protocols requires additional fixture tests.
 Potential false-positive filtering of a *literal* `<think>` markup discussion
 is a known trade-off for preventing reasoning disclosure.
+
+## 22 November — constant-memory streaming redaction and token-budget correctness
+
+The prior `visibleAssistantText(accumulatedRaw)` filter was secure against
+ordinary inline `<think>...</think>` leakage, but kept all hidden text
+(up to 16,384 UTF-16 code units) in RAM and reprocessed the entire reply
+for each incoming SSE delta. Long reasoning or an expensive chat template
+could therefore hit the raw text cap *before producing a useful answer*,
+and repeatedly scanning the growing buffer needlessly delayed live TTS.
+
+The live receiver now uses `consumeVisibleAssistantDelta(state, delta)`:
+a deterministic incremental filter whose only mutable text is the current
+partial opening/closing marker (at most seven UTF-16 code units).
+No hidden thought tokens are accumulated. The already-existing visible reply
+remains capped at 16,384 code units; the SSE frame cap still applies.
+A future local model can emit large private reasoning streams without inflating
+Ember's own transcript memory, and the model's internal data is not passed to
+QML, TTS or SQLite. The state is reset for every new reply, completion
+and cancellation; stream output is append-only for the TTS cursor.
+The one-shot helper remains for unit-tested small, existing text buffers.
+
+The same batch fixes a second ambiguity: a chat-completions stream with
+`finish_reason: "length"` can still send `data: [DONE]`. The latter
+terminates *transport*, not necessarily the answer's semantics. Ember
+now marks responses limited by the local max token budget as incomplete,
+persists an explicit note in the local assistant transcript, and does not
+treat a truncated voice response as a fully spoken turn. Ordinary
+`finish_reason: "stop"` is unaffected.
+
+Deterministic Qt tests exercise 200,000-character mock hidden streams,
+split tag markers, append-only visible output and reset after cancellation,
+plus fragmented SSE responses with `stop` versus `length` finish reasons.
+This is neither a measured multi-minute GPU inference benchmark nor a
+guarantee every custom chat template uses recognized tags. Literal `<think>`
+in ordinary text can still be filtered because the application intentionally
+prioritizes keeping model reasoning out of visible chat.
+
+References: the [OpenAI chat completion streaming protocol](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
+defines `finish_reason` and `[DONE]`; the
+[llama.cpp server](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+implements compatible chat completion streams. Nothing here changes the
+requirement for actual RU/EN WER, English female TTS, RTX4070 co-resident
+memory and acoustic timing measurements before release.
