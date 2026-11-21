@@ -203,8 +203,8 @@ Development CI now runs native builds, installer round-trip checks and quality-g
   error now attempt editable-only dictation prefix recovery when the closed
   scratch capture passes disk-size, 100ms and complete-frame checks; invalid
   audio is discarded. Interruption flag is cleared on new take/cancel/ASR end.
-- [x] Truncated **voice** commands are never auto-submitted; disk-write
-  failures bypass recovery. Deterministic 16k mono and 48k stereo QtTests
+- [x] Truncated **voice** commands are never auto-submitted, including on the
+  1 GiB safety quota; disk-write failures bypass recovery. Deterministic 16k mono and 48k stereo QtTests
   cover integrity, too-short capture and failure conditions.
 - [ ] Physical Windows 10 unplug/replug, Bluetooth loss, default-device
   switch, low-disk capture and long RU/EN dictation with ASR actually running.
