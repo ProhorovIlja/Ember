@@ -564,6 +564,41 @@ private slots:
         QCOMPARE(lastVisible, QString("Public answer."));
         QVERIFY(buffer.isEmpty());
     }
+    void llamaStreamTokenLimitNeverMasqueradesAsCompletedReply() {
+        QByteArray pending;
+        const auto content = QJsonDocument(QJsonObject{{"choices", QJsonArray{
+            QJsonObject{{"delta", QJsonObject{{"content", "This story is"}}},
+                        {"finish_reason", QJsonValue::Null}}}
+        }}}).toJson(QJsonDocument::Compact);
+        const auto limited = QJsonDocument(QJsonObject{{"choices", QJsonArray{
+            QJsonObject{{"delta", QJsonObject{}}, {"finish_reason", "length"}}}
+        }}}).toJson(QJsonDocument::Compact);
+        const QByteArray stream =
+            "data: " + content + "\n\n" +
+            "data: " + limited + "\n\n" + "data: [DONE]\n\n";
+        bool truncated = false, done = false;
+        QString visible;
+        for (qsizetype i = 0; i < stream.size(); i += 5) {
+            const auto part = EmberCore::consumeChatStream(pending, stream.mid(i, 5));
+            QVERIFY(!part.error);
+            visible += part.text;
+            truncated |= part.truncated;
+            done |= part.done;
+        }
+        QCOMPARE(visible, QString("This story is"));
+        QVERIFY(done);
+        QVERIFY(truncated);
+        QVERIFY(pending.isEmpty());
+
+        // stop is a normal end; only a length stop means incomplete text.
+        const QByteArray normal = "data: " +
+            QJsonDocument(QJsonObject{{"choices", QJsonArray{
+                QJsonObject{{"delta", QJsonObject{}}, {"finish_reason", "stop"}}}
+            }}}).toJson(QJsonDocument::Compact) + "\n\n";
+        const auto good = EmberCore::consumeChatStream(pending, normal);
+        QVERIFY(!good.truncated);
+        QVERIFY(!good.error);
+    }
     void wavHeaderAndAudio() {
         const QByteArray pcm = QByteArray::fromHex("0000ff7f00800040");
         const auto wav = EmberCore::pcmToWav(pcm, 16000);
