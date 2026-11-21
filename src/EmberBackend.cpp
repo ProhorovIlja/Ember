@@ -1201,7 +1201,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         return;
     }
     m_chatStreamBuffer.clear();
-    m_chatRawText.clear();
+    m_visibleStream = {};
     m_chatStreamText.clear();
     m_chatStreamDone = m_chatStreamInvalid = m_chatPreviewActive = false;
     m_chatGenerating = true;
@@ -1221,24 +1221,28 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         if (m_reply != reply || m_chatStreamDone || m_chatStreamInvalid) return;
         const auto received = reply->readAll();
         const auto tokens = EmberCore::consumeChatStream(m_chatStreamBuffer, received);
-        if (tokens.error || m_chatRawText.size() + tokens.text.size() > 16384) {
+        if (tokens.error) {
             m_chatStreamInvalid = true;
             reply->abort();
             return;
         }
         if (!tokens.text.isEmpty()) {
-            // Reasoning may be either a separate reasoning_content field
-            // (which the SSE parser ignores) or inline <think> tags.
-            // Only the visible projection can reach the UI, history or TTS.
-            m_chatRawText += tokens.text;
-            const QString visible =
-                EmberCore::visibleAssistantText(m_chatRawText);
-            if (visible != m_chatStreamText) {
+            // Separate reasoning_content is ignored by the SSE parser; inline
+            // <think> is consumed one delta at a time, with O(1) private
+            // buffering. Never keep the full hidden thought in RAM.
+            const QString committed = EmberCore::consumeVisibleAssistantDelta(
+                m_visibleStream, tokens.text);
+            if (m_chatStreamText.size() + committed.size() > 16384) {
+                m_chatStreamInvalid = true;
+                reply->abort();
+                return;
+            }
+            if (!committed.isEmpty()) {
                 if (m_llmFirstTokenMs < 0 && m_llmElapsed.isValid()) {
                     m_llmFirstTokenMs = m_llmElapsed.elapsed();
                     emit voiceTimingsChanged();
                 }
-                m_chatStreamText = visible;
+                m_chatStreamText += committed;
                 if (!m_chatRenderTimer.isActive()) m_chatRenderTimer.start();
                 if (m_voiceEarlyActive && !m_voiceEarlyFailed)
                     enqueueLiveSpeech(false);
@@ -1318,7 +1322,7 @@ void EmberBackend::finishChatStream(bool interrupted) {
         rebuildConversationHistory();
     }
     m_chatStreamBuffer.clear();
-    m_chatRawText.clear(); // never retain private model reasoning after the turn
+    m_visibleStream = {}; // never carry partial markers across chat turns
     m_chatPreviewActive = false;
     m_chatStreamDone = m_chatStreamInvalid = false;
     m_chatStreamSession.clear();
@@ -2245,6 +2249,7 @@ void EmberBackend::retryCancelledAudioCleanup(quint64 revision, int retriesLeft)
     }
 }
 void EmberBackend::cancelWork() {
+    m_visibleStream = {};
     m_asrProcessWatchdog.stop();
     m_ttsProcessWatchdog.stop();
     m_cliAsrActive = false;
