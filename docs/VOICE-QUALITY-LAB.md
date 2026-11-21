@@ -763,3 +763,10 @@ Windows USB/Bluetooth disconnect, power management, driver crashes or
 audio-device focus. Those scenarios still require hands-on Windows 10
 testing with the user's real microphones. Do not interpret an ASR partial
 prefix as complete speech, and do not retain raw WAV in local history.
+
+**Capture safety quota:** the 1 GiB scratch quota ends microphone capture
+without an explicit user release. It is therefore handled as an involuntary
+interruption: verified dictation can recover only to an editable draft, and
+a partial voice request is never automatically submitted. Core tests cover
+both draft-only and voice-command denial at the 1 GiB numeric boundary,
+without creating a giant file.
