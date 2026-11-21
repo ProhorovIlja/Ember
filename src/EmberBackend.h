@@ -95,6 +95,8 @@ private:
     void appendMessage(const QString &role, const QString &text);
     void submit(const QString &text, bool asVoice);
     void transcribe();
+    void beginSpeech(const QString &text);
+    void playNextSpeechChunk();
     void synthesize(const QString &text);
     void synthesizeViaLocalServer(const QString &text);
     void playSynthesizedFile();
@@ -110,11 +112,13 @@ private:
     QString m_status = "Ready to configure local engines.";
     QString m_transcript, m_lastReply, m_pendingUser, m_persona;
     QString m_localVoice = "Vivian", m_localModel = "qwen3-tts";
+    QStringList m_voiceQueue;
     QVariantList m_messages;
     QList<EmberCore::Turn> m_history;
     int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0;
     bool m_brainReady = false, m_busy = false, m_listening = false;
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
+    bool m_speechSequence = false;
     QSettings m_settings;
     QMediaDevices m_mediaDevices;
     QByteArray m_inputId, m_outputId, m_captureDeviceId;
