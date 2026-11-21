@@ -14,6 +14,8 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, cons
 bool allowedLocalEndpoint(const QString &url);
 bool allowedLocalSpeechEndpoint(const QString &url);
 QJsonObject speechRequest(const QString &model, const QString &voice, const QString &text);
+QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice, const QString &text);
+bool validPcmSampleRate(int rate);
 bool validSpeechWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
 QString speechFriendlyText(const QString &markdown);
