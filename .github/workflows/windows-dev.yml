@@ -3,9 +3,11 @@ name: Ember native Windows development
 on:
   push:
     branches: [voice-foundation]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: ember-dev-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
