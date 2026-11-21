@@ -342,7 +342,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         }
         m_lastReply = answer;
         emit lastReplyChanged();
-        m_history.append({m_pendingUser, answer});
+        m_history.append(EmberCore::Turn{m_pendingUser, answer});
         while (m_history.size() > 8) m_history.removeFirst();
         appendMessage("ember", answer);
         const bool shouldSpeak = m_voicePending;

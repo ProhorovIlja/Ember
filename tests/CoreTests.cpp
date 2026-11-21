@@ -60,7 +60,7 @@ private slots:
     }
     void modelMessageRolesAreIsolated() {
         QList<EmberCore::Turn> prior;
-        prior.append({"Question", "Previous answer"});
+        prior.append(EmberCore::Turn{"Question", "Previous answer"});
         const auto payload = EmberCore::chatRequest("Talk naturally", prior, "Do not merge me into system", 900, 0.7);
         QCOMPARE(payload.value("model").toString(), QString("ember"));
         QCOMPARE(payload.value("max_tokens").toInt(), 768);
