@@ -8,6 +8,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QSet>
+#include <QList>
 #include <QSaveFile>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -173,6 +175,7 @@ bool EmberBundle::restoreComplete(SessionStore &store, ImageLibrary &images,
     // No changes to SQLite until *all* image content has been verified.
     // Install images first, so a failed SQLite restore can remove new assets.
     QStringList newlyInstalled;
+    int installedCount = 0;
     for (const Asset &asset : assets) {
         QFile file(asset.staged);
         if (!file.open(QIODevice::ReadOnly))
@@ -183,10 +186,9 @@ bool EmberBundle::restoreComplete(SessionStore &store, ImageLibrary &images,
             !images.installArchived(asset.id, bytes, asset.png, &created))
             break;
         if (created) newlyInstalled.append(asset.id);
+        ++installedCount;
     }
-    if (newlyInstalled.size() > assets.size())
-        return problem(error, "Unexpected asset restoration count.");
-    bool allReady = true;
+    bool allReady = installedCount == assets.size();
     for (const Asset &asset : assets)
         if (images.verifiedBytes(asset.id).isEmpty()) allReady = false;
     if (allReady && store.restoreCompactBackup(chat.fileName()))

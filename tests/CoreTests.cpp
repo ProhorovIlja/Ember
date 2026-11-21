@@ -1,6 +1,7 @@
 #include "Core.h"
 #include "SessionStore.h"
 #include "ImageLibrary.h"
+#include "EmberBundle.h"
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
@@ -39,6 +40,56 @@ private slots:
                  .value("url").toString(), QString("data:image/jpeg;base64,QUJDRA=="));
         QCOMPARE(messages.first().toObject().value("role").toString(),
                  QString("system"));
+    }
+    void completeLocalBackupRestoresImagesAndSessionsWithoutOverwriting() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        SessionStore primary(temporary.filePath("primary.sqlite"));
+        ImageLibrary pictures(temporary.filePath("library-primary"));
+        QVERIFY(primary.ready());
+        const QString id = primary.createSession();
+        QVERIFY(!id.isEmpty());
+        QImage image(300, 200, QImage::Format_ARGB32);
+        image.fill(QColor("#195B9A"));
+        const QString photo = pictures.importImage(image);
+        QVERIFY(!photo.isEmpty());
+        QVERIFY(primary.append(id, "you", QStringLiteral(
+            "What is in this photo?\\n\\n[Ember image sha256:") + photo + ']'));
+        QVERIFY(primary.append(id, "ember", "A test picture."));
+        QVERIFY(primary.setNotes(id, "Remember the fictional city."));
+        QVERIFY(primary.setAsrHints(id, "Yharnam, Gehrman"));
+        QString error;
+        const QString backup = temporary.filePath("complete.emberpack");
+        QVERIFY2(EmberBundle::exportComplete(primary, pictures, backup, &error),
+                 qPrintable(error));
+        QVERIFY(QFileInfo(backup).size() > 100);
+        SessionStore secondary(temporary.filePath("secondary.sqlite"));
+        ImageLibrary rehydrated(temporary.filePath("library-restored"));
+        QVERIFY(secondary.ready());
+        QVERIFY2(EmberBundle::restoreComplete(secondary, rehydrated, backup, &error),
+                 qPrintable(error));
+        QCOMPARE(rehydrated.imageCount(), 1);
+        QCOMPARE(rehydrated.verifiedBytes(photo), pictures.verifiedBytes(photo));
+        const QVariantList sessions = secondary.sessions();
+        QCOMPARE(sessions.size(), 1);
+        const QString recoveredId = sessions.first().toMap().value("id").toString();
+        QVERIFY(recoveredId != id);
+        QCOMPARE(secondary.totalMessages(recoveredId), qint64(2));
+        QCOMPARE(secondary.notes(recoveredId), QString("Remember the fictional city."));
+        QCOMPARE(secondary.asrHints(recoveredId), QString("Yharnam, Gehrman"));
+        QVERIFY2(EmberBundle::restoreComplete(secondary, rehydrated, backup, &error),
+                 qPrintable(error));
+        QCOMPARE(secondary.sessions().size(), 2);
+        QCOMPARE(rehydrated.imageCount(), 1);
+        const QString corrupted = temporary.filePath("truncated.emberpack");
+        QVERIFY(QFile::copy(backup, corrupted));
+        QFile damaged(corrupted);
+        QVERIFY(damaged.open(QIODevice::ReadWrite));
+        QVERIFY(damaged.resize(damaged.size() - 13));
+        damaged.close();
+        QVERIFY(!EmberBundle::restoreComplete(secondary, rehydrated, corrupted, &error));
+        QCOMPARE(secondary.sessions().size(), 2);
+        QCOMPARE(rehydrated.imageCount(), 1);
     }
     void nativeImageLibraryImportDeduplicatesAndDoesNotUseNetwork() {
         QTemporaryDir dir;

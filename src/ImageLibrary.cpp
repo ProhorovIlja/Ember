@@ -153,10 +153,12 @@ bool ImageLibrary::installArchived(const QString &id,
         dimensions.height() > 1536 ||
         qint64(dimensions.width()) * dimensions.height() > 2500000 ||
         !reader.canRead()) return false;
+    // An identical digest already installed under the other extension should
+    // be reused, not stored as a second copy.
+    if (!filePath(id).isEmpty()) return verifiedBytes(id) == encoded;
     const QString target = QDir(m_root).filePath(
         id + (png ? ".png" : ".jpg"));
-    if (QFileInfo::exists(target))
-        return !filePath(id).isEmpty() && verifiedBytes(id) == encoded;
+    if (QFileInfo::exists(target)) return false;
     if (!QDir().mkpath(m_root)) return false;
     QSaveFile file(target);
     if (!file.open(QIODevice::WriteOnly) ||
