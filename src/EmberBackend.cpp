@@ -49,6 +49,10 @@ EmberBackend::EmberBackend(QObject *parent)
     m_store = std::make_unique<SessionStore>(
         QDir(appFolder()).filePath("data/ember-chats.sqlite"));
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
+    m_chatMode = qBound(0, m_settings.value("chat/mode", 0).toInt(), 3);
+    m_chatRenderTimer.setInterval(40);
+    connect(&m_chatRenderTimer, &QTimer::timeout,
+            this, &EmberBackend::renderChatStream);
     m_voiceId = m_settings.value("voiceId", 0).toInt();
     // Ignore Windows/system proxies for both local inference services.
     // Otherwise an environment proxy could receive private conversation text.
@@ -265,6 +269,13 @@ void EmberBackend::storeConfig() {
     m_settings.setValue("voiceId", m_voiceId);
     m_settings.sync();
     ++m_configurationRevision;
+    emit configurationChanged();
+}
+void EmberBackend::setChatMode(int mode) {
+    if (mode < 0 || mode > 3 || mode == m_chatMode) return;
+    m_chatMode = mode;
+    m_settings.setValue("chat/mode", mode);
+    m_settings.sync();
     emit configurationChanged();
 }
 void EmberBackend::setPersona(const QString &persona) {
@@ -544,77 +555,146 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         return;
     }
     if (m_busy || m_listening || text.isEmpty() || text.size() > 4096) {
-        if (text.size() > 4096) setStatus("Message too long; limit is 4,096 characters.");
+        if (text.size() > 4096) setStatus("Message exceeds the 4,096-character input limit.");
         return;
     }
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_mediaPlayer.stop();
+    m_mediaPlayer.setSource(QUrl());
     setSpeaking(false);
     m_pendingUser = text;
     m_voicePending = voice;
     appendMessage("you", text);
     setBusy(true);
-    setStatus(voice ? "Thinking about what you said…" : "Generating a local response…");
-    // Spoken responses always use English; typed replies follow the user's
-    // English/Russian choice naturally. Text is never filtered by TTS.
-    const QString effectivePersona = voice
-        ? m_persona + " In voice conversations, always answer in natural English, "
-          "even when the user's recognized input is Russian. "
-          "Keep the delivery conversational, clear and speakable."
-        : m_persona;
-    const QJsonObject payload = EmberCore::chatRequest(
-        effectivePersona, m_history, text);
+    setStatus(voice ? "Reasoning in English for a spoken reply…"
+                    : "Streaming a private local text reply…");
+
+    // Writing profiles are provider-independent and completely local.
+    // These select behavior; the user can still override m_persona.
+    static const QString modes[] = {
+        " Be a natural, conversational writing and thinking partner.",
+        " Collaborate on richly written interactive fiction. Maintain character, "
+        "world and scene continuity, show vivid dialogue and concrete detail; "
+        "leave the user's character's decisions to the user. Follow their chosen style.",
+        " Diagnose problems methodically. Ask only for critical unknown facts, "
+        "give reproducible tests, distinguish evidence from guesses, "
+        "and avoid destructive steps without clear explanation.",
+        " Be a precise software development collaborator. Provide actionable code, "
+        "tests, tradeoffs, commands and verified assumptions; avoid invented test results."
+    };
+    QString effectivePersona = m_persona + modes[m_chatMode];
+    if (voice) {
+        effectivePersona +=
+            " For every voice reply use fluent conversational English only, even "
+            "if the recognized input was Russian. Write naturally for listening.";
+    }
+    QJsonObject payload = EmberCore::chatRequest(
+        effectivePersona, m_history, text,
+        voice ? 512 : (m_chatMode == 1 ? 2048 : 1400),
+        m_chatMode == 1 ? 0.92 : 0.73);
+    payload.insert("stream", true);
     const QString url = "http://127.0.0.1:43821/v1/chat/completions";
     if (!EmberCore::allowedLocalEndpoint(url)) {
+        m_voicePending = false;
         setBusy(false);
-        setStatus("The local engine endpoint is invalid.");
+        setStatus("Invalid local text-engine address.");
         return;
     }
+    m_chatStreamBuffer.clear();
+    m_chatStreamText.clear();
+    m_chatStreamDone = m_chatStreamInvalid = m_chatPreviewActive = false;
+    m_chatStreamSession = m_sessionId;
     QNetworkRequest request{QUrl(url)};
-    request.setTransferTimeout(120000);
+    request.setTransferTimeout(180000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    QNetworkReply *reply = m_network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    QNetworkReply *reply = m_network.post(
+        request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     m_llmElapsed.start();
     m_reply = reply;
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        if (m_reply != reply) { reply->deleteLater(); return; }
+    auto receive = [this, reply]() {
+        if (m_reply != reply || m_chatStreamDone || m_chatStreamInvalid) return;
+        const auto received = reply->readAll();
+        const auto tokens = EmberCore::consumeChatStream(m_chatStreamBuffer, received);
+        if (tokens.error || m_chatStreamText.size() + tokens.text.size() > 16384) {
+            m_chatStreamInvalid = true;
+            reply->abort();
+            return;
+        }
+        if (!tokens.text.isEmpty()) {
+            m_chatStreamText += tokens.text;
+            if (!m_chatRenderTimer.isActive()) m_chatRenderTimer.start();
+        }
+        if (tokens.done) m_chatStreamDone = true;
+    };
+    connect(reply, &QNetworkReply::readyRead, this, receive);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, receive] {
+        if (m_reply != reply) {
+            reply->deleteLater();
+            return;
+        }
+        receive();
         m_reply = nullptr;
-        const QByteArray data = reply->readAll();
-        const auto failure = reply->error();
+        const bool complete = reply->error() == QNetworkReply::NoError &&
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
+            m_chatStreamDone && !m_chatStreamInvalid;
         reply->deleteLater();
-        if (failure != QNetworkReply::NoError || data.size() > 256 * 1024) {
-            m_voicePending = false;
-            setBusy(false);
-            setStatus("The local LLM request failed or returned an oversized reply.");
-            return;
-        }
-        QJsonParseError error{};
-        const auto response = QJsonDocument::fromJson(data, &error);
-        const auto choices = response.object().value("choices").toArray();
-        const QString answer = choices.isEmpty() ? QString() :
-            choices.first().toObject().value("message").toObject().value("content").toString().trimmed();
-        if (error.error != QJsonParseError::NoError || answer.isEmpty() || answer.size() > 16384) {
-            m_voicePending = false;
-            setBusy(false);
-            setStatus("The local model returned an invalid or empty response.");
-            return;
-        }
-        m_llmLastMs = m_llmElapsed.isValid() ? m_llmElapsed.elapsed() : -1;
-        emit voiceTimingsChanged();
-        m_lastReply = answer;
-        emit lastReplyChanged();
-        m_history.append(EmberCore::Turn{m_pendingUser, answer});
-        while (m_history.size() > 8) m_history.removeFirst();
-        appendMessage("ember", answer);
-        const bool shouldSpeak = m_voicePending;
-        m_voicePending = false;
-        setBusy(false);
-        if (shouldSpeak) beginSpeech(answer);
-        else setStatus("Response complete · local inference.");
+        finishChatStream(!complete);
     });
+}
+void EmberBackend::renderChatStream() {
+    if (m_chatStreamText.isEmpty()) return;
+    if (m_chatStreamSession != m_sessionId) return;
+    if (!m_chatPreviewActive) {
+        m_messages.append(QVariantMap{{"role", "ember"},
+                                      {"body", m_chatStreamText}});
+        while (m_messages.size() > 300) m_messages.removeFirst();
+        m_chatPreviewActive = true;
+    } else if (!m_messages.isEmpty()) {
+        QVariantMap latest = m_messages.last().toMap();
+        if (latest.value("role").toString() == "ember") {
+            latest.insert("body", m_chatStreamText);
+            m_messages.last() = latest;
+        }
+    }
+    emit messagesChanged();
+}
+void EmberBackend::finishChatStream(bool interrupted) {
+    m_chatRenderTimer.stop();
+    const QString response = m_chatStreamText.trimmed();
+    const bool shouldSpeak = m_voicePending && !interrupted;
+    m_voicePending = false;
+    if (!response.isEmpty()) {
+        if (interrupted) m_chatStreamText += "\n\n[Response stopped]";
+        renderChatStream();
+        m_lastReply = m_chatStreamText;
+        emit lastReplyChanged();
+        if (m_store && m_store->ready() && m_chatStreamSession == m_sessionId) {
+            if (!m_store->append(m_sessionId, "ember", m_chatStreamText))
+                setStatus("Failed to save a streamed answer to local SQLite.");
+            refreshSessions();
+        }
+        rebuildConversationHistory();
+    }
+    m_chatStreamBuffer.clear();
+    m_chatPreviewActive = false;
+    m_chatStreamDone = m_chatStreamInvalid = false;
+    m_chatStreamSession.clear();
+    if (m_llmElapsed.isValid() && !response.isEmpty()) {
+        m_llmLastMs = m_llmElapsed.elapsed();
+        emit voiceTimingsChanged();
+    }
+    setBusy(false);
+    if (response.isEmpty()) {
+        setStatus("The local model returned no streamed text. Check its server logs.");
+    } else if (shouldSpeak) {
+        beginSpeech(response);
+    } else {
+        setStatus(interrupted ? "Generation interrupted; partial text saved locally."
+                              : "Local streaming reply complete and archived.");
+    }
 }
 
 void EmberBackend::releaseCapture() {
@@ -940,6 +1020,7 @@ void EmberBackend::cancelWork() {
         auto reply = m_reply;
         m_reply = nullptr;
         reply->abort();
+        finishChatStream(true); // persist only text already received, not audio
     }
     if (m_speechReply) {
         auto reply = m_speechReply;
