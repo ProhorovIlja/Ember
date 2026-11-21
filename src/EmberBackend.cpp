@@ -1586,7 +1586,7 @@ void EmberBackend::stopRecording() {
     m_transcriptionOffset = 0;
     // Bound a single 25-second segment by the Core resampler's 32 MiB
     // raw-input limit even on 8-channel/96 kHz/float capture hardware.
-    const qint64 frameBytes = m_captureFormat.bytesPerFrame();
+    // Reuse the frame size already validated above; do not redeclare it.
     const qint64 rawBudget = 30LL * 1024 * 1024;
     m_transcriptionChunkSize = (std::min(bytesPerSecond * 25, rawBudget) /
         frameBytes) * frameBytes;
