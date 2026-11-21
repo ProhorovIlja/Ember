@@ -9,6 +9,20 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void boundedCaptureWritesNeverCrossQuotaOrSplitPcmFrames() {
+        using EmberCore::allowedCaptureBytes;
+        const qint64 cap = 1024LL * 1024 * 1024;
+        QCOMPARE(allowedCaptureBytes(0, 3200, 2), qint64(3200));
+        QCOMPARE(allowedCaptureBytes(cap - 4, 3200, 2), qint64(4));
+        QCOMPARE(allowedCaptureBytes(cap, 3200, 2), qint64(0));
+        QCOMPARE(allowedCaptureBytes(cap + 2, 3200, 2), qint64(0));
+        QCOMPARE(allowedCaptureBytes(1, 3200, 2), qint64(0));
+        QCOMPARE(allowedCaptureBytes(0, 3, 2), qint64(2));
+        QCOMPARE(allowedCaptureBytes(-1, 3200, 2), qint64(0));
+        QCOMPARE(allowedCaptureBytes(0, -1, 2), qint64(0));
+        QCOMPARE(allowedCaptureBytes(0, 100, 0), qint64(0));
+        QCOMPARE(allowedCaptureBytes(16, 100, 4, 18), qint64(0));
+    }
     void measuresCaptureEnergyAcrossWindowsPcmFormats() {
         QAudioFormat format;
         format.setSampleRate(16000);

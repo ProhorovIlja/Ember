@@ -87,6 +87,14 @@ bool VoiceEndpointer::observe(const AudioLevel &level) {
     return m_heardSpeech && m_elapsedMs >= 3000 && m_silentMs >= 2200;
 }
 
+qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
+                           int bytesPerFrame, qint64 quota) {
+    if (alreadyWritten < 0 || requested <= 0 || bytesPerFrame <= 0 ||
+        quota <= 0 || alreadyWritten >= quota ||
+        alreadyWritten % bytesPerFrame) return 0;
+    return (std::min(requested, quota - alreadyWritten) / bytesPerFrame)
+            * bytesPerFrame;
+}
 QByteArray pcmToWav(const QByteArray &pcm, int sampleRate) {
     if (pcm.isEmpty() || (pcm.size() % 2) || pcm.size() > 32 * 1024 * 1024 ||
         sampleRate < 8000 || sampleRate > 96000) return {};

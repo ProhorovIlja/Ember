@@ -42,6 +42,9 @@ bool shouldPersistConversation(bool privateMode, const QString &sessionId);
 // Half-duplex user-controlled voice interruption; never interrupt active ASR.
 bool captureAllowedWithInterruption(bool busy, bool listening,
                                     bool speechActive, bool recognitionActive);
+// A recording must never exceed its scratch quota or end on a partial PCM frame.
+qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
+                           int bytesPerFrame, qint64 quota = 1024LL * 1024 * 1024);
 bool validSpeechWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
 QString speechFriendlyText(const QString &markdown);

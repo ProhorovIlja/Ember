@@ -78,18 +78,40 @@ public:
         m_gate.reset();
         m_level.store(0);
         m_endRequested.store(false);
+        m_writeFailed.store(false);
+        m_quotaReached.store(false);
+        m_writtenBytes.store(0);
     }
     bool isSequential() const override { return true; }
     int level() const { return m_level.load(); }
     bool autoEndRequested() const { return m_endRequested.load(); }
+    bool writeFailed() const { return m_writeFailed.load(); }
+    bool quotaReached() const { return m_quotaReached.load(); }
+    qint64 writtenBytes() const { return m_writtenBytes.load(); }
 protected:
     qint64 readData(char *, qint64) override { return -1; }
     qint64 writeData(const char *data, qint64 length) override {
-        if (!m_file || length < 0) return -1;
-        const qint64 written = m_file->write(data, length);
-        if (written <= 0) return written;
+        if (!m_file || !data || length < 0) {
+            m_writeFailed.store(true);
+            return -1;
+        }
+        if (length == 0) return 0;
         const int bytesPerFrame = m_format.bytesPerFrame();
-        if (bytesPerFrame <= 0) return written;
+        const qint64 allowed = EmberCore::allowedCaptureBytes(
+            m_writtenBytes.load(), length, bytesPerFrame);
+        if (allowed <= 0) {
+            m_quotaReached.store(true);
+            return 0;
+        }
+        const qint64 written = m_file->write(data, allowed);
+        if (written <= 0 || written % bytesPerFrame != 0 ||
+            written < allowed) {
+            m_writeFailed.store(true);
+            return written < 0 ? -1 : written;
+        }
+        const qint64 total = m_writtenBytes.fetch_add(written) + written;
+        if (allowed < length || total >= 1024LL * 1024 * 1024)
+            m_quotaReached.store(true);
         // Bound callback work to 50-ms windows, so short pauses inside a
         // larger platform buffer are not smeared across an entire second.
         const qint64 windowBytes = std::max<qint64>(
@@ -118,6 +140,9 @@ private:
     bool m_autoEnd = false;
     std::atomic<int> m_level{0};
     std::atomic<bool> m_endRequested{false};
+    std::atomic<bool> m_writeFailed{false};
+    std::atomic<bool> m_quotaReached{false};
+    std::atomic<qint64> m_writtenBytes{0};
 };
 
 EmberBackend::EmberBackend(QObject *parent)
@@ -204,14 +229,20 @@ EmberBackend::EmberBackend(QObject *parent)
             stopRecording();
             return;
         }
+        if (m_captureTap && m_captureTap->writeFailed()) {
+            releaseCapture();
+            QFile::remove(m_captureFile.fileName());
+            setStatus("Microphone disk write failed. Incomplete audio was discarded.");
+            return;
+        }
+        if (m_captureTap && m_captureTap->quotaReached()) {
+            stopRecording();
+            return;
+        }
         if (m_audioSource && m_audioSource->error() != QAudio::NoError) {
             releaseCapture();
             QFile::remove(m_captureFile.fileName());
             setStatus("Microphone stopped unexpectedly. Check device and Windows permissions.");
-        } else if (m_captureFile.isOpen() && m_captureFile.size() >= 1024LL * 1024 * 1024) {
-            // Long dictation has a disk quota, but no 30-second time cap.
-            // Finalize rather than silently overwriting user audio.
-            stopRecording();
         }
     });
     m_mediaPlayer.setAudioOutput(&m_audioOutput);
@@ -1182,11 +1213,17 @@ void EmberBackend::startCapture(bool dictation) {
         return;
     }
     m_captureTap->configure(m_captureFormat, !dictation && m_autoEndOnSilence);
-    m_captureTap->open(QIODevice::WriteOnly);
+    if (!m_captureTap->open(QIODevice::WriteOnly)) {
+        m_captureFile.close();
+        QFile::remove(m_captureFile.fileName());
+        setStatus("Microphone stream could not initialize.");
+        return;
+    }
     m_audioSource = std::make_unique<QAudioSource>(input, m_captureFormat);
     m_audioSource->start(m_captureTap.get());
     if (m_audioSource->error() != QAudio::NoError) {
         releaseCapture();
+        QFile::remove(m_captureFile.fileName());
         setStatus("Microphone capture failed. Check Windows permissions and audio device.");
         return;
     }
