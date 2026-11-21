@@ -19,6 +19,9 @@ bool validPcmSampleRate(int rate);
 bool validSpeechWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
 QString speechFriendlyText(const QString &markdown);
+// Commit only stable complete sentences from an LLM stream. Reuses a
+// caller-owned source cursor to avoid repeated speech or speaking partial code.
+QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool final);
 bool mostlyCyrillic(const QString &text);
 // Merge overlapped speech-recognition chunks without duplicating shared words.
 QString joinTranscriptionSegments(const QStringList &segments);
