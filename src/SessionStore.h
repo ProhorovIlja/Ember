@@ -20,6 +20,10 @@ public:
     QString historicalExcerpts(const QString &session, const QString &question,
                                int maxResults = 3) const;
     bool exportMarkdown(const QString &session, const QString &path) const;
+    // Explicit local-only compressed backup. Not encrypted or cloud synced.
+    bool exportCompactBackup(const QString &path) const;
+    // Transactional restore into new sessions: never replaces existing chats.
+    bool restoreCompactBackup(const QString &path);
     QVariantList messages(const QString &session, int limit = 300) const;
     bool append(const QString &session, const QString &role, const QString &body);
     bool remove(const QString &session);
