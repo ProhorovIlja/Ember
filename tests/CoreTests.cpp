@@ -93,6 +93,61 @@ private slots:
         QVERIFY(!content.contains("Separate private project."));
         QVERIFY(!store.exportMarkdown("nonexistent", temp.filePath("absent.md")));
     }
+
+    void compressedBackupRestoresMultilingualChatsAndRejectsDamageAtomically() {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const QString backup = temp.filePath("all.emberbackup");
+        QString first;
+        {
+            SessionStore original(temp.filePath("source.sqlite"));
+            QVERIFY2(original.ready(), qPrintable(original.error()));
+            first = original.createSession();
+            const QString second = original.createSession();
+            QVERIFY(original.append(first, "you",
+                QString::fromUtf8("Анна meets Mara; café by the river.")));
+            QVERIFY(original.append(first, "ember",
+                QString(8000, QChar('a'))));
+            QVERIFY(original.append(second, "you", "Separate story, separate context."));
+            QVERIFY(original.setNotes(first,
+                QString::fromUtf8("Анна guards the blue compass.")));
+            QVERIFY(original.setAsrHints(first,
+                QString::fromUtf8("Анна, Mara, whisper.cpp")));
+            QVERIFY(original.exportCompactBackup(backup));
+            QVERIFY(!original.exportCompactBackup(temp.filePath("source.sqlite")));
+        }
+        QFile archive(backup);
+        QVERIFY(archive.open(QIODevice::ReadOnly));
+        const QByteArray bytes = archive.readAll();
+        QVERIFY(bytes.startsWith("EMBER-CHAT-BACKUP-1\n"));
+        QVERIFY(bytes.size() < 8000); // independently compressed repeated message
+        const QString truncated = temp.filePath("truncated.emberbackup");
+        QFile broken(truncated);
+        QVERIFY(broken.open(QIODevice::WriteOnly));
+        QVERIFY(broken.write(bytes.left(bytes.size() - 5)) > 0);
+        broken.close();
+        SessionStore restored(temp.filePath("restored.sqlite"));
+        QVERIFY2(restored.ready(), qPrintable(restored.error()));
+        const QString existing = restored.createSession();
+        QVERIFY(restored.append(existing, "you", "Never overwrite my existing chat."));
+        QVERIFY(!restored.restoreCompactBackup(truncated));
+        QCOMPARE(restored.sessions().size(), 1);
+        QCOMPARE(restored.totalMessages(existing), qint64(1));
+        QVERIFY(restored.restoreCompactBackup(backup));
+        QCOMPARE(restored.sessions().size(), 3);
+        QCOMPARE(restored.totalMessages(existing), qint64(1));
+        const auto matches = restored.search("Анна");
+        QCOMPARE(matches.size(), 1);
+        const QString imported = matches.first().toMap().value("id").toString();
+        QVERIFY(!imported.isEmpty());
+        QVERIFY(imported != first);
+        QCOMPARE(restored.messages(imported).size(), 2);
+        QVERIFY(restored.messages(imported).last().toMap()
+                .value("body").toString() == QString(8000, QChar('a')));
+        QVERIFY(restored.notes(imported).contains(QString::fromUtf8("Анна")));
+        QVERIFY(restored.asrHints(imported).contains("whisper.cpp"));
+        QVERIFY(!restored.restoreCompactBackup(temp.filePath("restored.sqlite")));
+    }
     void recallsOldStoryFactsWithoutCrossSessionLeaks() {
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
