@@ -431,3 +431,42 @@ Native early-speech segmentation now recognizes both Markdown fenced-code delimi
 ## 22 November — image references in English speech
 
 When an answer contains Markdown image syntax, Ember's spoken renderer now says `an image in the text chat` rather than reading the alt text as an image analysis or as the spoken `!` marker. Ordinary Markdown links still speak their link labels. Images remain visible in unchanged written replies; this is a deterministic presentation rule, not vision-model inference. New Qt regression covers external and local image-reference syntax.
+
+## 22 November — local paired Whisper.cpp / Qwen3-ASR EN/RU corpus comparison
+
+The source-only `tools/compare_asr_engines.py` harness now applies **the same**
+existing private 16 kHz mono PCM16 recordings, 25-second chunks, optional nearby
+quiet cut and 500 ms overlap to **both** local recognition engines, using the
+same lexical overlap deduplicator and scoring. Whisper uses the configured
+offline CLI with explicit file-based temporary WAV input, stdout/stderr suppressed
+and no shell; Qwen3-ASR uses only the already-running local
+`127.0.0.1:43822/v1/audio/transcriptions` service. **Models and audio are not
+distributed, fetched or sent to CI.** Per-request temporary WAV and text files
+are removed on normal completion or failure; forced termination and OS swap are
+still storage/privacy caveats.
+
+Example using your own privately stored files and both separately installed engines:
+
+```powershell
+python tools/compare_asr_engines.py --manifest .\private-voice-corpus\corpus.json --whisper-exe .\engines\whisper-cli.exe --whisper-model .\models\ggml-large-v3-turbo.bin --qwen-model qwen3-asr-1.7b --omit-qwen-model-id --output .\paired-asr-metrics.json
+```
+
+Use `--whisper-vad-model <path>` only when you need to compare a Whisper
+configuration using a local Silero VAD model; this is a **different treatment**
+than Qwen without an equivalent VAD and must be documented as such. The common
+manifest is the existing `tools/asr_corpus.py` JSON case array with local WAV
+and reference text paths and language `en`, `ru` or `auto`.
+No microphone normalization is simulated: supply already-normalized WAVs;
+raw Windows 48k stereo audio cannot be claimed equivalent to the native Qt
+resampler. The report contains only numeric WER/CER, latency and per-language
+deltas; negative Qwen-minus-Whisper delta favors Qwen only on the chosen corpus,
+not universally. Engines are evaluated sequentially and may have warm-cache
+or GPU-contention bias; repeat and reverse order for a serious hardware study.
+No "merged best voice model" is claimed from these metrics.
+
+CI runs a deterministic fake-engine self-test to check file closure,
+private-temp deletion, parameter shape, model validation, EN/RU reporting and
+absence of recognized text/paths from the result. This does **not** measure
+real recognition accuracy or confirm Windows audio hardware. Stable Releases
+remain gated on actual physical listening, measurable RU/EN WER, benchmark and
+redistribution/licensing acceptance.
