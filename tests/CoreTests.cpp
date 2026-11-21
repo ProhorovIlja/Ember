@@ -308,6 +308,14 @@ private slots:
         cursor = 0;
         QVERIFY(EmberCore::takeCommittedSpeech(QString(16385, 'a'), cursor, true).isEmpty());
     }
+    void preservesEverySentenceInBatchedSseBurst() {
+        qsizetype cursor = 0;
+        const QString sample = QString("This is a complete sentence. ").repeated(65);
+        const QStringList all = EmberCore::takeCommittedSpeech(sample, cursor, false);
+        QCOMPARE(all.size(), 65);
+        QCOMPARE(cursor, qsizetype(sample.size()));
+        QVERIFY(EmberCore::takeCommittedSpeech(sample, cursor, true).isEmpty());
+    }
     void stopsPredominantlyRussianSynthesisForEnglishVoice() {
         QVERIFY(EmberCore::mostlyCyrillic(QString::fromUtf8(
             "Привет, сегодня у нас очень важная встреча, и мы поговорим об этом.")));
