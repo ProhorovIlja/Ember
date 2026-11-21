@@ -171,6 +171,16 @@ QJsonObject speechRequest(const QString &model, const QString &voice,
         {"response_format", "wav"}
     };
 }
+bool validPcmSampleRate(int rate) {
+    return rate >= 8000 && rate <= 96000;
+}
+QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice,
+                                     const QString &text) {
+    auto request = speechRequest(model, voice, text);
+    request.insert("response_format", "pcm");
+    request.insert("stream_format", "audio");
+    return request;
+}
 // Validate a bounded, ordinary PCM16 RIFF/WAV before writing to private
 // scratch storage and handing the file to Windows Multimedia. Do not treat
 // JSON/HTML error responses as audio. Accept optional WAV metadata chunks.
