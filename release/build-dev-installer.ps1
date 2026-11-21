@@ -2,7 +2,8 @@ param(
     [string]$PayloadDirectory = 'build/Release',
     [string]$OutputDirectory = 'dist',
     [string]$Version = '0.1.0-dev',
-    [switch]$VerifyInstall
+    [switch]$VerifyInstall,
+    [switch]$RequireOfflineBundle
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -17,6 +18,12 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 if (!(Test-Path (Join-Path $payload 'Ember.exe'))) { throw 'Native EXE missing.' }
 if (!(Test-Path (Join-Path $payload 'Qt6Core.dll'))) { throw 'Qt runtime missing.' }
 if (!(Test-Path (Join-Path $payload 'LICENSE'))) { throw 'License file missing.' }
+if ($RequireOfflineBundle) {
+    $manifest = Join-Path $payload 'offline-assets.json'
+    if (!(Test-Path $manifest)) { throw 'Complete offline asset manifest is missing.' }
+    & python (Join-Path $root 'tools/offline_bundle.py') verify --root $payload --manifest $manifest --redistribution-required
+    if ($LASTEXITCODE -ne 0) { throw 'Offline asset hash or license approval failed.' }
+}
 
 $compilerCandidates = @(
     (Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'),

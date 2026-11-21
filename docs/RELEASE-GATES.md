@@ -1,5 +1,27 @@
 # Ember release policy
 
+## No-VPN / no-first-run-network deployment — mandatory for final publication
+
+- [ ] Assemble a signed-off inventory of ALL offline LLM, RU/EN ASR, English TTS,
+  voice codecs, executable DLL dependencies and license/NOTICE texts. Verify
+  exact SHA-256 and source provenance, and manually approve redistribution.
+- [ ] Final complete installer and/or portable package ships every lawfully
+  redistributable asset needed to run selected chat, dictation and voices on
+  fresh Windows without model-registry/GitHub/Hugging Face downloads.
+- [ ] Any non-redistributable weights stay outside the public package, with
+  locally importable files and a clear setup requirement; never pretend those
+  assets were bundled or suggest license circumvention.
+- [ ] Test clean Windows 10 offline installation, model loading, RU/EN dictation,
+  English voice, first-run no-background-fetch, GPU memory and real sounds.
+- [ ] Preserve settings, SQLite chats, user's manually imported weights on
+  upgrade/uninstall unless explicitly asked otherwise.
+- [ ] Review legal availability of at least one distribution channel for users
+  in Russia, but never promise access to a specific blocked website.
+- [ ] Final stable installer workflow must refuse publication without approved
+  SHA-256 model/engine manifest; no preview Releases.
+
+
+
 The first branch is a **source-first development foundation**. The unsigned development installer is already built and smoke-tested in GitHub Actions, but this does not waive real hardware and model acceptance. `release/verify_release.py` and `.github/workflows/stable-release.yml` block stable publication unless the tag is semantically versioned, an explicit reviewed acceptance manifest exists with twelve HTTPS evidence records, the release source version matches the tested revision and detailed version-specific notes are present. It must **not** publish a stable GitHub Release as a finished private AI until every mandatory item is demonstrably working and license compliant.
 
 - [ ] All native Windows CI builds and automated tests green, with a portable bundle that starts on a **clean** Windows 10/11 install and has zero WebView2 dependency.

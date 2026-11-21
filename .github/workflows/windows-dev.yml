@@ -39,6 +39,11 @@ jobs:
         run: |
           python tools/text_benchmark.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Local text benchmark self-test failed.' }
+      - name: Check offline asset manifest tooling (no network)
+        shell: pwsh
+        run: |
+          python tools/offline_bundle.py self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Offline asset inventory self-test failed.' }
       - name: Install Qt 6.8.3 dynamic development modules
         uses: jurplel/install-qt-action@v4
         with:

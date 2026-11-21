@@ -1,5 +1,17 @@
 # Windows portable setup — first voice milestone
 
+**Offline packaging:** Ember's desired final distribution must install and run
+fully without a VPN, zapret, GitHub, Hugging Face or model downloads. At this
+development checkpoint, models and engine DLLs are NOT bundled. The new
+`tools/offline_bundle.py` creates a per-file SHA-256 inventory, rejects
+unlisted and symlinked files, and stages ONLY assets whose redistribution
+approval and license-evidence files have been reviewed. See
+[Offline distribution design](OFFLINE-DISTRIBUTION.md). No part of this
+tool downloads or executes a model. An unaudited local import remains possible
+using the native Settings Browse controls; public redistribution is different.
+
+
+
 **Target computer:** Ryzen 5 5600 / NVIDIA RTX 4070 (12 GB VRAM) / 32 GB RAM / two SSDs. Preferred installation `D:\Games\Ember`. This path is *recommended*, not hardcoded: the application uses its executable folder for portable settings and private audio scratch data.
 
 ## Portable folder layout

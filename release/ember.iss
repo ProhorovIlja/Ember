@@ -46,7 +46,6 @@ Name: "{userprograms}\Ember"; Filename: "{app}\Ember.exe"; WorkingDir: "{app}"
 Name: "{userdesktop}\Ember"; Filename: "{app}\Ember.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\cache"
-Type: files; Name: "{app}\data\ember.ini"
 Type: files; Name: "{app}\qml-smoke-report.txt"
 Type: dirifempty; Name: "{app}\data"
 [Code]

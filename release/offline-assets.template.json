@@ -1,0 +1,23 @@
+{
+  "schema": "ember-offline-assets-v1",
+  "assets": [
+    {
+      "path": "models/llm/model.gguf",
+      "bytes": 0,
+      "sha256": "",
+      "component": "llm",
+      "source_url": "",
+      "license_path": "",
+      "redistribution_approved": false
+    },
+    {
+      "path": "licenses/review-required.txt",
+      "bytes": 0,
+      "sha256": "",
+      "component": "license",
+      "source_url": "",
+      "license_path": "",
+      "redistribution_approved": false
+    }
+  ]
+}
