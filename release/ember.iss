@@ -4,18 +4,24 @@
 #ifndef AppOutput
   #define AppOutput "dist"
 #endif
+#ifndef BuildVersion
+  #define BuildVersion "0.1.0-dev"
+#endif
+#ifndef BuildNumericVersion
+  #define BuildNumericVersion "0.1.0.0"
+#endif
 [Setup]
 AppId={{FA314CE1-42F0-4D27-86B6-4375143BD155}
 AppName=Ember
-AppVersion=0.1.0-dev
-AppVerName=Ember 0.1.0 - Development Foundation
+AppVersion={#BuildVersion}
+AppVerName=Ember {#BuildVersion}
 AppPublisher=Ember Contributors
 AppPublisherURL=https://github.com/ProhorovIlja/Ember
 AppSupportURL=https://github.com/ProhorovIlja/Ember/issues
 AppUpdatesURL=https://github.com/ProhorovIlja/Ember/releases
 DefaultDirName={code:PreferredInstallDir}
 DefaultGroupName=Ember
-UninstallDisplayName=Ember (development foundation)
+UninstallDisplayName=Ember {#BuildVersion}
 UninstallDisplayIcon={app}\Ember.exe
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -24,9 +30,9 @@ WizardStyle=modern
 Compression=lzma2
 SolidCompression=yes
 OutputDir={#AppOutput}
-OutputBaseFilename=Ember-0.1.0-dev-Windows-x64
+OutputBaseFilename=Ember-{#BuildVersion}-Windows-x64
 DisableProgramGroupPage=yes
-VersionInfoVersion=0.1.0.0
+VersionInfoVersion={#BuildNumericVersion}
 UsePreviousAppDir=yes
 LicenseFile={#AppPayload}\LICENSE
 [Languages]
