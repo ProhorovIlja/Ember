@@ -63,7 +63,10 @@ Set-Content -Path (Join-Path $output $checksumName) -Value ($hash + '  ' + $inst
 Write-Host "Unsigned development installer created. SHA256: $hash"
 
 if ($VerifyInstall) {
-    $install = Join-Path $env:RUNNER_TEMP 'Ember-Installer-Smoke'
+    # RUNNER_TEMP is a GitHub Actions variable, not a Windows prerequisite.
+    # Keep each local smoke install isolated and never overwrite user data.
+    $scratch = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+    $install = Join-Path $scratch ('Ember-Installer-Smoke-' + [guid]::NewGuid().ToString('N'))
     if (Test-Path $install) { throw "Refusing to overwrite existing folder: $install" }
     $args = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $install + '"'))
     $setup = Start-Process -FilePath $installer -ArgumentList $args -PassThru -Wait

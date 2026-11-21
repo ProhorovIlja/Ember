@@ -50,3 +50,8 @@ Real Windows 10 / RTX 4070 test with airplane/network disconnect, clean installe
 The installer builder accepts either repository-relative CI paths or absolute
 `-PayloadDirectory` / `-OutputDirectory` paths, so a large offline payload can
 reside on a separate storage drive without being copied into the Git repository.
+
+The `-VerifyInstall` option works both on GitHub Actions and on a normal
+Windows PC: it uses an isolated, uniquely named temporary installation
+directory without requiring the GitHub-specific `RUNNER_TEMP` variable.
+The uninstaller is expected to leave any user-created private data untouched.
