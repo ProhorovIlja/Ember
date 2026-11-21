@@ -255,6 +255,49 @@ QString speechFriendlyText(const QString &markdown) {
     }
     return spokenLines.join(' ').simplified();
 }
+QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool final) {
+    QStringList ready;
+    if (draft.size() > 16384 || cursor < 0 || cursor > draft.size()) return ready;
+    // Only read completed punctuation/whitespace spans. Half-written fenced
+    // code stays withheld until its closing fence arrives.
+    while (cursor < draft.size() && ready.size() < 48) {
+        while (cursor < draft.size() && draft[cursor].isSpace()) ++cursor;
+        if (cursor >= draft.size()) break;
+        const QString remaining = draft.mid(cursor);
+        const qsizetype fence = remaining.indexOf("```"); // replaced below
+        if (fence == 0) {
+            const qsizetype close = remaining.indexOf("```", 3);
+            if (close < 0 && !final) break;
+            cursor += close >= 0 ? close + 3 : remaining.size();
+            ready.append("The code example is in the text chat.");
+            continue;
+        }
+        const qsizetype safeEnd = fence >= 0 ? fence : remaining.size();
+        qsizetype boundary = -1;
+        // A sentence is committed only after the next whitespace arrives.
+        // This intentionally delays terminal punctuation split across SSE.
+        for (qsizetype i = 24; i + 1 < safeEnd && i < 440; ++i) {
+            const QChar c = remaining[i];
+            if ((c == '.' || c == '!' || c == '?' || c == ';') &&
+                remaining[i + 1].isSpace()) {
+                boundary = i + 1;
+                break;
+            }
+        }
+        if (boundary < 0 && safeEnd >= 430) {
+            const qsizetype candidate = remaining.lastIndexOf(' ', 380);
+            if (candidate >= 180) boundary = candidate;
+        }
+        if (boundary < 0 && fence >= 0) boundary = safeEnd;
+        if (boundary < 0 && final) boundary = safeEnd;
+        if (boundary <= 0) break;
+        const QString segment = speechFriendlyText(remaining.left(boundary));
+        cursor += boundary;
+        if (!segment.isEmpty())
+            ready.append(speechChunks(segment, 420));
+    }
+    return ready;
+}
 bool mostlyCyrillic(const QString &text) {
     int cyrillic = 0, letters = 0;
     for (const QChar c : text) {
