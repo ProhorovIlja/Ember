@@ -1,10 +1,15 @@
 param(
     [string]$PayloadDirectory = 'build/Release',
     [string]$OutputDirectory = 'dist',
+    [string]$Version = '0.1.0-dev',
     [switch]$VerifyInstall
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if ($Version -notmatch '^([0-9]+[.][0-9]+[.][0-9]+)(-dev)?$') {
+    throw 'Version must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-dev.'
+}
+$numericVersion = $Matches[1] + '.0'
 $root = Split-Path -Parent $PSScriptRoot
 $payload = (Resolve-Path (Join-Path $root $PayloadDirectory)).Path
 $output = Join-Path $root $OutputDirectory
@@ -29,12 +34,14 @@ if (!$compiler) {
 }
 if (!$compiler) { throw 'Inno Setup 6 ISCC.exe not found.' }
 $iss = Join-Path $PSScriptRoot 'ember.iss'
-& $compiler "/DAppPayload=$payload" "/DAppOutput=$output" $iss
+& $compiler "/DAppPayload=$payload" "/DAppOutput=$output" "/DBuildVersion=$Version" "/DBuildNumericVersion=$numericVersion" $iss
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
-$installer = Join-Path $output 'Ember-0.1.0-dev-Windows-x64.exe'
+$installerName = "Ember-$Version-Windows-x64.exe"
+$installer = Join-Path $output $installerName
 if (!(Test-Path $installer)) { throw "Installer missing: $installer" }
 $hash = (Get-FileHash -Algorithm SHA256 -Path $installer).Hash.ToLowerInvariant()
-Set-Content -Path (Join-Path $output 'Ember-dev-installer-SHA256.txt') -Value ($hash + '  Ember-0.1.0-dev-Windows-x64.exe') -Encoding ascii
+$checksumName = if ($Version.EndsWith('-dev')) { 'Ember-dev-installer-SHA256.txt' } else { "Ember-$Version-SHA256.txt" }
+Set-Content -Path (Join-Path $output $checksumName) -Value ($hash + '  ' + $installerName) -Encoding ascii
 Write-Host "Unsigned development installer created. SHA256: $hash"
 
 if ($VerifyInstall) {
