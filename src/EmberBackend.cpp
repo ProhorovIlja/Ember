@@ -504,7 +504,7 @@ QString EmberBackend::voiceTimings() const {
             QString("%1 ms").arg(value);
     };
     return QString("Last voice/chat timings · STT %1 · LLM first token %2 · "
-                   "LLM complete %3 · TTS chunk %4 · mic release → playback %5")
+                   "LLM complete %3 · TTS chunk %4 · mic release → Qt audio buffer %5")
         .arg(display(m_asrLastMs), display(m_llmFirstTokenMs),
              display(m_llmLastMs), display(m_ttsLastMs),
              display(m_voiceFirstPlaybackMs));
