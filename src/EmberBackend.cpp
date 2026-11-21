@@ -50,6 +50,8 @@ EmberBackend::EmberBackend(QObject *parent)
         QDir(appFolder()).filePath("data/ember-chats.sqlite"));
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_chatMode = qBound(0, m_settings.value("chat/mode", 0).toInt(), 3);
+    m_recognitionLanguage = qBound(0,
+        m_settings.value("asr/language", 0).toInt(), 2);
     m_chatRenderTimer.setInterval(40);
     m_chatRenderTimer.setSingleShot(true);
     connect(&m_chatRenderTimer, &QTimer::timeout,
@@ -270,6 +272,13 @@ void EmberBackend::storeConfig() {
     m_settings.setValue("voiceId", m_voiceId);
     m_settings.sync();
     ++m_configurationRevision;
+    emit configurationChanged();
+}
+void EmberBackend::setRecognitionLanguage(int language) {
+    if (language < 0 || language > 2 || language == m_recognitionLanguage) return;
+    m_recognitionLanguage = language;
+    m_settings.setValue("asr/language", language);
+    m_settings.sync();
     emit configurationChanged();
 }
 void EmberBackend::setChatMode(int mode) {
@@ -849,7 +858,9 @@ void EmberBackend::transcribe() {
     QFile::remove(workFile("recognition.txt"));
     m_whisper.setWorkingDirectory(QFileInfo(configPath("asrExe")).absolutePath());
     m_whisper.setProgram(configPath("asrExe"));
+    static const QString languages[] = {"auto", "en", "ru"};
     m_whisper.setArguments({"-m", configPath("asrModel"), "-f", workFile("microphone.wav"),
+                            "-l", languages[m_recognitionLanguage],
                             "-otxt", "-of", workFile("recognition"), "-np"});
     setBusy(true);
     setStatus(QString("Offline transcription · %1% completed…")
