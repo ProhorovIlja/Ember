@@ -1,5 +1,6 @@
 #include "Core.h"
 #include "SessionStore.h"
+#include "ImageLibrary.h"
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
@@ -10,6 +11,53 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void nativeImageLibraryImportDeduplicatesAndDoesNotUseNetwork() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        ImageLibrary gallery(dir.filePath("library"));
+        QString error;
+        QImage photo(640, 360, QImage::Format_RGB32);
+        photo.fill(QColor("#4286CA"));
+        const QString first = gallery.importImage(photo, &error);
+        QVERIFY2(!first.isEmpty(), qPrintable(error));
+        QCOMPARE(first.size(), 64);
+        QCOMPARE(gallery.importImage(photo), first);
+        QCOMPARE(gallery.list().size(), 1);
+        QVERIFY(gallery.fileUrl(first).startsWith("file:"));
+        QVERIFY(gallery.dataUri(first).startsWith("data:image/jpeg;base64,"));
+        const QString wrong = first.left(63) + (first.endsWith("0") ? "1" : "0");
+        QVERIFY(gallery.fileUrl("../escape").isEmpty());
+        QVERIFY(gallery.filePath(wrong).isEmpty());
+        QVERIFY(gallery.dataUri(wrong).isEmpty());
+        QVERIFY(gallery.remove(first));
+        QVERIFY(gallery.list().isEmpty());
+        QVERIFY(gallery.dataUri(first).isEmpty());
+    }
+    void nativeImageLibraryRejectsHugePixelsAndCorruptedFile() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        ImageLibrary gallery(dir.filePath("library"));
+        QImage empty;
+        QVERIFY(gallery.importImage(empty).isEmpty());
+        QImage wide(10001, 5, QImage::Format_RGB32);
+        QVERIFY(gallery.importImage(wide).isEmpty());
+        const QString bogus = dir.filePath("corrupt.jpg");
+        QFile file(bogus);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("not a jpeg");
+        file.close();
+        QVERIFY(gallery.importFile(bogus).isEmpty());
+        QImage alpha(10, 10, QImage::Format_ARGB32);
+        alpha.fill(Qt::transparent);
+        const QString id = gallery.importImage(alpha);
+        QVERIFY(!id.isEmpty());
+        QVERIFY(gallery.dataUri(id).startsWith("data:image/png;base64,"));
+        QFile bytes(gallery.filePath(id));
+        QVERIFY(bytes.open(QIODevice::WriteOnly | QIODevice::Append));
+        bytes.write("tamper");
+        bytes.close();
+        QVERIFY(gallery.dataUri(id).isEmpty()); // integrity fails closed
+    }
     void offlineSpeechRejectsUnknownAliasesAndInvalidGGUF() {
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
