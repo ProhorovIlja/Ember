@@ -591,3 +591,36 @@ Implementation constraints were checked against
 [Qt 6.8 QProcess signals and kill behavior](https://doc.qt.io/qt-6.8/qprocess.html)
 and the upstream [whisper-cli documentation](https://github.com/ggml-org/whisper.cpp/blob/master/examples/cli/README.md).
 No model binaries or weights are bundled, and release gates remain closed.
+
+## 22 November — exclude local model thinking from visible chat and history
+
+Some llama.cpp reasoning formats expose a separate `delta.reasoning_content`
+property, while other local Qwen/DeepSeek templates return `<think>...</think>`
+**inside `delta.content`** (see the
+[llama.cpp server reasoning-format documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+and the [Qwen3 model guide](https://huggingface.co/Qwen/Qwen3-32B/blob/main/README.md)).
+Previously Ember ignored separate `reasoning_content` and did not *speak*
+well-formed thinking tags, but its chat UI/SQLite could still receive the
+raw inline thinking markup. That can spoil long story context and clutter
+saved conversations.
+
+The native C++ text-stream receiver now maintains a bounded, **RAM-only**
+raw SSE accumulator, and computes a visible projection using
+`EmberCore::visibleAssistantText()` before any QML update, live TTS queue,
+lastReply storage, chat history update or SQLite write. The projection removes
+complete and unterminated thinking blocks, is case-insensitive, supports
+multiple blocks, and withholds 1–6 character partial opening tags at stream
+boundaries so the UI cannot flash an incomplete `<thi` before it becomes
+`<think>`. The projection is append-only as token deltas arrive, retaining
+the streaming speech cursor's position. Raw text is never persisted and is
+explicitly cleared at the end of the turn. A 16,384-character cap applies to
+raw content as well as visible content: very long model thought streams
+therefore fail closed rather than growing without a bound.
+
+Qt regressions cover split opening/closing tags, hidden private reasoning,
+multiple blocks, normal angle-bracket prose and RU text following tags.
+This is a defensive display/history filter, not a verified guarantee that
+every possible model-internal reasoning format will be recognized; changing
+upstream chat templates or output protocols requires additional fixture tests.
+Potential false-positive filtering of a *literal* `<think>` markup discussion
+is a known trade-off for preventing reasoning disclosure.
