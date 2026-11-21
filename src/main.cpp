@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickStyle>
 #include <QStringList>
 #include <QTimer>
 
@@ -13,6 +14,9 @@ int main(int argc, char *argv[]) {
     QCoreApplication::setOrganizationName("Ember Local");
     QCoreApplication::setApplicationName("Ember");
 
+    // The Windows native Qt style rejects customized backgrounds.
+    // Basic preserves the original Ember design without a web-renderer.
+    QQuickStyle::setStyle("Basic");
     const bool smokeTest = app.arguments().contains("--smoke-test");
     QQmlApplicationEngine engine;
     QStringList qmlDiagnostics;
