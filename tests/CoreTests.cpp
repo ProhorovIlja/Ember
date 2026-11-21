@@ -291,6 +291,15 @@ private slots:
         QVERIFY(!EmberCore::validSpeechWav(corrupted));
         corrupted = good.left(good.size() - 1);
         QVERIFY(!EmberCore::validSpeechWav(corrupted));
+        corrupted = good;
+        corrupted[28] = char(0); // invalid byte rate for the configured sample rate
+        QVERIFY(!EmberCore::validSpeechWav(corrupted));
+        corrupted = good;
+        corrupted[40] = char(7); // data chunk no longer has complete 16-bit frames
+        QVERIFY(!EmberCore::validSpeechWav(corrupted));
+        corrupted = good;
+        corrupted[36] = 'x'; // data chunk missing
+        QVERIFY(!EmberCore::validSpeechWav(corrupted));
     }
     void keepsRecentConversationWithinAdaptiveContext() {
         QList<EmberCore::Turn> turns;
