@@ -1024,6 +1024,29 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
+                                        visible: ember.incompleteReply
+                                        spacing: 10
+                                        Text {
+                                            text: "The local model reached its reply limit."
+                                            color: "#A6C8E8"
+                                            font.pixelSize: 12
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
+                                        PillButton {
+                                            text: "Continue answer"
+                                            implicitWidth: 150
+                                            implicitHeight: 32
+                                            enabled: ember.brainReady && !ember.busy &&
+                                                     !ember.listening && !ember.speaking
+                                            onClicked: ember.continueIncompleteReply()
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Ask the offline model to resume without repeating. Your unsent draft stays intact."
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
                                         Text { text: "Ctrl + Enter · send"; color: "#8097A7"; font.pixelSize: 11 }
                                         PillButton {
                                             text: "Add image"
