@@ -235,7 +235,7 @@ private:
     QString m_voiceSample;
     QString m_sessionId, m_dictatedText, m_continuityNotes, m_recognitionHints;
     QString m_chatStreamText, m_chatStreamSession;
-    QString m_chatRawText; // private in-flight SSE; never rendered or persisted
+    EmberCore::VisibleAssistantStream m_visibleStream;
     QByteArray m_chatStreamBuffer;
     bool m_chatStreamDone = false, m_chatStreamInvalid = false;
     bool m_chatPreviewActive = false;
