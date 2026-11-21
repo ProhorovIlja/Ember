@@ -121,6 +121,9 @@ QString joinTranscriptionSegments(const QStringList &segments);
 QString partialDictationOnError(bool dictation, const QStringList &segments);
 // Safely assemble fragmented OpenAI/llama.cpp server-sent events; the buffer
 // retains partial UTF-8 frames while the caller decides how to render text.
-struct StreamResult { QString text; bool done = false; bool error = false; };
+struct StreamResult {
+    QString text;
+    bool done = false, error = false, truncated = false;
+};
 StreamResult consumeChatStream(QByteArray &buffer, const QByteArray &incoming);
 }
