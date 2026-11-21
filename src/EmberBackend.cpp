@@ -59,7 +59,13 @@ EmberBackend::EmberBackend(QObject *parent)
     connect(&m_chatRenderTimer, &QTimer::timeout,
             this, &EmberBackend::renderChatStream);
     m_pcmPumpTimer.setInterval(15);
-    connect(&m_pcmPumpTimer, &QTimer::timeout, this, &EmberBackend::pumpPcmPlayback);
+    connect(&m_pcmPumpTimer, &QTimer::timeout, this, [this] {
+        // A fast synthesizer may have paused the HTTP producer. Consume only
+        // enough new bytes to stay within the bounded playback queue.
+        if (m_speechReply && m_speechReply->bytesAvailable() > 0)
+            readPcmResponse(m_speechReply);
+        pumpPcmPlayback();
+    });
     m_voiceId = m_settings.value("voiceId", 0).toInt();
     // Ignore Windows/system proxies for both local inference services.
     // Otherwise an environment proxy could receive private conversation text.
@@ -1194,6 +1200,9 @@ void EmberBackend::synthesizeStreamingPcm(const QString &text) {
         m_localModel, m_localVoice, text);
     auto *reply = m_network.post(
         request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    // Backpressure: Qt must not buffer an entire multi-minute synthesized
+    // stream when the model produces audio faster than Windows consumes it.
+    reply->setReadBufferSize(128 * 1024);
     m_speechReply = reply;
     setBusy(true);
     m_ttsElapsed.start();
@@ -1205,26 +1214,30 @@ void EmberBackend::synthesizeStreamingPcm(const QString &text) {
             reply->deleteLater();
             return;
         }
-        // Consume the final partial packet before checking word alignment.
-        readPcmResponse(reply);
-        if (m_speechReply != reply) {
-            reply->deleteLater();
-            return;
-        }
-        const bool valid = reply->error() == QNetworkReply::NoError &&
-            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
-            m_pcmSampleRate > 0 && m_pcmTotalReceived > 0 &&
-            (m_pcmTotalReceived % 2) == 0;
-        m_speechReply = nullptr;
-        reply->deleteLater();
-        if (!valid) {
+        if (reply->error() != QNetworkReply::NoError ||
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200 ||
+            m_pcmSampleRate <= 0) {
             stopSpeechOnError("Native PCM stream failed or returned invalid audio.");
+            reply->deleteLater();
             return;
         }
         m_pcmHttpDone = true;
         m_ttsLastMs = m_ttsElapsed.isValid() ? m_ttsElapsed.elapsed() : -1;
         emit voiceTimingsChanged();
-        pumpPcmPlayback(); // drain the final queued samples before next sentence
+        readPcmResponse(reply); // remaining bytes may exceed one queue window
+        if (m_speechReply != reply) {
+            reply->deleteLater();
+            return;
+        }
+        if (reply->bytesAvailable() == 0) {
+            m_speechReply = nullptr;
+            reply->deleteLater();
+            if (m_pcmTotalReceived <= 0 || (m_pcmTotalReceived % 2)) {
+                stopSpeechOnError("Native PCM stream ended with an incomplete sample.");
+                return;
+            }
+        }
+        pumpPcmPlayback();
     });
 }
 void EmberBackend::readPcmResponse(QNetworkReply *reply) {
@@ -1262,19 +1275,28 @@ void EmberBackend::readPcmResponse(QNetworkReply *reply) {
         }
         m_pcmPumpTimer.start();
     }
-    const QByteArray incoming = reply->readAll();
-    if (incoming.isEmpty()) return;
     constexpr qint64 maxChunkBytes = 12LL * 1024 * 1024;
     constexpr qsizetype maxPendingBytes = 768 * 1024;
-    // Never let a malicious/buggy local server build an unbounded PCM queue.
-    if (incoming.size() > maxChunkBytes - m_pcmTotalReceived ||
-        incoming.size() > maxPendingBytes - m_pcmPending.size()) {
-        stopSpeechOnError("Native PCM stream exceeded its bounded audio buffer or duration.");
+    // Consume only free queue capacity. QNetworkReply's own 128 KiB read
+    // limit applies TCP-level backpressure instead of aborting fast models.
+    const qint64 room = maxPendingBytes - m_pcmPending.size();
+    if (room <= 0) return;
+    const QByteArray incoming = reply->read(
+        std::min<qint64>(room, reply->bytesAvailable()));
+    if (incoming.isEmpty()) return;
+    if (incoming.size() > maxChunkBytes - m_pcmTotalReceived) {
+        stopSpeechOnError("Native PCM stream exceeded the per-chunk duration quota.");
         return;
     }
     m_pcmTotalReceived += incoming.size();
     m_pcmPending += incoming;
     pumpPcmPlayback();
+    if (m_pcmHttpDone && m_speechReply == reply && reply->bytesAvailable() == 0) {
+        m_speechReply = nullptr;
+        reply->deleteLater();
+        if (m_pcmTotalReceived <= 0 || (m_pcmTotalReceived % 2))
+            stopSpeechOnError("Native PCM stream ended with an incomplete sample.");
+    }
 }
 void EmberBackend::pumpPcmPlayback() {
     if (!m_pcmSink || !m_pcmDevice) return;
@@ -1309,8 +1331,8 @@ void EmberBackend::pumpPcmPlayback() {
         }
     }
     // Continue only after HTTP completion AND the queued samples are heard.
-    if (m_pcmHttpDone && m_pcmPending.isEmpty() && m_pcmStarted &&
-        m_pcmSink->state() == QAudio::IdleState) {
+    if (m_pcmHttpDone && !m_speechReply && m_pcmPending.isEmpty() &&
+        m_pcmStarted && m_pcmSink->state() == QAudio::IdleState) {
         resetPcmPlayback();
         setSpeaking(false);
         setBusy(false);
