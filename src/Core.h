@@ -22,6 +22,13 @@ private:
     bool m_heardSpeech = false;
 };
 QByteArray pcmToWav(const QByteArray &pcm, int sampleRate);
+// Conservative energy-only pause alignment within the final 1.2 seconds of
+// an ASR chunk. Returns freshBytes unchanged if no unambiguous quiet interval.
+// The candidate contains prefixBytes of previous audio plus freshBytes of new
+// audio; no audio is dropped or uploaded by this boundary computation.
+qint64 speechAwareAsrFreshBytes(const QByteArray &candidate,
+                                const QAudioFormat &format,
+                                qint64 prefixBytes, qint64 freshBytes);
 // Offline 16 kHz mono conversion for common Windows capture devices.
 QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source);
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, const QString &user, int maxTokens = 1024, double temperature = 0.8,

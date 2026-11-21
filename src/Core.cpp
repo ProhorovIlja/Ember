@@ -127,6 +127,71 @@ bool VoiceEndpointer::observe(const AudioLevel &level) {
     return m_heardSpeech && m_elapsedMs >= 3000 && m_silentMs >= 2200;
 }
 
+qint64 speechAwareAsrFreshBytes(const QByteArray &candidate,
+                                const QAudioFormat &format,
+                                qint64 prefixBytes, qint64 freshBytes) {
+    const int frame = format.bytesPerFrame();
+    const int sampleRate = format.sampleRate();
+    if (!format.isValid() || !frame || sampleRate < 8000 ||
+        sampleRate > 96000 || format.channelCount() > 8 ||
+        prefixBytes < 0 || freshBytes <= 0 ||
+        (prefixBytes % frame) || (freshBytes % frame) ||
+        prefixBytes + freshBytes != candidate.size() ||
+        candidate.size() > 32 * 1024 * 1024)
+        return freshBytes;
+
+    const qint64 bytesPerSecond = qint64(sampleRate) * frame;
+    if (freshBytes < bytesPerSecond * 3)
+        return freshBytes; // short/last segments are not shifted
+
+    const qint64 frameStep = std::max<qint64>(1, sampleRate / 40);
+    const qint64 window = frameStep * frame; // ~25 ms, frame-aligned
+    const qint64 earliest = ((std::max<qint64>(
+        0, freshBytes - bytesPerSecond * 12 / 10) + window - 1) /
+        window) * window;
+    const qint64 latest = ((freshBytes - bytesPerSecond * 60 / 1000) /
+        window) * window;
+    if (latest <= earliest + 5 * window) return freshBytes;
+
+    struct Window { qint64 start; double rms; };
+    QList<Window> windows;
+    windows.reserve(int((latest - earliest) / window) + 1);
+    double highest = 0.0;
+    for (qint64 pos = earliest; pos + window <= latest; pos += window) {
+        const auto energy = pcmLevel(candidate.constData() + prefixBytes + pos,
+                                     window, format);
+        if (energy.durationMs <= 0 || !std::isfinite(energy.rms))
+            return freshBytes;
+        windows.append({pos, energy.rms});
+        highest = std::max(highest, energy.rms);
+    }
+    // Don't invent a speech-pause boundary if the entire tail is quiet.
+    if (highest < 0.012 || windows.size() < 6) return freshBytes;
+
+    // An energy gate is not VAD. Require at least five contiguous quiet
+    // windows and a substantial dip relative to actual speech nearby.
+    const double floor = std::max(0.0025, highest * 0.14);
+    const qint64 required = window * 5;
+    qint64 best = -1, start = -1;
+    auto checkRun = [&](qint64 end) {
+        if (start >= 0 && end - start >= required) {
+            const qint64 middle = start + (end - start) / 2;
+            if (middle > best) best = middle;
+        }
+        start = -1;
+    };
+    for (const auto &item : windows) {
+        if (item.rms <= floor) {
+            if (start < 0) start = item.start;
+        } else {
+            checkRun(item.start);
+        }
+    }
+    checkRun(windows.last().start + window);
+    // A single audio frame is the indivisible seek/overlap unit.
+    return best > 0 && best < freshBytes ? (best / frame) * frame : freshBytes;
+}
+
 qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
                            int bytesPerFrame, qint64 quota) {
     if (alreadyWritten < 0 || requested <= 0 || bytesPerFrame <= 0 ||

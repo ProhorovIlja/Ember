@@ -611,6 +611,55 @@ private slots:
             QVERIFY(reopened.notes(other).isEmpty());
         }
     }
+    void alignsLongBilingualAsrChunksAtActualQuietGaps() {
+        QAudioFormat format;
+        format.setSampleRate(16000);
+        format.setChannelCount(1);
+        format.setSampleFormat(QAudioFormat::Int16);
+        const int rate = format.sampleRate();
+        const int frames = 25 * rate;
+        QByteArray voice(frames * 2, 0);
+        // Simulated sustained speech with an 0.25s quiet region only near
+        // the 25-second seam. Exact 25s fallback splits the tail at time.
+        const int gapStart = frames - rate * 7 / 10;
+        const int gapEnd = frames - rate * 45 / 100;
+        for (int f = 0; f < frames; ++f) {
+            if (f >= gapStart && f < gapEnd) continue;
+            const qint16 amplitude = (f & 1) ? qint16(7000) : qint16(-7000);
+            const quint16 bits = quint16(amplitude);
+            voice[f * 2] = char(bits & 0xff);
+            voice[f * 2 + 1] = char((bits >> 8) & 0xff);
+        }
+        const qint64 cut = EmberCore::speechAwareAsrFreshBytes(
+            voice, format, 0, voice.size());
+        QVERIFY(cut >= qint64(gapStart) * 2);
+        QVERIFY(cut <= qint64(gapEnd) * 2);
+        QVERIFY(cut < voice.size());
+        QCOMPARE(cut % format.bytesPerFrame(), qint64(0));
+        QByteArray continuous(voice.size(), char(0));
+        for (int f = 0; f < frames; ++f) {
+            const quint16 amplitude = quint16(6000);
+            continuous[f * 2] = char(amplitude & 0xff);
+            continuous[f * 2 + 1] = char(amplitude >> 8);
+        }
+        QCOMPARE(EmberCore::speechAwareAsrFreshBytes(
+            continuous, format, 0, continuous.size()), qint64(continuous.size()));
+        QCOMPARE(EmberCore::speechAwareAsrFreshBytes(
+            QByteArray(voice.size(), char(0)), format, 0, voice.size()),
+            qint64(voice.size()));
+        // Prefix is a duplicated preceding 500ms, never a fresh segment.
+        const qsizetype prefixBytes = rate; // 500ms 16-bit mono
+        const QByteArray overlapping = voice.right(prefixBytes) + voice;
+        QCOMPARE(EmberCore::speechAwareAsrFreshBytes(
+            overlapping, format, prefixBytes, voice.size()), cut);
+        QCOMPARE(EmberCore::speechAwareAsrFreshBytes(
+            voice.left(2000), format, 0, 2000), qint64(2000));
+        QCOMPARE(EmberCore::speechAwareAsrFreshBytes(
+            voice, format, 1, voice.size()), qint64(voice.size()));
+        format.setChannelCount(3);
+        QCOMPARE(EmberCore::speechAwareAsrFreshBytes(
+            voice, format, 0, voice.size()), qint64(voice.size()));
+    }
     void mergesOverlappingEnglishAndRussianDictation() {
         QCOMPARE(EmberCore::joinTranscriptionSegments({
             "I walked into the old city",

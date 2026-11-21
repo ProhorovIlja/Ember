@@ -1485,25 +1485,39 @@ void EmberBackend::transcribeNextChunk() {
         completeTranscription();
         return;
     }
-    // Repeat half a second of preceding audio in a later dictation chunk.
-    // Without overlap, Whisper can miss words straddling the exact boundary.
-    const qint64 overlap = m_transcribingDictation && m_transcriptionOffset > 0
+    // Repeat half a second of preceding audio in every multi-chunk voice
+    // or dictation recording. A 25-second voice request can also straddle a word.
+    const qint64 overlap = m_transcriptionOffset > 0
         ? qint64(m_captureFormat.sampleRate()) * m_captureFormat.bytesPerFrame() / 2
         : 0;
     const qint64 start = m_transcriptionOffset - overlap;
-    const qint64 freshBytes = std::min(m_transcriptionChunkSize,
-                                      m_transcriptionSize - m_transcriptionOffset);
+    qint64 freshBytes = std::min(m_transcriptionChunkSize,
+                                 m_transcriptionSize - m_transcriptionOffset);
+    const bool moreAfterThisChunk =
+        m_transcriptionOffset + freshBytes < m_transcriptionSize;
     QFile file(m_captureFile.fileName());
     if (!file.open(QIODevice::ReadOnly) || !file.seek(start)) {
         failTranscription("Could not read the temporary local microphone recording.");
         return;
     }
     const qint64 size = freshBytes + overlap;
-    const QByteArray raw = file.read(size);
+    QByteArray raw = file.read(size);
     file.close();
     if (size <= 0 || raw.size() != size) {
         failTranscription("Microphone recording was truncated during transcription.");
         return;
+    }
+    // A bounded 1.2s tail search selects a clear low-energy gap when there
+    // is more audio ahead; the exact original cut is used otherwise. This
+    // never discards samples: it only advances the next start offset by the
+    // same frame-aligned amount and retains the original 500ms overlap.
+    if (moreAfterThisChunk) {
+        const qint64 preferred = EmberCore::speechAwareAsrFreshBytes(
+            raw, m_captureFormat, overlap, freshBytes);
+        if (preferred > 0 && preferred <= freshBytes) {
+            freshBytes = preferred;
+            raw.truncate(qsizetype(overlap + freshBytes));
+        }
     }
     const QByteArray wav = EmberCore::whisperWav(raw, m_captureFormat);
     QFile output(workFile("microphone.wav"));
@@ -1637,8 +1651,10 @@ void EmberBackend::failTranscription(const QString &reason) {
     m_transcribingDictation = false;
     m_transcriptionSegments.clear();
     m_transcriptionSize = m_transcriptionOffset = m_transcriptionChunkSize = 0;
-    for (const auto &name : {"microphone.raw", "microphone.wav", "recognition.txt"})
-        QFile::remove(workFile(name));
+    // The last Whisper output QFile or a native multipart upload can still
+    // own the WAV when we enter this callback. Use the Windows-safe private
+    // scratch cleanup, with a turn-generation guard against newer recording.
+    retryCancelledAudioCleanup(m_voiceScratchRevision, 6);
     setBusy(false);
     setStatus(reason);
 }
@@ -1647,10 +1663,8 @@ void EmberBackend::completeTranscription() {
     m_transcribingDictation = false;
     const QString text = EmberCore::joinTranscriptionSegments(m_transcriptionSegments);
     m_transcriptionSegments.clear();
-    m_transcriptionOffset = m_transcriptionSize = 0;
-    QFile::remove(workFile("microphone.raw"));
-    QFile::remove(workFile("microphone.wav"));
-    QFile::remove(workFile("recognition.txt"));
+    m_transcriptionOffset = m_transcriptionSize = m_transcriptionChunkSize = 0;
+    retryCancelledAudioCleanup(m_voiceScratchRevision, 6);
     m_asrLastMs = m_asrElapsed.isValid() ? m_asrElapsed.elapsed() : -1;
     emit voiceTimingsChanged();
     setBusy(false);

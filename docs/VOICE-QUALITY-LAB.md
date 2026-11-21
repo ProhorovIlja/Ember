@@ -245,6 +245,40 @@ reports why the retest is unavailable instead of doing nothing. The test control
 verified with physical Windows speakers and real GGUF models; successful
 CI proves logic/build only, not hotplug behaviour on Bluetooth/USB hardware.
 
+## 22 November — pause-aware long RU/EN ASR chunk boundaries
+
+Previous multi-minute RU/EN recognition cut every 25-second mono 16kHz
+segment at an exact clock boundary. If the user spoke through that cut,
+Whisper/Qwen3-ASR could lose a word; 500-ms overlap was enabled only for
+dictation, not long voice commands. The local Core now examines at most
+1.2 seconds of decoded **original capture PCM** before a non-final chunk
+boundary (25-ms windows), and moves the cut back only when a clearly quiet
+span of at least 125 ms occurs within that tail. If the recording is noisy,
+the audio has no distinct pause, or the chunk is final, it keeps the
+unchanged fixed 25-second boundary. All seeks and cuts remain full audio
+frames. The 500-ms overlap is now used in BOTH long dictation and long
+spoken conversational requests, and the preexisting lexical merger removes
+only 2+ matching words to avoid over-deleting legitimate repetitions.
+
+No sound is saved in quality reports and no external service is contacted.
+Source audio remains in the same transient disk-backed scratch directory.
+Real accuracy and quiet-word thresholds MUST be evaluated using the local
+EN/RU ASR WAV corpus harness on user-owned recordings. The heuristic
+is NOT neural VAD or forced alignment and will not perfectly identify
+words or speakers.
+
+The Whisper CLI provides optional Silero VAD and context controls:
+https://github.com/ggml-org/whisper.cpp/blob/master/examples/cli/README.md
+The official Qwen3-ASR long-audio tools use low-energy boundaries and
+language-aware chunking:
+https://github.com/QwenLM/Qwen3-ASR-Toolkit
+https://huggingface.co/spaces/Qwen/Qwen3-ASR/blob/main/qwen_asr/inference/utils.py
+
+Also changed both normal and failed ASR cleanup to reuse the bounded
+Windows-safe scratch deletion already used during explicit cancellation;
+this prevents a transient open Whisper recognition file or native Qwen
+multipart WAV handle from leaving retained temporary sensitive data.
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.

@@ -69,6 +69,9 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 ### Latest local-first implementation acceptance
 
 - [x] Verified Windows desktop source has a bounded RU/EN transcription-segment merger with 500 ms overlap, plus tests. Physical microphone WER/long-capture tests remain unchecked.
+- [x] Bounded pause-aware chunk seams on long voice AND dictation recordings,
+  with full-frame slicing and synthetic quiet/noisy/continuous-speech regression
+  tests; human RU/EN WER comparison is still a separate acceptance gate.
 - [x] Manual per-session continuity-memory notes in SQLite with isolated sessions, disk persistence and Markdown export. Long-story narrative quality and semantic retrieval remain unchecked.
 - [x] Local LLM TTFT and Qt playback-start timing hooks added. True acoustic first-audio and full-duplex / interruption latency remain unchecked.
 - [ ] Confirm no temporary raw PCM/WAV leak following interrupted Whisper process, forced process kill or low disk space on Windows 10/11.
