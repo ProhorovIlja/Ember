@@ -24,6 +24,11 @@ jobs:
           python release/verify_release.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Release gate tests failed.' }
           if (Test-Path 'release/acceptance.json') { throw 'Development branch unexpectedly contains a stable release approval.' }
+      - name: Validate local-only speech benchmark protocol
+        shell: pwsh
+        run: |
+          python tools/voice_benchmark.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Local voice benchmark self-test failed.' }
       - name: Install Qt 6.8.3 dynamic development modules
         uses: jurplel/install-qt-action@v4
         with:
