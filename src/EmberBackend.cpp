@@ -683,6 +683,9 @@ void EmberBackend::synthesize(const QString &text) {
         setStatus("Configure sherpa-onnx and the complete Kokoro v0.19 pack, including espeak-ng-data.");
         return;
     }
+    // Release Windows' previous WAV file handle before regenerating a
+    // later spoken segment at the same private path.
+    m_mediaPlayer.setSource(QUrl());
     QFile::remove(workFile("voice.wav"));
     m_tts.setWorkingDirectory(QFileInfo(configPath("ttsExe")).absolutePath());
     m_tts.setProgram(configPath("ttsExe"));
@@ -701,6 +704,7 @@ void EmberBackend::synthesize(const QString &text) {
 }
 void EmberBackend::playSynthesizedFile() {
     m_mediaPlayer.stop();
+    m_mediaPlayer.setSource(QUrl());
     m_mediaPlayer.setSource(QUrl::fromLocalFile(workFile("voice.wav")));
     m_mediaPlayer.play();
     setSpeaking(true);
@@ -720,6 +724,7 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    m_mediaPlayer.setSource(QUrl());
     QFile::remove(workFile("voice.wav"));
     QNetworkReply *reply = m_network.post(
         request, QJsonDocument(EmberCore::speechRequest(
@@ -788,6 +793,7 @@ void EmberBackend::cancelWork() {
     if (m_tts.state() != QProcess::NotRunning) m_tts.kill();
     releaseCapture();
     m_mediaPlayer.stop();
+    m_mediaPlayer.setSource(QUrl());
     setSpeaking(false);
     m_voicePending = false;
     setBusy(false);
