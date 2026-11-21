@@ -1111,7 +1111,13 @@ StreamResult consumeChatStream(QByteArray &buffer, const QByteArray &incoming) {
             }
             const QJsonArray choices = envelope.value("choices").toArray();
             if (choices.isEmpty()) continue;
-            const QJsonObject delta = choices.first().toObject().value("delta").toObject();
+            const QJsonObject first = choices.first().toObject();
+            // llama-server can return [DONE] after finish_reason="length".
+            // A transport-complete SSE stream is NOT a completed sentence
+            // when the configured generation token budget was exhausted.
+            if (first.value("finish_reason").toString() == "length")
+                result.truncated = true;
+            const QJsonObject delta = first.value("delta").toObject();
             const QString text = delta.value("content").toString();
             if (!text.isEmpty()) result.text += text;
         }
