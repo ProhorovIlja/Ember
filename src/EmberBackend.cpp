@@ -935,6 +935,8 @@ void EmberBackend::stopSpeechOnError(const QString &error) {
     if (m_tts.state() != QProcess::NotRunning) m_tts.kill();
     m_mediaPlayer.stop();
     m_mediaPlayer.setSource(QUrl());
+    QFile::remove(speechFile(0));
+    QFile::remove(speechFile(1));
     setSpeaking(false);
     setBusy(false);
     setStatus(error);
@@ -968,7 +970,10 @@ void EmberBackend::playNextSpeechChunk() {
         synthesize(next);
     } else if (!m_speaking) {
         m_speechSequence = false;
-        setStatus("Finished speaking the complete reply.");
+        m_mediaPlayer.setSource(QUrl());
+        QFile::remove(speechFile(0));
+        QFile::remove(speechFile(1));
+        setStatus("Finished speaking the complete reply. Temporary audio removed.");
     }
 }
 void EmberBackend::synthesize(const QString &text) {
