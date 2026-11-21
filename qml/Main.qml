@@ -833,7 +833,6 @@ ApplicationWindow {
                                                     : modelData.body
                                                 textFormat: modelData.role === "ember"
                                                     ? Text.RichText : Text.PlainText
-                                                selectByMouse: true
                                                 wrapMode: Text.Wrap
                                                 color: "#EEF3F9"
                                                 font.pixelSize: 14
