@@ -566,16 +566,25 @@ private slots:
     }
     void llamaStreamTokenLimitNeverMasqueradesAsCompletedReply() {
         QByteArray pending;
-        const auto content = QJsonDocument(QJsonObject{{"choices", QJsonArray{
-            QJsonObject{{"delta", QJsonObject{{"content", "This story is"}}},
-                        {"finish_reason", QJsonValue::Null}}}
-        }}}).toJson(QJsonDocument::Compact);
-        const auto limited = QJsonDocument(QJsonObject{{"choices", QJsonArray{
-            QJsonObject{{"delta", QJsonObject{}}, {"finish_reason", "length"}}}
-        }}}).toJson(QJsonDocument::Compact);
-        const QByteArray stream =
-            "data: " + content + "\n\n" +
-            "data: " + limited + "\n\n" + "data: [DONE]\n\n";
+        // Build JSON in small typed steps: nested brace elision in Qt's
+        // initializer-list constructors is ambiguous to MSVC.
+        const QJsonObject contentDelta{{"content", "This story is"}};
+        const QJsonObject contentChoice{
+            {"delta", contentDelta},
+            {"finish_reason", QJsonValue(QJsonValue::Null)}
+        };
+        const QJsonObject lengthChoice{
+            {"delta", QJsonObject{}},
+            {"finish_reason", "length"}
+        };
+        auto event = [](const QJsonObject &choice) {
+            const QJsonObject envelope{{"choices", QJsonArray{choice}}};
+            return QByteArray("data: ") +
+                QJsonDocument(envelope).toJson(QJsonDocument::Compact) +
+                QByteArray("\n\n");
+        };
+        const QByteArray stream = event(contentChoice) + event(lengthChoice) +
+            QByteArray("data: [DONE]\n\n");
         bool truncated = false, done = false;
         QString visible;
         for (qsizetype i = 0; i < stream.size(); i += 5) {
@@ -590,12 +599,13 @@ private slots:
         QVERIFY(truncated);
         QVERIFY(pending.isEmpty());
 
-        // stop is a normal end; only a length stop means incomplete text.
-        const QByteArray normal = "data: " +
-            QJsonDocument(QJsonObject{{"choices", QJsonArray{
-                QJsonObject{{"delta", QJsonObject{}}, {"finish_reason", "stop"}}}
-            }}}).toJson(QJsonDocument::Compact) + "\n\n";
-        const auto good = EmberCore::consumeChatStream(pending, normal);
+        // A normal stop does not mean a token-budget failure.
+        const QJsonObject stopChoice{
+            {"delta", QJsonObject{}},
+            {"finish_reason", "stop"}
+        };
+        const auto good = EmberCore::consumeChatStream(
+            pending, event(stopChoice));
         QVERIFY(!good.truncated);
         QVERIFY(!good.error);
     }
