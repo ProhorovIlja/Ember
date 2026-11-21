@@ -37,6 +37,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(bool speaking READ speaking NOTIFY speakingChanged)
     Q_PROPERTY(QString persona READ persona WRITE setPersona NOTIFY configurationChanged)
     Q_PROPERTY(int chatMode READ chatMode WRITE setChatMode NOTIFY configurationChanged)
+    Q_PROPERTY(int recognitionLanguage READ recognitionLanguage WRITE setRecognitionLanguage NOTIFY configurationChanged)
     Q_PROPERTY(int voiceId READ voiceId WRITE setVoiceId NOTIFY configurationChanged)
     Q_PROPERTY(int voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY configurationChanged)
     Q_PROPERTY(QString localVoice READ localVoice WRITE setLocalVoice NOTIFY configurationChanged)
@@ -66,6 +67,7 @@ public:
     bool speaking() const { return m_speaking; }
     QString persona() const { return m_persona; }
     int chatMode() const { return m_chatMode; }
+    int recognitionLanguage() const { return m_recognitionLanguage; }
     int voiceId() const { return m_voiceId; }
     int voiceEngine() const { return m_voiceEngine; }
     QString localVoice() const { return m_localVoice; }
@@ -80,6 +82,7 @@ public:
     Q_INVOKABLE void choosePath(const QString &key);
     Q_INVOKABLE void setPersona(const QString &persona);
     Q_INVOKABLE void setChatMode(int mode);
+    Q_INVOKABLE void setRecognitionLanguage(int language);
     Q_INVOKABLE void setVoiceId(int index);
     Q_INVOKABLE void setVoiceEngine(int index);
     Q_INVOKABLE void setLocalVoice(const QString &value);
@@ -159,6 +162,7 @@ private:
     QVariantList m_messages;
     QList<EmberCore::Turn> m_history;
     int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0, m_chatMode = 0;
+    int m_recognitionLanguage = 0;
     bool m_brainReady = false, m_busy = false, m_listening = false;
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
     bool m_speechSequence = false;
