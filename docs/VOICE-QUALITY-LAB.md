@@ -279,6 +279,33 @@ Windows-safe scratch deletion already used during explicit cancellation;
 this prevents a transient open Whisper recognition file or native Qwen
 multipart WAV handle from leaving retained temporary sensitive data.
 
+## 22 November — multi-minute native ASR benchmark parity
+
+The independent local `tools/asr_corpus.py` now offers opt-in
+`--app-chunking` to measure a real multi-minute recording with the same
+25-second target, 500-ms overlapped context, conservative low-energy
+boundary heuristic, and 2+-word lexical deduplication used by Ember's
+runtime. Requires source WAV **already 16 kHz mono PCM16**, because the
+pure-Python lab does not silently claim to reproduce Ember's Qt sinc
+microphone conversion for arbitrary Bluetooth/stereo devices. If input
+differs, it refuses the experiment. Each 25-second segment is sent only
+to the user-started local speech.cpp service, and the report includes
+number of segments, weighted EN/RU WER/CER, original input duration and
+total ASR processing-time RTF. The report never contains recorded audio,
+recognized sentences, reference text or file paths.
+
+```powershell
+python tools/asr_corpus.py --manifest .\private-voice-corpus\corpus.json --model qwen3-asr-1.7b --omit-model-id --app-chunking --output asr-chunked-metrics.json
+```
+
+This permits paired comparisons (direct whole-file recognition vs the
+chunked Ember path) of real Qwen3-ASR weights, *if and only if* the service
+can directly accept the full original WAV. On hardware that cannot
+support the whole WAV, measure chunked mode alone. The mock 32-second
+English source is silence with scripted ASR replies and deliberately tests
+the merger, segment count and local-only report; it is NOT evidence of
+model WER, naturalness or accuracy on Russian speakers.
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.

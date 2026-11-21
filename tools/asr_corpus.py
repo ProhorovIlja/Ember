@@ -8,6 +8,7 @@ numeric error/latency metrics, never the referenced words or filenames.
 import argparse
 import io
 import json
+import math
 import statistics
 import tempfile
 import wave
@@ -53,7 +54,125 @@ def check_wave(data):
         raise ValueError("Corrupt or unsupported RIFF WAV") from exc
 
 
-def evaluate(manifest, model, omit_model_id=False, recognizer=transcribe):
+
+def join_overlap_text(segments):
+    """Ember's conservative lexical merger: only 2+ matching boundary words."""
+    merged = []
+    def key(word):
+        while word and not word[0].isalnum():
+            word = word[1:]
+        while word and not word[-1].isalnum():
+            word = word[:-1]
+        return word.casefold()
+    for source in segments:
+        incoming = source.split()
+        duplicate = 0
+        for count in range(min(12, len(merged), len(incoming)), 1, -1):
+            if all(key(merged[-count + i]) and
+                   key(merged[-count + i]) == key(incoming[i])
+                   for i in range(count)):
+                duplicate = count
+                break
+        merged.extend(incoming[duplicate:])
+    return " ".join(merged)
+
+
+def quiet_aligned_fresh_frames(pcm, prefix_frames, fresh_frames, sample_rate):
+    """Approximate the native 25ms RMS seam heuristic for 16kHz mono PCM16.
+
+    A metric harness cannot substitute for native QAudioFormat path testing.
+    Both implementations prefer unchanged 25s chunks unless a 125ms quiet
+    interval is evident near their end. There is no model inference here.
+    """
+    if (sample_rate != 16000 or not 0 <= prefix_frames or
+            fresh_frames <= 0 or len(pcm) != 2 * (prefix_frames + fresh_frames) or
+            fresh_frames < sample_rate * 3):
+        return fresh_frames
+    window = max(1, sample_rate // 40)
+    earliest = ((max(0, fresh_frames - sample_rate * 12 // 10)
+                 + window - 1) // window) * window
+    latest = ((fresh_frames - sample_rate * 60 // 1000) // window) * window
+    if latest <= earliest + 5 * window:
+        return fresh_frames
+    values = []
+    for pos in range(earliest, latest - window + 1, window):
+        beginning = (prefix_frames + pos) * 2
+        data = pcm[beginning:beginning + window * 2]
+        # Only 25ms is loaded per iteration; this never decodes the full WAV
+        # into a second RAM-sized array.
+        from array import array
+        samples = array("h")
+        samples.frombytes(data)
+        if len(samples) != window:
+            return fresh_frames
+        rms = math.sqrt(sum(s * s for s in samples) / window) / 32768
+        values.append((pos, rms))
+    if not values:
+        return fresh_frames
+    highest = max(v for _, v in values)
+    if highest < 0.012 or len(values) < 6:
+        return fresh_frames
+    threshold = max(0.0025, highest * 0.14)
+    start = None
+    best = None
+    def candidate(run_start, run_end):
+        if run_start is None or run_end - run_start < 5 * window:
+            return None
+        return run_start + (run_end - run_start) // 2
+    for pos, rms in values:
+        if rms <= threshold:
+            if start is None:
+                start = pos
+        elif start is not None:
+            new = candidate(start, pos)
+            if new is not None:
+                best = new
+            start = None
+    if start is not None:
+        new = candidate(start, values[-1][0] + window)
+        if new is not None:
+            best = new
+    return best if best is not None and 0 < best < fresh_frames else fresh_frames
+
+
+def app_chunked_pcm_wavs(wav_data):
+    """Yield private 16kHz mono WAV chunks matching Ember's 25s/500ms policy.
+
+    Refuse other input formats rather than pretending to match Ember's sinc
+    resampler for 44.1/48k stereo microphone capture.
+    """
+    with wave.open(io.BytesIO(wav_data), "rb") as reader:
+        rate = reader.getframerate()
+        if reader.getnchannels() != 1 or reader.getsampwidth() != 2 or rate != 16000:
+            raise ValueError("--app-chunking requires pre-resampled 16kHz mono PCM16")
+        total = reader.getnframes()
+        samples = reader.readframes(total)
+        if len(samples) != total * 2:
+            raise ValueError("Truncated WAV has fewer frames than declared")
+    frames_per_chunk = rate * 25
+    overlap_frames = rate // 2
+    offset = 0
+    while offset < total:
+        wanted = min(frames_per_chunk, total - offset)
+        start = max(0, offset - overlap_frames)
+        end = offset + wanted
+        pcm = samples[start * 2:end * 2]
+        if end < total:
+            wanted = quiet_aligned_fresh_frames(pcm, offset - start, wanted, rate)
+            end = offset + wanted
+            pcm = pcm[:(end - start) * 2]
+        output = io.BytesIO()
+        with wave.open(output, "wb") as writer:
+            writer.setnchannels(1)
+            writer.setsampwidth(2)
+            writer.setframerate(rate)
+            writer.writeframes(pcm)
+        yield output.getvalue()
+        offset = end
+
+
+def evaluate(manifest, model, omit_model_id=False, recognizer=transcribe,
+             app_chunking=False):
     if model not in MODELS:
         raise ValueError("Unsupported local Qwen ASR model label")
     manifest = Path(manifest)
@@ -85,12 +204,25 @@ def evaluate(manifest, model, omit_model_id=False, recognizer=transcribe):
         expected = ref_path.read_text(encoding="utf-8").strip()
         if not 0 < len(expected) <= 4000:
             raise ValueError("Reference transcript must contain up to 4000 characters")
-        prediction, elapsed_ms = recognizer(wav, model, language,
-                                            omit_model_id=omit_model_id)
+        if app_chunking:
+            fragments = []
+            elapsed_ms = 0.0
+            for chunk in app_chunked_pcm_wavs(wav):
+                text, duration_ms = recognizer(
+                    chunk, model, language, omit_model_id=omit_model_id)
+                fragments.append(text)
+                elapsed_ms += duration_ms
+            prediction = join_overlap_text(fragments)
+            segment_count = len(fragments)
+        else:
+            prediction, elapsed_ms = recognizer(
+                wav, model, language, omit_model_id=omit_model_id)
+            segment_count = 1
         trial = metrics(expected, prediction)
         rows.append({
             "trial": index + 1, "language": language,
             "duration_seconds": duration, "asr_wall_ms": elapsed_ms,
+            "segments": segment_count,
             "wer": trial["wer"], "cer": trial["cer"],
             "reference_words": trial["reference_word_count"],
             "reference_chars": trial["reference_character_count"],
@@ -104,6 +236,7 @@ def evaluate(manifest, model, omit_model_id=False, recognizer=transcribe):
         elapsed = sum(x["asr_wall_ms"] for x in entries)
         return {
             "cases": len(entries),
+            "asr_segments": sum(x["segments"] for x in entries),
             "wer": round(sum(x["word_edits"] for x in entries) / max(1, words), 4),
             "cer": round(sum(x["character_edits"] for x in entries) / max(1, characters), 4),
             "real_time_factor": round((elapsed / 1000) / max(0.001, durations), 3),
@@ -117,6 +250,7 @@ def evaluate(manifest, model, omit_model_id=False, recognizer=transcribe):
                  "file paths are saved in the report."),
         "model_label": model,
         "omitted_catalog_model_id": omit_model_id,
+        "app_chunking_25s_500ms": app_chunking,
         "overall": summarize(rows),
         "by_language": {lang: summarize([r for r in rows if r["language"] == lang])
                         for lang in ("en", "ru", "auto")
@@ -150,6 +284,55 @@ def self_test():
         assert report["by_language"]["ru"]["wer"] == 0
         assert report["overall"]["real_time_factor"] > 0
         assert "Привет" not in json.dumps(report, ensure_ascii=False)
+        # 32 seconds of synthetic PCM triggers the exact two-call local
+        # segmentation shape (25s + 0.5s overlap + 7s).
+        audio = io.BytesIO()
+        with wave.open(audio, "wb") as writer:
+            writer.setnchannels(1)
+            writer.setsampwidth(2)
+            writer.setframerate(16000)
+            writer.writeframes(b"\x00\x00" * (32 * 16000))
+        (root / "recordings" / "3.wav").write_bytes(audio.getvalue())
+        (root / "refs" / "3.txt").write_text(
+            "I walked along the old road and river.", encoding="utf-8")
+        long_case = [{
+            "audio": "recordings/3.wav", "reference": "refs/3.txt",
+            "language": "en"
+        }]
+        manifest.write_text(json.dumps({"cases": long_case}), encoding="utf-8")
+        calls = []
+        def recognize_long(wav, _model, _language, omit_model_id=False):
+            assert omit_model_id
+            calls.append(wav)
+            with wave.open(io.BytesIO(wav), "rb") as reader:
+                frame_count = reader.getnframes()
+                assert reader.getframerate() == 16000
+                assert frame_count <= 25 * 16000 + 8000
+            phrase = ("I walked along the old road" if len(calls) == 1
+                      else "the old road and river.")
+            return phrase, 25.0
+        long_report = evaluate(manifest, MODELS[0], True, recognize_long, True)
+        assert long_report["overall"]["wer"] == 0
+        assert long_report["overall"]["asr_segments"] == len(calls) == 2
+        assert long_report["overall"]["real_time_factor"] > 0
+        assert "river" not in json.dumps(long_report)
+        assert join_overlap_text(["Сегодня я читаю эту книгу",
+                                 "эту книгу каждый день"]) == (
+                                 "Сегодня я читаю эту книгу каждый день")
+        # Bounded silence alignment: audio with a distinct late quiet gap
+        # is cut in that gap, unlike uninterrupted speech.
+        from array import array
+        tone = array("h", [6000]) * (25 * 16000)
+        gap_start = 25 * 16000 - 11200
+        gap_end = 25 * 16000 - 7200
+        for i in range(gap_start, gap_end):
+            tone[i] = 0
+        tail = tone.tobytes()
+        chosen = quiet_aligned_fresh_frames(tail, 0, len(tone), 16000)
+        assert gap_start <= chosen <= gap_end
+        loud = array("h", [6000]) * (25 * 16000)
+        assert quiet_aligned_fresh_frames(
+            loud.tobytes(), 0, len(loud), 16000) == len(loud)
         bad = {"cases": [{"audio": "../outside.wav", "reference": "refs/1.txt",
                           "language": "en"}]}
         manifest.write_text(json.dumps(bad), encoding="utf-8")
@@ -182,6 +365,8 @@ def main():
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--model", choices=MODELS, default=MODELS[0])
     parser.add_argument("--omit-model-id", action="store_true")
+    parser.add_argument("--app-chunking", action="store_true",
+                        help="Benchmark Ember-style 25s/500ms overlapping segments; requires 16kHz mono WAV")
     parser.add_argument("--output", type=Path,
                         help="Optional local numeric-only JSON report")
     args = parser.parse_args()
@@ -191,7 +376,8 @@ def main():
     if args.manifest is None:
         parser.error("--manifest is required")
     try:
-        result = evaluate(args.manifest, args.model, args.omit_model_id)
+        result = evaluate(args.manifest, args.model, args.omit_model_id,
+                          app_chunking=args.app_chunking)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         parser.error(f"Private corpus failed: {type(exc).__name__}: {exc}")
     report = json.dumps(result, ensure_ascii=False, indent=2)
