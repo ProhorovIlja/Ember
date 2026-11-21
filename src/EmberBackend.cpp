@@ -1209,6 +1209,11 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
 }
 void EmberBackend::testVoice() {
     if (m_busy || m_listening) return;
+    if (m_voiceEngine == 1 &&
+        m_speechServer.state() != QProcess::NotRunning && !m_speechServerReady) {
+        setStatus("Native speech model is still loading; test it after Ready appears.");
+        return;
+    }
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_mediaPlayer.stop();
