@@ -824,9 +824,8 @@ QString visibleAssistantText(const QString &draft) {
     // on the accumulated bounded SSE content, never on a single token alone.
     // Only the returned visible text can reach the UI, SQLite, or TTS.
     if (draft.size() > 16384) return {};
-    constexpr auto open = "<think>";
-    constexpr auto close = "</think>";
-    const QString opener = QString::fromLatin1(open);
+    const QString opener = QStringLiteral("<think>");
+    const QString closing = QStringLiteral("</think>");
     QString visible;
     visible.reserve(draft.size());
     qsizetype pos = 0;
@@ -851,9 +850,9 @@ QString visibleAssistantText(const QString &draft) {
         }
         visible += draft.mid(pos, start - pos);
         const qsizetype end = draft.indexOf(
-            QString::fromLatin1(close), start + opener.size(), Qt::CaseInsensitive);
+            closing, start + opener.size(), Qt::CaseInsensitive);
         if (end < 0) return visible; // unfinished thought: withhold all
-        pos = end + qsizetype(sizeof(close) - 1);
+        pos = end + closing.size();
     }
     return visible;
 }
