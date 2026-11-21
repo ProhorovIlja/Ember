@@ -269,7 +269,7 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
     if (draft.size() > 16384 || cursor < 0 || cursor > draft.size()) return ready;
     // Only read completed punctuation/whitespace spans. Half-written fenced
     // code stays withheld until its closing fence arrives.
-    while (cursor < draft.size() && ready.size() < 48) {
+    while (cursor < draft.size()) {
         while (cursor < draft.size() && draft[cursor].isSpace()) ++cursor;
         if (cursor >= draft.size()) break;
         const QString remaining = draft.mid(cursor);
