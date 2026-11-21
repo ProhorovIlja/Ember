@@ -22,6 +22,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString transcript READ transcript NOTIFY transcriptChanged)
     Q_PROPERTY(QString lastReply READ lastReply NOTIFY lastReplyChanged)
+    Q_PROPERTY(QString voiceTimings READ voiceTimings NOTIFY voiceTimingsChanged)
     Q_PROPERTY(QVariantList messages READ messages NOTIFY messagesChanged)
     Q_PROPERTY(bool brainReady READ brainReady NOTIFY brainReadyChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
@@ -43,6 +44,7 @@ public:
     QString status() const { return m_status; }
     QString transcript() const { return m_transcript; }
     QString lastReply() const { return m_lastReply; }
+    QString voiceTimings() const;
     QVariantList messages() const { return m_messages; }
     bool brainReady() const { return m_brainReady; }
     bool busy() const { return m_busy; }
@@ -79,6 +81,7 @@ signals:
     void statusChanged();
     void transcriptChanged();
     void lastReplyChanged();
+    void voiceTimingsChanged();
     void messagesChanged();
     void brainReadyChanged();
     void busyChanged();
@@ -137,4 +140,6 @@ private:
     QTimer m_captureWatchdog;
     quint64 m_captureSession = 0;
     QElapsedTimer m_brainElapsed;
+    QElapsedTimer m_asrElapsed, m_llmElapsed, m_ttsElapsed;
+    qint64 m_asrLastMs = -1, m_llmLastMs = -1, m_ttsLastMs = -1;
 };
