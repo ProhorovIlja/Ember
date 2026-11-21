@@ -337,7 +337,7 @@ bool mostlyCyrillic(const QString &text) {
         ++letters;
         if (c.script() == QChar::Script_Cyrillic) ++cyrillic;
     }
-    return cyrillic >= 20 && letters > 0 && cyrillic * 4 >= letters;
+    return cyrillic >= 4 && letters > 0 && cyrillic * 2 >= letters;
 }
 // Preserve the content of a long spoken reply instead of silently clipping
 // everything after the first 700 characters. Prefer natural sentence ends,
