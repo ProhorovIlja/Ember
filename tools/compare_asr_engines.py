@@ -84,8 +84,16 @@ def comparison_report(manifest, qwen_model, whisper_recognize, *,
     else:
         qwen = evaluate(manifest, qwen_model, omit_qwen_model, qwen_recognize, True)
         whisper = evaluate(manifest, qwen_model, True, whisper_recognize, True)
-    if [x["language"] for x in whisper["trials"]] != [x["language"] for x in qwen["trials"]]:
-        raise RuntimeError("The two models received different corpus cases")
+    shape = lambda row: (row["trial"], row["language"],
+                         row["duration_seconds"], row["segments"])
+    if list(map(shape, whisper["trials"])) != list(map(shape, qwen["trials"])):
+        raise RuntimeError("The two models received different corpus segments")
+    paired_trials = [{
+        "trial": a["trial"], "language": a["language"],
+        "qwen_minus_whisper_wer": round(b["wer"] - a["wer"], 4),
+        "qwen_minus_whisper_cer": round(b["cer"] - a["cer"], 4),
+        "qwen_minus_whisper_asr_wall_ms": round(b["asr_wall_ms"] - a["asr_wall_ms"], 2),
+    } for a, b in zip(whisper["trials"], qwen["trials"])]
     whisper["model_label"] = "whisper.cpp (user-supplied model)"
     whisper["omitted_catalog_model_id"] = None
     delta = {}
@@ -109,6 +117,7 @@ def comparison_report(manifest, qwen_model, whisper_recognize, *,
         "input_policy": "16kHz mono PCM16; 25s chunks; 500ms overlap; pause-aware seams",
         "engines": {"whisper_cpp": whisper, "qwen3_asr": qwen},
         "paired_differences": delta,
+        "paired_trials": paired_trials,
     }
 
 
@@ -167,6 +176,8 @@ def self_test():
         assert report["engines"]["qwen3_asr"]["overall"]["cer"] == 0
         assert len(created) == 2 and all(not p.exists() for p in created)
         assert set(report["paired_differences"]) == {"overall", "en", "ru"}
+        assert len(report["paired_trials"]) == 2
+        assert all(row["qwen_minus_whisper_wer"] == 0 for row in report["paired_trials"])
         raw = json.dumps(report, ensure_ascii=False)
         for private_value in ("clear hello", "Привет", "recordings", str(root)):
             assert private_value.casefold() not in raw.casefold()
