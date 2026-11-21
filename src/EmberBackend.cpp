@@ -1204,6 +1204,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     m_visibleStream = {};
     m_chatStreamText.clear();
     m_chatStreamDone = m_chatStreamInvalid = m_chatPreviewActive = false;
+    m_chatStreamTruncated = false;
     m_chatGenerating = true;
     m_chatStreamSession = m_sessionId;
     QNetworkRequest request{QUrl(url)};
@@ -1248,6 +1249,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
                     enqueueLiveSpeech(false);
             }
         }
+        if (tokens.truncated) m_chatStreamTruncated = true;
         if (tokens.done) m_chatStreamDone = true;
     };
     connect(reply, &QNetworkReply::readyRead, this, receive);
@@ -1260,7 +1262,8 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         m_reply = nullptr;
         const bool complete = reply->error() == QNetworkReply::NoError &&
             reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
-            m_chatStreamDone && !m_chatStreamInvalid;
+            m_chatStreamDone && !m_chatStreamInvalid &&
+            !m_chatStreamTruncated;
         reply->deleteLater();
         finishChatStream(!complete);
     });
@@ -1305,10 +1308,13 @@ void EmberBackend::finishChatStream(bool interrupted) {
     m_chatRenderTimer.stop();
     m_chatGenerating = false;
     const QString response = m_chatStreamText.trimmed();
+    const bool tokenLimit = m_chatStreamTruncated;
     const bool shouldSpeak = m_voicePending && !interrupted;
     m_voicePending = false;
     if (!response.isEmpty()) {
-        if (interrupted) m_chatStreamText += "\n\n[Response stopped]";
+        if (interrupted) m_chatStreamText += tokenLimit
+            ? QStringLiteral("\n\n[Response reached local model token limit]")
+            : QStringLiteral("\n\n[Response stopped]");
         renderChatStream();
         m_lastReply = m_chatStreamText;
         emit lastReplyChanged();
@@ -1324,7 +1330,7 @@ void EmberBackend::finishChatStream(bool interrupted) {
     m_chatStreamBuffer.clear();
     m_visibleStream = {}; // never carry partial markers across chat turns
     m_chatPreviewActive = false;
-    m_chatStreamDone = m_chatStreamInvalid = false;
+    m_chatStreamDone = m_chatStreamInvalid = m_chatStreamTruncated = false;
     m_chatStreamSession.clear();
     if (m_llmElapsed.isValid() && !response.isEmpty()) {
         m_llmLastMs = m_llmElapsed.elapsed();
@@ -1347,10 +1353,12 @@ void EmberBackend::finishChatStream(bool interrupted) {
         }
     } else {
         setStatus(m_privateMode
-            ? (interrupted ? "Private reply stopped; text kept in RAM only."
-                           : "Private reply complete; no chat text archived.")
-            : (interrupted ? "Generation interrupted; partial text saved locally."
-                           : "Local streaming reply complete and archived."));
+            ? (tokenLimit ? "Local model reached its token budget; incomplete answer stays in RAM."
+                : interrupted ? "Private reply stopped; text kept in RAM only."
+                              : "Private reply complete; no chat text archived.")
+            : (tokenLimit ? "Local model reached its token budget; incomplete answer saved locally."
+                : interrupted ? "Generation interrupted; partial text saved locally."
+                              : "Local streaming reply complete and archived."));
     }
     m_voiceEarlyActive = false;
 }
