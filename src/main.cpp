@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -13,6 +14,7 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName("Ember Local");
     QCoreApplication::setApplicationName("Ember");
+    app.setWindowIcon(QIcon(":/qt/qml/Ember/assets/ember-emblem.svg"));
 
     // The Windows native Qt style rejects customized backgrounds.
     // Basic preserves the original Ember design without a web-renderer.
