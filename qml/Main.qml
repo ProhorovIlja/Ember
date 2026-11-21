@@ -17,6 +17,39 @@ ApplicationWindow {
     property color silver: "#B2C2D1"
     property color borderColor: "#293749"
     property color cardColor: "#151E2B"
+    Dialog {
+        id: deleteChatDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        title: "Delete local chat?"
+        standardButtons: Dialog.Yes | Dialog.Cancel
+        onAccepted: ember.deleteCurrentSession()
+        background: Rectangle {
+            color: "#0A1626"
+            radius: 16
+            border.color: "#225688"
+            border.width: 1
+        }
+        contentItem: Text {
+            width: 340
+            text: "Only this conversation will be deleted from the local SQLite archive. The other chats will remain available."
+            wrapMode: Text.WordWrap
+            font.pixelSize: 13
+            color: "#D8EBFB"
+        }
+    }
+    Connections {
+        target: ember
+        function onDictationReady(text) {
+            if (!text || text.length === 0) return
+            window.page = 1
+            const needsSpace = composer.text.length > 0 &&
+                               !/\s$/.test(composer.text)
+            composer.insert(composer.cursorPosition, (needsSpace ? " " : "") + text)
+            composer.forceActiveFocus()
+        }
+    }
 
     function submitComposer() {
         const value = composer.text.trim()
@@ -99,11 +132,13 @@ ApplicationWindow {
                             GradientStop { position: 1; color: "#122830" }
                         }
                         border.color: "#4D9B84"
-                        Text {
-                            anchors.centerIn: parent
-                            text: "✧"
-                            font.pixelSize: 29
-                            color: window.mint
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: 3
+                            source: "qrc:/qt/qml/Ember/assets/ember-emblem.svg"
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                            mipmap: true
                         }
                     }
                     Column {
@@ -120,7 +155,77 @@ ApplicationWindow {
                     NavButton { label: "Chat"; symbol: "▤"; index: 1 }
                     NavButton { label: "Settings"; symbol: "⚙"; index: 2 }
                 }
-                Item { Layout.fillHeight: true }
+                ColumnLayout {
+                    Layout.fillHeight: true
+                    Layout.fillWidth: true
+                    Layout.topMargin: 25
+                    spacing: 10
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: "LOCAL HISTORY"
+                            color: "#8099AC"
+                            font.pixelSize: 10
+                            font.letterSpacing: 1.4
+                            font.weight: Font.DemiBold
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: ember.localHistoryReady ? "SQLite" : "Memory"
+                            font.pixelSize: 10
+                            color: ember.localHistoryReady ? window.mint : "#CF9B88"
+                        }
+                    }
+                    ListView {
+                        id: historyList
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        spacing: 5
+                        model: ember.sessions
+                        boundsBehavior: Flickable.StopAtBounds
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: historyList.width
+                            height: 49
+                            radius: 10
+                            color: modelData.id === ember.currentSessionId
+                                   ? "#133352" : (historyHover.hovered ? "#0C1D31" : "transparent")
+                            border.color: modelData.id === ember.currentSessionId
+                                          ? "#2B6EA6" : "transparent"
+                            border.width: 1
+                            Behavior on color { ColorAnimation { duration: 110 } }
+                            Text {
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 9
+                                verticalAlignment: Text.AlignVCenter
+                                text: modelData.title
+                                elide: Text.ElideRight
+                                color: modelData.id === ember.currentSessionId
+                                       ? "#EAF7FF" : "#A6BED2"
+                                font.pixelSize: 12
+                                maximumLineCount: 1
+                            }
+                            HoverHandler { id: historyHover }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    ember.openSession(modelData.id)
+                                    window.page = 1
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        text: "Only text is saved. No audio recordings."
+                        color: "#718CA5"
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 9
@@ -171,8 +276,8 @@ ApplicationWindow {
                             color: "#F3F7FE"
                         }
                         Text {
-                            text: window.page === 0 ? "Natural voice · local models · no browser wrapper" :
-                                  window.page === 1 ? "Private session · local inference · no automatic cloud sync" :
+                            text: window.page === 0 ? "English voice · modular local engines · no browser wrapper" :
+                                  window.page === 1 ? "Persistent on-device history · RU/EN dictation · no cloud sync" :
                                   "Modular engines, voices and personality"
                             font.pixelSize: 12
                             color: "#92A5B8"
@@ -266,11 +371,20 @@ ApplicationWindow {
                                         color: "#10252B"
                                         border.color: "#4FAF91"
                                         border.width: 1
-                                        Text {
+                                        Image {
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            source: "qrc:/qt/qml/Ember/assets/ember-emblem.svg"
+                                            fillMode: Image.PreserveAspectFit
+                                            smooth: true
+                                            mipmap: true
+                                            opacity: ember.listening ? 0.62 : 1
+                                        }
+                                        Rectangle {
                                             anchors.centerIn: parent
-                                            text: ember.listening ? "●" : "✧"
+                                            visible: ember.listening
+                                            width: 23; height: 23; radius: 12
                                             color: window.mint
-                                            font.pixelSize: ember.listening ? 54 : 88
                                         }
                                     }
                                 }
@@ -364,7 +478,7 @@ ApplicationWindow {
                             spacing: 15
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "CURRENT SESSION"; color: "#8EACA8"; font.pixelSize: 11; font.letterSpacing: 1.2 }
+                                Text { text: "LOCAL CONVERSATION"; color: "#8EACA8"; font.pixelSize: 11; font.letterSpacing: 1.2 }
                                 Item { Layout.fillWidth: true }
                                 PillButton {
                                     text: "Stop reply"
@@ -373,6 +487,13 @@ ApplicationWindow {
                                     enabled: ember.busy
                                     visible: ember.busy
                                     onClicked: ember.cancelWork()
+                                }
+                                PillButton {
+                                    text: "Delete"
+                                    implicitWidth: 84
+                                    implicitHeight: 36
+                                    enabled: ember.localHistoryReady
+                                    onClicked: deleteChatDialog.open()
                                 }
                                 PillButton {
                                     text: "New conversation"
@@ -477,6 +598,15 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         Text { text: "Ctrl + Enter to send"; color: "#8097A7"; font.pixelSize: 11 }
                                         Item { Layout.fillWidth: true }
+                                        PillButton {
+                                            text: ember.dictationActive ? "● Dictating…" : "Hold to dictate"
+                                            implicitWidth: 145
+                                            implicitHeight: 38
+                                            enabled: !ember.busy && (!ember.listening || ember.dictationActive)
+                                            onPressed: ember.startDictation()
+                                            onReleased: ember.stopDictation()
+                                            onCanceled: ember.stopDictation()
+                                        }
                                         PillButton {
                                             text: ember.busy ? "Working…" : "Send message"
                                             implicitWidth: 146
