@@ -72,12 +72,18 @@ def whisper_adapter(executable, model, vad=None, *, runner=subprocess.run,
 
 
 def comparison_report(manifest, qwen_model, whisper_recognize, *,
-                      omit_qwen_model=False, qwen_recognize=transcribe):
+                      omit_qwen_model=False, qwen_recognize=transcribe, order="whisper-first"):
     """Run both engines over identical validated/segmented user recordings."""
     if qwen_model not in MODELS:
         raise ValueError("Unsupported Qwen3-ASR model")
-    whisper = evaluate(manifest, qwen_model, True, whisper_recognize, True)
-    qwen = evaluate(manifest, qwen_model, omit_qwen_model, qwen_recognize, True)
+    if order not in ("whisper-first", "qwen-first"):
+        raise ValueError("Unsupported evaluation order")
+    if order == "whisper-first":
+        whisper = evaluate(manifest, qwen_model, True, whisper_recognize, True)
+        qwen = evaluate(manifest, qwen_model, omit_qwen_model, qwen_recognize, True)
+    else:
+        qwen = evaluate(manifest, qwen_model, omit_qwen_model, qwen_recognize, True)
+        whisper = evaluate(manifest, qwen_model, True, whisper_recognize, True)
     if [x["language"] for x in whisper["trials"]] != [x["language"] for x in qwen["trials"]]:
         raise RuntimeError("The two models received different corpus cases")
     whisper["model_label"] = "whisper.cpp (user-supplied model)"
@@ -95,6 +101,7 @@ def comparison_report(manifest, qwen_model, whisper_recognize, *,
         }
     return {
         "schema_version": 1,
+        "evaluation_order": order,
         "note": ("Paired, user-supplied private audio comparison. Numeric metrics only. "
                  "A negative delta favors Qwen on this sample; not statistical "
                  "proof of universal superiority. Timings are sequential and "
@@ -177,7 +184,12 @@ def self_test():
             raise AssertionError("Whisper failure was silently accepted")
         except RuntimeError:
             pass
-        assert all(not p.exists() for p in created)
+        reversed_report = comparison_report(manifest, MODELS[0], whisper,
+                                            omit_qwen_model=True,
+                                            qwen_recognize=fake_qwen, order="qwen-first")
+        assert reversed_report["evaluation_order"] == "qwen-first"
+        assert reversed_report["paired_differences"]["overall"]["qwen_minus_whisper_wer"] == 0
+        assert len(created) == 4 and all(not p.exists() for p in created)
     print("paired local Whisper/Qwen EN/RU ASR safety and metrics self-test passed")
 
 
@@ -187,6 +199,8 @@ def main():
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--qwen-model", choices=MODELS, default=MODELS[0])
     parser.add_argument("--omit-qwen-model-id", action="store_true")
+    parser.add_argument("--order", choices=("whisper-first", "qwen-first"),
+                        default="whisper-first", help="Alternate to identify cache/order bias")
     parser.add_argument("--whisper-exe", type=Path)
     parser.add_argument("--whisper-model", type=Path)
     parser.add_argument("--whisper-vad-model", type=Path)
@@ -201,7 +215,8 @@ def main():
         recognizer = whisper_adapter(args.whisper_exe, args.whisper_model,
                                      args.whisper_vad_model)
         result = comparison_report(args.manifest, args.qwen_model, recognizer,
-                                   omit_qwen_model=args.omit_qwen_model_id)
+                                   omit_qwen_model=args.omit_qwen_model_id,
+                                   order=args.order)
         output = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
         if args.output:
             if args.output.exists():
