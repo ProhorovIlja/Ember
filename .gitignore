@@ -1,0 +1,14 @@
+/models/
+/engines/
+/data/
+/cache/
+/build/
+/out/
+*.user
+*.log
+*.wav
+*.gguf
+*.onnx
+*.bin
+*.zip
+.DS_Store
