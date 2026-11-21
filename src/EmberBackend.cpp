@@ -291,6 +291,36 @@ EmberBackend::EmberBackend(QObject *parent)
     connect(&m_healthTimer, &QTimer::timeout, this, &EmberBackend::pollBrain);
     m_speechHealthTimer.setInterval(1300);
     connect(&m_speechHealthTimer, &QTimer::timeout, this, &EmberBackend::pollSpeechServer);
+    // Each external command handles one short audio segment. Bound its
+    // lifetime so a hung process cannot block indefinite RU/EN dictation.
+    // The recording itself remains user-controlled and has no 30-second cap.
+    m_asrProcessWatchdog.setSingleShot(true);
+    m_asrProcessWatchdog.setInterval(180000);
+    connect(&m_asrProcessWatchdog, &QTimer::timeout, this, [this] {
+        if (!m_cliAsrActive) return;
+        // Ignore the killed process's later finished/error signals. Recovery
+        // of already completed chunks is handled by failTranscription().
+        m_cliAsrActive = false;
+        if (m_whisper.state() != QProcess::NotRunning) m_whisper.kill();
+        failTranscription("Offline Whisper exceeded 180 seconds for one segment. "
+                          "Try a smaller model or review GPU memory usage.");
+    });
+    m_ttsProcessWatchdog.setSingleShot(true);
+    m_ttsProcessWatchdog.setInterval(120000);
+    connect(&m_ttsProcessWatchdog, &QTimer::timeout, this, [this] {
+        if (!m_cliTtsActive) return;
+        m_cliTtsActive = false;
+        stopSpeechOnError("Offline Kokoro exceeded 120 seconds for one speech segment.");
+    });
+    // Never archive or accumulate model startup/CLI diagnostics, which may
+    // contain private prompts/transcription; HTTP health probes own readiness.
+    // QProcess buffers unconsumed stdout/stderr in memory.
+    for (QProcess *child : {&m_brain, &m_whisper, &m_tts}) {
+        child->setProcessChannelMode(QProcess::MergedChannels);
+        connect(child, &QProcess::readyReadStandardOutput, this, [child] {
+            child->readAllStandardOutput();
+        });
+    }
     m_speechServer.setProcessChannelMode(QProcess::MergedChannels);
     // Model download/status logs must not accumulate unboundedly in RAM and
     // speech text / log output is intentionally never archived to disk.
@@ -338,6 +368,7 @@ EmberBackend::EmberBackend(QObject *parent)
     connect(&m_whisper, &QProcess::finished, this,
             [this](int code, QProcess::ExitStatus how) {
                 if (!m_busy || !m_cliAsrActive) return;
+                m_asrProcessWatchdog.stop();
                 m_cliAsrActive = false; // never accept stale completed ASR after cancel
                 if (how != QProcess::NormalExit || code != 0) {
                     failTranscription("Speech recognition failed. Check whisper.cpp and the selected model.");
@@ -359,6 +390,7 @@ EmberBackend::EmberBackend(QObject *parent)
     connect(&m_whisper, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) {
                 if (m_busy && m_cliAsrActive) {
+                    m_asrProcessWatchdog.stop();
                     failTranscription("whisper-cli did not start. Check its executable and DLL files.");
                 }
             });
@@ -366,6 +398,7 @@ EmberBackend::EmberBackend(QObject *parent)
     connect(&m_tts, &QProcess::finished, this,
             [this](int code, QProcess::ExitStatus how) {
                 if (!m_cliTtsActive) return; // a cancelled CLI may finish during an API request
+                m_ttsProcessWatchdog.stop();
                 m_cliTtsActive = false;
                 if (!m_busy) return;
                 setBusy(false);
@@ -390,8 +423,10 @@ EmberBackend::EmberBackend(QObject *parent)
             });
     connect(&m_tts, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) {
-                if (m_busy && m_cliTtsActive)
+                if (m_busy && m_cliTtsActive) {
+                    m_ttsProcessWatchdog.stop();
                     stopSpeechOnError("sherpa-onnx TTS could not start. Check its executable and DLLs.");
+                }
             });
     if (m_store && m_store->ready()) {
         const QVariantList saved = m_store->sessions(1);
@@ -1573,6 +1608,7 @@ void EmberBackend::transcribe() {
     setBusy(true);
     setStatus(QString("Offline transcription · %1% completed…")
                   .arg(m_transcriptionOffset * 100 / m_transcriptionSize));
+    m_asrProcessWatchdog.start();
     m_whisper.start();
 }
 void EmberBackend::transcribeViaNativeServer() {
@@ -1658,7 +1694,9 @@ void EmberBackend::transcribeViaNativeServer() {
 }
 
 void EmberBackend::failTranscription(const QString &reason) {
+    m_asrProcessWatchdog.stop();
     m_cliAsrActive = false;
+    if (m_whisper.state() != QProcess::NotRunning) m_whisper.kill();
     if (m_nativeAsrReply) {
         auto reply = m_nativeAsrReply;
         m_nativeAsrReply = nullptr;
@@ -1691,6 +1729,7 @@ void EmberBackend::failTranscription(const QString &reason) {
               "editing; the ending may be missing. " + reason);
 }
 void EmberBackend::completeTranscription() {
+    m_asrProcessWatchdog.stop();
     const bool dictate = m_transcribingDictation;
     m_transcribingDictation = false;
     const QString text = EmberCore::joinTranscriptionSegments(m_transcriptionSegments);
@@ -1720,6 +1759,7 @@ QString EmberBackend::speechFile(int slot) const {
     return workFile(slot == 0 ? "voice-a.wav" : "voice-b.wav");
 }
 void EmberBackend::stopSpeechOnError(const QString &error) {
+    m_ttsProcessWatchdog.stop();
     if (m_chatGenerating && m_voiceEarlyActive) m_voiceEarlyFailed = true;
     m_speechSequence = false;
     m_voiceQueue.clear();
@@ -1827,6 +1867,7 @@ void EmberBackend::synthesize(const QString &text) {
     m_ttsElapsed.start();
     m_cliTtsActive = true;
     setStatus("Synthesizing speech locally with Kokoro…");
+    m_ttsProcessWatchdog.start();
     m_tts.start();
 }
 void EmberBackend::playSynthesizedFile() {
@@ -2194,6 +2235,8 @@ void EmberBackend::retryCancelledAudioCleanup(quint64 revision, int retriesLeft)
     }
 }
 void EmberBackend::cancelWork() {
+    m_asrProcessWatchdog.stop();
+    m_ttsProcessWatchdog.stop();
     m_cliAsrActive = false;
     if (m_nativeAsrReply) {
         auto reply = m_nativeAsrReply;
