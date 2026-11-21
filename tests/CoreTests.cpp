@@ -616,6 +616,50 @@ private slots:
         }
         QCOMPARE(EmberCore::whisperWav(floats, format).size(), 44 + 160 * 2);
     }
+    void stereoAntiPhaseMicrophonesCannotCancelSpeechRecognition() {
+        QAudioFormat format;
+        format.setSampleRate(48000);
+        format.setChannelCount(2);
+        format.setSampleFormat(QAudioFormat::Int16);
+        // Identical speech captured with L+ and R- polarity would become
+        // all-zero when averaged; choose a channel only for strong cancellation.
+        QByteArray inverted;
+        inverted.reserve(480 * 4);
+        for (int i = 0; i < 480; ++i)
+            inverted.append(QByteArray::fromHex("004000c0"));
+        const auto recovered = EmberCore::whisperWav(inverted, format);
+        QCOMPARE(recovered.size(), qsizetype(44 + 160 * 2));
+        auto sample = [](const QByteArray &wav, int frame) {
+            const qsizetype at = 44 + frame * 2;
+            return int(qint16(quint16(quint8(wav[at])) |
+                (quint16(quint8(wav[at + 1])) << 8)));
+        };
+        QVERIFY(std::abs(sample(recovered, 80)) > 14000);
+        QVERIFY(!EmberCore::nearSilentAsrWav(recovered));
+
+        // One active microphone in a stereo device is not anti-phase.
+        // Retain the ordinary average instead of doubling it.
+        QByteArray oneChannel;
+        oneChannel.reserve(480 * 4);
+        for (int i = 0; i < 480; ++i)
+            oneChannel.append(QByteArray::fromHex("00400000"));
+        const auto unchanged = EmberCore::whisperWav(oneChannel, format);
+        QVERIFY(sample(unchanged, 80) > 7300);
+        QVERIFY(sample(unchanged, 80) < 9000);
+
+        // The fix must apply equally to common WASAPI Float32 stereo input.
+        format.setSampleFormat(QAudioFormat::Float);
+        QByteArray floating;
+        floating.resize(480 * 2 * int(sizeof(float)));
+        const float positive = 0.5f, negative = -0.5f;
+        for (int i = 0; i < 480; ++i) {
+            std::memcpy(floating.data() + i * 8, &positive, 4);
+            std::memcpy(floating.data() + i * 8 + 4, &negative, 4);
+        }
+        const auto recoveredFloat = EmberCore::whisperWav(floating, format);
+        QCOMPARE(recoveredFloat.size(), qsizetype(44 + 160 * 2));
+        QVERIFY(std::abs(sample(recoveredFloat, 80)) > 14000);
+    }
     void pinnedConversationNotesSurviveRestartAndDelete() {
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
