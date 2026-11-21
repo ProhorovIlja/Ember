@@ -530,6 +530,40 @@ private slots:
             pending, QByteArray(300 * 1024, 'a'));
         QVERIFY(oversized.error);
     }
+    void streamedSeparateAndInlineReasoningNeverReachesVisibleText() {
+        // llama.cpp can either separate reasoning_content or keep legacy
+        // inline thinking tags. Exercise both with fragmented SSE bytes.
+        auto frame = [](const QJsonObject &delta) {
+            return QByteArray("data: ") +
+                QJsonDocument(QJsonObject{{"choices", QJsonArray{
+                    QJsonObject{{"delta", delta}}
+                }}}).toJson(QJsonDocument::Compact) + "\n\n";
+        };
+        const QByteArray response =
+            frame(QJsonObject{{"reasoning_content", "private first idea"}}) +
+            frame(QJsonObject{{"content", "<th"}}) +
+            frame(QJsonObject{{"content", "ink>private second idea."}}) +
+            frame(QJsonObject{{"content", "</think>Public answer."}}) +
+            QByteArray("data: [DONE]\n\n");
+        QByteArray buffer;
+        QString raw, lastVisible;
+        bool done = false;
+        for (qsizetype at = 0; at < response.size(); at += 3) {
+            const auto part = EmberCore::consumeChatStream(
+                buffer, response.mid(at, 3));
+            QVERIFY(!part.error);
+            raw += part.text;
+            const QString visible = EmberCore::visibleAssistantText(raw);
+            QVERIFY(visible.startsWith(lastVisible));
+            QVERIFY(!visible.contains("private"));
+            QVERIFY(!visible.contains("<think>"));
+            lastVisible = visible;
+            done |= part.done;
+        }
+        QVERIFY(done);
+        QCOMPARE(lastVisible, QString("Public answer."));
+        QVERIFY(buffer.isEmpty());
+    }
     void wavHeaderAndAudio() {
         const QByteArray pcm = QByteArray::fromHex("0000ff7f00800040");
         const auto wav = EmberCore::pcmToWav(pcm, 16000);
