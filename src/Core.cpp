@@ -419,38 +419,66 @@ QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source) {
     const int bytes = source.bytesPerSample();
     if (bytes <= 0) return {};
     const char *sourceBytes = raw.constData();
-    auto sampleAt = [&](qsizetype frame) -> double {
-        double sum = 0.0;
-        for (int channel = 0; channel < channels; ++channel) {
-            const char *p = sourceBytes + frame * source.bytesPerFrame() + channel * bytes;
-            double value = 0.0;
-            switch (source.sampleFormat()) {
-            case QAudioFormat::UInt8:
-                value = (double(static_cast<quint8>(*p)) - 128.0) / 128.0;
-                break;
-            case QAudioFormat::Int16: {
-                qint16 sample;
-                std::memcpy(&sample, p, sizeof(sample));
-                value = double(sample) / 32768.0;
-                break;
-            }
-            case QAudioFormat::Int32: {
-                qint32 sample;
-                std::memcpy(&sample, p, sizeof(sample));
-                value = double(sample) / 2147483648.0;
-                break;
-            }
-            case QAudioFormat::Float: {
-                float sample;
-                std::memcpy(&sample, p, sizeof(sample));
-                value = std::isfinite(sample)
-                    ? std::clamp(double(sample), -1.0, 1.0) : 0.0;
-                break;
-            }
-            default: return 0.0;
-            }
-            sum += value;
+    auto channelSample = [&](qsizetype frame, int channel) -> double {
+        const char *p = sourceBytes + frame * source.bytesPerFrame() + channel * bytes;
+        switch (source.sampleFormat()) {
+        case QAudioFormat::UInt8:
+            return (double(static_cast<quint8>(*p)) - 128.0) / 128.0;
+        case QAudioFormat::Int16: {
+            qint16 sample;
+            std::memcpy(&sample, p, sizeof(sample));
+            return double(sample) / 32768.0;
         }
+        case QAudioFormat::Int32: {
+            qint32 sample;
+            std::memcpy(&sample, p, sizeof(sample));
+            return double(sample) / 2147483648.0;
+        }
+        case QAudioFormat::Float: {
+            float sample;
+            std::memcpy(&sample, p, sizeof(sample));
+            return std::isfinite(sample)
+                ? std::clamp(double(sample), -1.0, 1.0) : 0.0;
+        }
+        default: return 0.0;
+        }
+    };
+    // Some Windows capture devices expose L/R microphones in opposite
+    // polarity. An ordinary arithmetic downmix would delete both voices.
+    // Sample at most 4096 distributed input frames, only falling back to
+    // the strongest channel when mixed power is <1/16 of that channel.
+    // Ordinary stereo, stereo with one quiet channel, and near-digital
+    // silence retain the normal average. The source recording is unchanged.
+    int fallbackChannel = -1;
+    if (channels > 1) {
+        const qsizetype budget = std::min<qsizetype>(frames, 4096);
+        const qsizetype stride = std::max<qsizetype>(1, frames / budget);
+        double powers[8]{};
+        double mixedPower = 0.0;
+        qsizetype measured = 0;
+        for (qsizetype frame = 0; frame < frames && measured < budget;
+             frame += stride, ++measured) {
+            double sum = 0.0;
+            for (int channel = 0; channel < channels; ++channel) {
+                const double signal = channelSample(frame, channel);
+                powers[channel] += signal * signal;
+                sum += signal;
+            }
+            const double average = sum / channels;
+            mixedPower += average * average;
+        }
+        int strongest = 0;
+        for (int channel = 1; channel < channels; ++channel)
+            if (powers[channel] > powers[strongest]) strongest = channel;
+        if (measured > 0 && powers[strongest] / measured > 0.000004 &&
+            mixedPower * 16 < powers[strongest])
+            fallbackChannel = strongest;
+    }
+    auto sampleAt = [&](qsizetype frame) -> double {
+        if (fallbackChannel >= 0) return channelSample(frame, fallbackChannel);
+        double sum = 0.0;
+        for (int channel = 0; channel < channels; ++channel)
+            sum += channelSample(frame, channel);
         return sum / channels;
     };
     QByteArray pcm;
