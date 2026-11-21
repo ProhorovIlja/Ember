@@ -235,7 +235,7 @@ QString speechFriendlyText(const QString &markdown) {
     // Exclude model-internal reasoning from spoken output even when the
     // non-streaming Kokoro or generic WAV adapter is selected.
     speechSource.remove(QRegularExpression(
-        R"(<think>[\\s\\S]*?</think>)",
+        R"(<think>[\s\S]*?</think>)",
         QRegularExpression::CaseInsensitiveOption));
     const qsizetype unclosedThought =
         speechSource.indexOf("<think>", 0, Qt::CaseInsensitive);
