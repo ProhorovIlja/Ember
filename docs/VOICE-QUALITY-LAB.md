@@ -154,6 +154,30 @@ Compare both model sizes against the same recordings and measure English
 accent, Russian grammar, names, mixed-language terms and long-dictation
 segment boundaries.
 
+## 22 November — controlled TTS A/B reports without fabricated scores
+
+The local TTS probe now accepts `--seed-base 1` (cycling seeds 1,2,3
+across the same four bundled prompts) and `--environment-label` to
+record a **user-provided** hardware/LLM-load label instead of fingerprinting
+the PC. It stores the fixed prompt-suite SHA256 (not user text), prompt
+index and seed per trial to ensure reproducible pairing. Example:
+
+```powershell
+python tools/voice_benchmark.py --model qwen3-tts-1.7b --voice vivian --omit-model-id --seed-base 1 --environment-label win10-rtx4070-llm8b --samples 12 --output vivian.json
+python tools/voice_benchmark.py --model qwen3-tts-1.7b --voice serena --omit-model-id --seed-base 1 --environment-label win10-rtx4070-llm8b --samples 12 --output serena.json
+python tools/compare_voice_profiles.py --baseline vivian.json --candidate serena.json
+```
+
+Restart or reconfigure the single local speech model and maintain matching
+background LLM load before each experiment. The comparator rejects missing
+environment labels, different prompts, unequal sample counts, shifted seeds
+and invalid numeric data. It intentionally reports side-by-side HTTP latency,
+longest initial digital silence proxy, clipping and generation throughput,
+**not** a magic overall quality rank. The environment label is a manual
+assertion and cannot prove identical GPU load or driver settings. For actual
+naturalness compare blind audible recordings and transcription WER/CER using
+explicitly user-controlled source material on the target PC.
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.

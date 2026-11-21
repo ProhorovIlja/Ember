@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local-only voice latency probe. Does not record, save or play any audio."""
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -123,7 +124,8 @@ def percentile95(values):
     return ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)]
 
 
-def measure(endpoint, model, voice, prompt, delivery="natural", omit_model_id=False):
+def measure(endpoint, model, voice, prompt, delivery="natural", omit_model_id=False,
+            seed=1):
     u = urlsplit(endpoint)
     if (u.scheme != "http" or u.hostname != "127.0.0.1" or
             u.port is None or u.username is not None or
@@ -133,8 +135,10 @@ def measure(endpoint, model, voice, prompt, delivery="natural", omit_model_id=Fa
     if delivery not in DELIVERIES or (delivery != "natural" and
                                      model != "qwen3-tts-1.7b"):
         raise ValueError("Delivery instructions require native Qwen3-TTS 1.7B")
+    if not isinstance(seed, int) or not 0 <= seed <= 2**31 - 1:
+        raise ValueError("Reproducible model seed out of range")
     body = {
-        "model": model, "voice": voice, "input": prompt,
+        "seed": seed, "model": model, "voice": voice, "input": prompt,
         "response_format": "pcm", "stream_format": "audio", "language": "en",
     }
     if DELIVERIES[delivery]:
@@ -199,6 +203,7 @@ def self_test():
             assert body["response_format"] == "pcm"
             assert body["stream_format"] == "audio"
             assert body["language"] == "en"
+            assert body["seed"] in (1, 2, 3)
             if self.omit_model_id:
                 assert "model" not in body
             else:
@@ -303,6 +308,10 @@ def main():
     parser.add_argument("--delivery", choices=tuple(DELIVERIES),
                         default="natural", help="Style controls are supported by 1.7B only")
     parser.add_argument("--samples", type=int, default=8)
+    parser.add_argument("--seed-base", type=int, default=1,
+                        help="Reproducible seed cycle: base, base+1, base+2")
+    parser.add_argument("--environment-label", default="unknown",
+                        help="Manual comparable hardware/load label; no auto PC fingerprint")
     parser.add_argument("--output", type=Path,
                         help="Optional JSON-only result file; never saves generated audio")
     args = parser.parse_args()
@@ -314,16 +323,23 @@ def main():
         parser.error("Model and voice must be short safe local identifiers")
     if not 1 <= args.samples <= 40:
         parser.error("--samples must be between 1 and 40")
+    if not 0 <= args.seed_base <= 2**31 - 4:
+        parser.error("Seed base must be 0..2147483644")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{2,64}", args.environment_label):
+        parser.error("Environment label must be 2..64 safe ASCII characters")
     results = []
     for i in range(args.samples):
         prompt = PROMPTS[i % len(PROMPTS)]
         try:
+            seed = args.seed_base + i % 3
             result = measure(ENDPOINT, args.model, args.voice, prompt,
-                             args.delivery, omit_model_id=args.omit_model_id)
+                             args.delivery, omit_model_id=args.omit_model_id,
+                             seed=seed)
         except (OSError, URLError, HTTPError, ValueError) as exc:
             parser.error(f"Local TTS sample {i + 1} failed: {type(exc).__name__}: {exc}")
         result["sample_number"] = i + 1
         result["prompt_index"] = i % len(PROMPTS)  # never persist prompt text
+        result["seed"] = seed
         results.append(result)
     first = [r["first_http_pcm_byte_ms"] for r in results]
     leading = [r["leading_low_level_pcm_ms"] for r in results
@@ -334,6 +350,10 @@ def main():
     no_signal = sum(not r["digital_voice_detected"] for r in results)
     report = {
         "note": "All PCM measurements are signal diagnostics, NOT acoustic onset, naturalness or MOS. They do not test output-device buffering. HTTP time ends before PCM analysis.",
+        "benchmark_schema_version": 2,
+        "prompt_set_sha256": hashlib.sha256(
+            "\n".join(PROMPTS).encode("utf-8")).hexdigest(),
+        "environment_label": args.environment_label,
         "model": args.model, "voice": args.voice, "delivery": args.delivery,
         "samples": len(results),
         "p50_leading_low_level_pcm_ms": (
