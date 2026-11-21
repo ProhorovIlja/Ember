@@ -2,6 +2,7 @@
 #include "SessionStore.h"
 #include <QTemporaryDir>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QTest>
 #include <cstring>
 class CoreTests : public QObject {
@@ -56,6 +57,41 @@ private slots:
             QVERIFY(restored.exists(bob));
             QCOMPARE(restored.totalMessages(bob), qint64(1));
         }
+    }
+    void assemblesCyrillicServerTokensAcrossByteBoundaries() {
+        QByteArray pending;
+        const QByteArray a = QByteArray("data: {\\"choices\\":[{\\"delta\\":{\\"content\\":\\"Привет\\\"}}]}\\n\\n");
+        const QByteArray b = QByteArray("data: {\\"choices\\":[{\\"delta\\":{\\"content\\":\\" world\\\"}}]}\\r\\n\\r\\n");
+        // Use literal UTF-8 bytes and actual event separators; source may be
+        // split inside a multi-byte Cyrillic character during network reads.
+        const QByteArray events = QByteArray("data: ") +
+            QJsonDocument(QJsonObject{{"choices", QJsonArray{
+                QJsonObject{{"delta", QJsonObject{{"content","Привет"}}}}
+            }}}).toJson(QJsonDocument::Compact) + "\n\n" +
+            QByteArray("data: ") +
+            QJsonDocument(QJsonObject{{"choices", QJsonArray{
+                QJsonObject{{"delta", QJsonObject{{"content"," мир"}}}}
+            }}}).toJson(QJsonDocument::Compact) + "\r\n\r\n" +
+            QByteArray("data: [DONE]\n\n");
+        Q_UNUSED(a);
+        Q_UNUSED(b);
+        QString got;
+        bool finished = false;
+        for (int i = 0; i < events.size(); i += 3) {
+            const auto chunk = EmberCore::consumeChatStream(pending, events.mid(i, 3));
+            QVERIFY(!chunk.error);
+            got += chunk.text;
+            finished |= chunk.done;
+        }
+        QCOMPARE(got, QString::fromUtf8("Привет мир"));
+        QVERIFY(finished);
+        QVERIFY(pending.isEmpty());
+        auto malformed = EmberCore::consumeChatStream(
+            pending, QByteArray("data: NOT_JSON\n\n"));
+        QVERIFY(malformed.error);
+        auto oversized = EmberCore::consumeChatStream(
+            pending, QByteArray(300 * 1024, 'a'));
+        QVERIFY(oversized.error);
     }
     void wavHeaderAndAudio() {
         const QByteArray pcm = QByteArray::fromHex("0000ff7f00800040");
