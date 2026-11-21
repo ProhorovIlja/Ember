@@ -824,8 +824,16 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
             for (qsizetype pos = openingWidth; pos < remaining.size(); ++pos) {
                 // A closing fence occupies its own line; a marker in source
                 // code, an inline expression, or the wrong marker is not one.
-                if (remaining[pos] != openingCharacter ||
-                    remaining[pos - 1] != '\n') continue;
+                if (remaining[pos] != openingCharacter) continue;
+                // Markdown allows up to three spaces before a fence line.
+                // Never mistake a marker inside a code expression for a
+                // closer, even if its remainder happens to look like whitespace.
+                const qsizetype before = remaining.lastIndexOf('\n', pos - 1);
+                if (before < 0 || pos - before - 1 > 3) continue;
+                bool indentationOnly = true;
+                for (qsizetype i = before + 1; i < pos; ++i)
+                    if (remaining[i] != ' ') { indentationOnly = false; break; }
+                if (!indentationOnly) continue;
                 qsizetype width = 0;
                 while (pos + width < remaining.size() &&
                        remaining[pos + width] == openingCharacter) ++width;
