@@ -264,7 +264,16 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
         while (cursor < draft.size() && draft[cursor].isSpace()) ++cursor;
         if (cursor >= draft.size()) break;
         const QString remaining = draft.mid(cursor);
-        const qsizetype fence = remaining.indexOf("```"); // replaced below
+        // Some GGUF chat templates expose internal <think> blocks within the
+        // text delta; never vocalize those, even across SSE token boundaries.
+        const qsizetype thought = remaining.indexOf("<think>", 0, Qt::CaseInsensitive);
+        if (thought == 0) {
+            const qsizetype close = remaining.indexOf("</think>", 7, Qt::CaseInsensitive);
+            if (close < 0 && !final) break;
+            cursor += close >= 0 ? close + 8 : remaining.size();
+            continue;
+        }
+        const qsizetype fence = remaining.indexOf("```");
         if (fence == 0) {
             const qsizetype close = remaining.indexOf("```", 3);
             if (close < 0 && !final) break;
@@ -272,7 +281,9 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
             ready.append("The code example is in the text chat.");
             continue;
         }
-        const qsizetype safeEnd = fence >= 0 ? fence : remaining.size();
+        const qsizetype safeEnd = thought >= 0 && fence >= 0
+            ? std::min(thought, fence)
+            : (thought >= 0 ? thought : (fence >= 0 ? fence : remaining.size()));
         qsizetype boundary = -1;
         // A sentence is committed only after the next whitespace arrives.
         // This intentionally delays terminal punctuation split across SSE.
