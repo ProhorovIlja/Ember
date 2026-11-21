@@ -35,7 +35,34 @@ QJsonObject speechRequest(const QString &model, const QString &voice, const QStr
 QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice,
                                       const QString &text, int deliveryStyle = 0);
 QString nativeDeliveryInstructions(int style);
-bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate, qint64 processedUsecs);
+bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate, qint64 processedUsecs,
+                        int channels = 1);
+
+// Converts mono little-endian PCM16 streaming chunks into a supported Windows
+// sink format without a WAV file or a growing intermediate buffer. One source
+// sample of lookahead keeps resampling continuous at arbitrary HTTP boundaries.
+// Linear interpolation is a compatibility fallback; native-rate delivery is
+// preferred when the output device supports it.
+class Pcm16OutputConverter {
+public:
+    bool configure(int sourceRate, int outputRate, int channels,
+                   QAudioFormat::SampleFormat sampleFormat);
+    bool feed(const QByteArray &input, QByteArray &output);
+    bool finish(QByteArray &output);
+    void clear();
+    int bytesPerFrame() const { return m_channels * m_sampleBytes; }
+    int outputRate() const { return m_outputRate; }
+    int sourceRate() const { return m_sourceRate; }
+private:
+    void appendFrame(QByteArray &output, qint16 value) const;
+    int m_sourceRate = 0, m_outputRate = 0;
+    int m_channels = 0, m_sampleBytes = 0;
+    QAudioFormat::SampleFormat m_sampleFormat = QAudioFormat::Unknown;
+    qint64 m_sourceFrames = 0, m_outputFrames = 0;
+    qint16 m_previous = 0;
+    int m_carry = -1;
+    bool m_ready = false, m_closed = false;
+};
 bool validPcmSampleRate(int rate);
 bool safeScratchSessionName(const QString &name);
 bool shouldPersistConversation(bool privateMode, const QString &sessionId);

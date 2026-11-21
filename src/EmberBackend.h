@@ -283,8 +283,10 @@ private:
     std::unique_ptr<QAudioSink> m_pcmSink;
     QIODevice *m_pcmDevice = nullptr;
     QByteArray m_pcmPending;
+    EmberCore::Pcm16OutputConverter m_pcmConverter;
     qint64 m_pcmTotalReceived = 0, m_pcmBytesSubmitted = 0;
-    int m_pcmSampleRate = 0;
+    int m_pcmSampleRate = 0, m_pcmSourceRate = 0, m_pcmOutputChannels = 0;
+    int m_pcmOutputBytesPerFrame = 0;
     bool m_pcmHttpDone = false, m_pcmStarted = false;
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;

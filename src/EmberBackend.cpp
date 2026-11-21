@@ -186,7 +186,8 @@ EmberBackend::EmberBackend(QObject *parent)
     connect(&m_pcmPumpTimer, &QTimer::timeout, this, [this] {
         // A fast synthesizer may have paused the HTTP producer. Consume only
         // enough new bytes to stay within the bounded playback queue.
-        if (m_speechReply && m_speechReply->bytesAvailable() > 0)
+        if (m_speechReply &&
+            (m_speechReply->bytesAvailable() > 0 || m_pcmHttpDone))
             readPcmResponse(m_speechReply);
         pumpPcmPlayback();
     });
@@ -1782,10 +1783,12 @@ void EmberBackend::resetPcmPlayback() {
         m_pcmSink.reset();
     }
     m_pcmPending.clear();
+    m_pcmConverter.clear();
     m_pcmTotalReceived = 0;
     m_pcmBytesSubmitted = 0;
     m_pcmDrainElapsed.invalidate();
-    m_pcmSampleRate = 0;
+    m_pcmSampleRate = m_pcmSourceRate = m_pcmOutputChannels = 0;
+    m_pcmOutputBytesPerFrame = 0;
     m_pcmHttpDone = false;
     m_pcmStarted = false;
 }
@@ -1832,19 +1835,7 @@ void EmberBackend::synthesizeStreamingPcm(const QString &text) {
         m_pcmHttpDone = true;
         m_ttsLastMs = m_ttsElapsed.isValid() ? m_ttsElapsed.elapsed() : -1;
         emit voiceTimingsChanged();
-        readPcmResponse(reply); // remaining bytes may exceed one queue window
-        if (m_speechReply != reply) {
-            reply->deleteLater();
-            return;
-        }
-        if (reply->bytesAvailable() == 0) {
-            m_speechReply = nullptr;
-            reply->deleteLater();
-            if (m_pcmTotalReceived <= 0 || (m_pcmTotalReceived % 2)) {
-                stopSpeechOnError("Native PCM stream ended with an incomplete sample.");
-                return;
-            }
-        }
+        readPcmResponse(reply); // bounded queue may require later pump ticks
         pumpPcmPlayback();
     });
 }
@@ -1857,54 +1848,127 @@ void EmberBackend::readPcmResponse(QNetworkReply *reply) {
     if (!m_pcmSink) {
         const QByteArray contentType = reply->rawHeader("Content-Type").toLower();
         bool rateOk = false;
-        const int rate = reply->rawHeader("X-Sample-Rate").trimmed().toInt(&rateOk);
+        const int sourceRate = reply->rawHeader("X-Sample-Rate").trimmed().toInt(&rateOk);
         if (!contentType.startsWith("audio/pcm") || !rateOk ||
-            !EmberCore::validPcmSampleRate(rate)) {
+            !EmberCore::validPcmSampleRate(sourceRate)) {
             stopSpeechOnError("Native TTS response must be mono PCM16 with a valid X-Sample-Rate.");
             return;
         }
-        QAudioFormat format;
-        format.setSampleRate(rate);
-        format.setChannelCount(1);
-        format.setSampleFormat(QAudioFormat::Int16);
         const QAudioDevice selected = m_audioOutput.device();
-        if (selected.isNull() || !selected.isFormatSupported(format)) {
-            stopSpeechOnError("Selected Windows output does not support this PCM rate and format.");
+        if (selected.isNull()) {
+            stopSpeechOnError("No selected Windows audio output device is available.");
             return;
         }
-        m_pcmSampleRate = rate;
+        QAudioFormat format;
+        format.setSampleRate(sourceRate);
+        format.setChannelCount(1);
+        format.setSampleFormat(QAudioFormat::Int16);
+        bool supported = selected.isFormatSupported(format);
+        if (!supported) {
+            // Prefer the device's known working format and avoid a Windows
+            // WASAPI mono/24kHz rejection; do NOT silently convert when the
+            // native mono rate works. 1/2 channels and Int16/Float only.
+            const QAudioFormat preferred = selected.preferredFormat();
+            auto attempt = [&](int rate, int channels,
+                               QAudioFormat::SampleFormat sampleFormat) {
+                if (!EmberCore::validPcmSampleRate(rate) ||
+                    (channels != 1 && channels != 2) ||
+                    (sampleFormat != QAudioFormat::Int16 &&
+                     sampleFormat != QAudioFormat::Float)) return false;
+                QAudioFormat candidate;
+                candidate.setSampleRate(rate);
+                candidate.setChannelCount(channels);
+                candidate.setSampleFormat(sampleFormat);
+                if (!selected.isFormatSupported(candidate)) return false;
+                format = candidate;
+                return true;
+            };
+            supported = attempt(preferred.sampleRate(), preferred.channelCount(),
+                                preferred.sampleFormat());
+            if (!supported) {
+                for (const int rate : {preferred.sampleRate(), 48000, 44100, 32000}) {
+                    for (const int channels : {2, 1}) {
+                        if (attempt(rate, channels, QAudioFormat::Int16) ||
+                            attempt(rate, channels, QAudioFormat::Float)) {
+                            supported = true;
+                            break;
+                        }
+                    }
+                    if (supported) break;
+                }
+            }
+        }
+        if (!supported ||
+            !m_pcmConverter.configure(sourceRate, format.sampleRate(),
+                                      format.channelCount(),
+                                      format.sampleFormat())) {
+            stopSpeechOnError("Selected Windows audio device has no supported PCM16/Float output path.");
+            return;
+        }
+        m_pcmSourceRate = sourceRate;
+        m_pcmSampleRate = format.sampleRate();
+        m_pcmOutputChannels = format.channelCount();
+        m_pcmOutputBytesPerFrame = format.bytesPerFrame();
         m_pcmSink = std::make_unique<QAudioSink>(selected, format);
         m_pcmSink->setVolume(m_outputVolume / 100.0);
-        m_pcmSink->setBufferSize(rate / 2); // ~250 ms mono PCM16 audio buffer
+        m_pcmSink->setBufferSize(
+            qsizetype(m_pcmSampleRate * m_pcmOutputBytesPerFrame / 4));
         m_pcmDevice = m_pcmSink->start();
         if (!m_pcmDevice || m_pcmSink->error() != QAudio::NoError) {
             stopSpeechOnError("Could not initialize the selected Windows streaming audio device.");
             return;
         }
+        if (sourceRate != m_pcmSampleRate || m_pcmOutputChannels != 1 ||
+            format.sampleFormat() != QAudioFormat::Int16)
+            setStatus(QString("Streaming local TTS with compatible Windows output: %1 Hz / %2 channel(s).")
+                          .arg(m_pcmSampleRate).arg(m_pcmOutputChannels));
         m_pcmPumpTimer.start();
     }
     constexpr qint64 maxChunkBytes = 12LL * 1024 * 1024;
     constexpr qsizetype maxPendingBytes = 768 * 1024;
-    // Consume only free queue capacity. QNetworkReply's own 128 KiB read
-    // limit applies TCP-level backpressure instead of aborting fast models.
+    // Conversion may expand 8kHz mono Int16 to 96kHz stereo Float32 by 48x.
+    // Read at most a small, expansion-aware slice; network backpressure and
+    // the 15ms pump keep memory bounded during long voice responses.
     const qint64 room = maxPendingBytes - m_pcmPending.size();
-    if (room <= 0) return;
-    const QByteArray incoming = reply->read(
-        std::min<qint64>(room, reply->bytesAvailable()));
-    if (incoming.isEmpty()) return;
-    if (incoming.size() > maxChunkBytes - m_pcmTotalReceived) {
-        stopSpeechOnError("Native PCM stream exceeded the per-chunk duration quota.");
-        return;
+    const qint64 expansion = (qint64(m_pcmSampleRate) *
+        m_pcmOutputBytesPerFrame + qint64(m_pcmSourceRate) * 2 - 1) /
+        (qint64(m_pcmSourceRate) * 2) + 4;
+    if (room < 128 || expansion <= 0) return;
+    const qint64 toRead = std::min<qint64>(
+        {qint64(4096), room / expansion, reply->bytesAvailable()});
+    if (toRead > 0) {
+        if (toRead > maxChunkBytes - m_pcmTotalReceived) {
+            stopSpeechOnError("Native PCM stream exceeded the per-chunk duration quota.");
+            return;
+        }
+        const QByteArray incoming = reply->read(toRead);
+        QByteArray converted;
+        if (!m_pcmConverter.feed(incoming, converted) ||
+            converted.size() > room) {
+            stopSpeechOnError("Native PCM conversion exceeded its output bounds.");
+            return;
+        }
+        m_pcmTotalReceived += incoming.size();
+        m_pcmPending += converted;
     }
-    m_pcmTotalReceived += incoming.size();
-    m_pcmPending += incoming;
-    pumpPcmPlayback();
+    // Do not finalize a one-byte-split frame until the last HTTP response
+    // bytes have been consumed; reject odd final samples deterministically.
     if (m_pcmHttpDone && m_speechReply == reply && reply->bytesAvailable() == 0) {
+        if (m_pcmTotalReceived <= 0 || (m_pcmTotalReceived % 2)) {
+            stopSpeechOnError("Native PCM stream ended with an incomplete sample.");
+            return;
+        }
+        QByteArray finalFrames;
+        if (!m_pcmConverter.finish(finalFrames) ||
+            finalFrames.size() > maxPendingBytes - m_pcmPending.size()) {
+            stopSpeechOnError("Native PCM stream could not finalize a complete audio frame.");
+            return;
+        }
+        m_pcmPending += finalFrames;
         m_speechReply = nullptr;
         reply->deleteLater();
-        if (m_pcmTotalReceived <= 0 || (m_pcmTotalReceived % 2))
-            stopSpeechOnError("Native PCM stream ended with an incomplete sample.");
     }
+    pumpPcmPlayback();
 }
 void EmberBackend::pumpPcmPlayback() {
     if (!m_pcmSink || !m_pcmDevice) return;
@@ -1914,12 +1978,15 @@ void EmberBackend::pumpPcmPlayback() {
         return;
     }
     const qint64 available = std::max<qint64>(0, m_pcmSink->bytesFree());
-    // PCM16 frame boundaries may span separate HTTP readyRead notifications.
+    // Source PCM16 boundaries are reassembled by the converter; sink writes
+    // must be aligned to the Windows output format's complete stereo/mono frame.
     const qint64 writeBytes = std::min<qint64>(
-        available, m_pcmPending.size()) & ~qint64(1);
+        available, m_pcmPending.size()) /
+        std::max(1, m_pcmOutputBytesPerFrame) *
+        std::max(1, m_pcmOutputBytesPerFrame);
     if (writeBytes > 0) {
         const qint64 written = m_pcmDevice->write(m_pcmPending.constData(), writeBytes);
-        if (written < 0 || (written % 2)) {
+        if (written < 0 || written % std::max(1, m_pcmOutputBytesPerFrame)) {
             stopSpeechOnError("Windows rejected the PCM16 audio buffer.");
             return;
         }
@@ -1946,9 +2013,15 @@ void EmberBackend::pumpPcmPlayback() {
         m_pcmStarted && m_pcmSampleRate > 0) {
         if (!m_pcmDrainElapsed.isValid()) m_pcmDrainElapsed.start();
         const qint64 expectedUs = m_pcmBytesSubmitted * 1000000LL /
-                                  (qint64(m_pcmSampleRate) * 2);
+                                  (qint64(m_pcmSampleRate) *
+                                   m_pcmOutputBytesPerFrame);
+        // Drain helper works on the selected 16-bit mono/stereo frame clock.
+        // For Float32, convert output bytes back to equivalent PCM16 counts.
+        const qint64 equivalentPcm16 = m_pcmBytesSubmitted /
+            (m_pcmOutputBytesPerFrame / (m_pcmOutputChannels * 2));
         const bool consumed = EmberCore::pcmPlaybackDrained(
-            m_pcmBytesSubmitted, m_pcmSampleRate, m_pcmSink->processedUSecs());
+            equivalentPcm16, m_pcmSampleRate, m_pcmSink->processedUSecs(),
+            m_pcmOutputChannels);
         if (consumed && m_pcmSink->state() == QAudio::IdleState) {
             resetPcmPlayback();
             setSpeaking(false);

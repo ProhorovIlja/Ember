@@ -54,6 +54,9 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 
 ### Additional current acceptance checks
 
+- [x] Native Windows streaming PCM handles output-format fallback (mono/stereo,
+  Int16/Float, sample-rate conversion) with bounded memory and packet-alignment
+  regression tests; physical DAC hotplug/latency/voice-listening not yet tested.
 - [ ] Real EN/RU dictation using 30-second and multi-minute microphone samples, including hardware hotplug and low-disk conditions; confirm no text is sent automatically and no audio remains in persistent chat history.
 - [ ] SQLite crash recovery, local chat reopen/navigation/delete, Win10 file permissions, backup/export and archive growth checks. Current archive is plaintext; verify uninstall does not silently erase it.
 - [ ] Long-form story coherence and recall over multiple sessions, dialogue naturalness, factual troubleshooting quality, code reliability, token-stream interruption and context overflow regression tests.

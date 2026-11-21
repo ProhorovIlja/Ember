@@ -779,6 +779,69 @@ private slots:
         QVERIFY(EmberCore::nativeDeliveryInstructions(-1).isEmpty());
         QVERIFY(EmberCore::nativeDeliveryInstructions(4).contains("Narrate vividly"));
     }
+    void convertsStreamingPcmWithoutPacketBoundaryArtifacts() {
+        using Converter = EmberCore::Pcm16OutputConverter;
+        Converter stereo;
+        QVERIFY(stereo.configure(24000, 48000, 2, QAudioFormat::Int16));
+        const QByteArray original = QByteArray::fromHex("e803d007b80ba00f");
+        QByteArray output, part;
+        QVERIFY(stereo.feed(original.left(3), part));
+        output += part;
+        QVERIFY(stereo.feed(original.mid(3, 2), part));
+        output += part;
+        QVERIFY(stereo.feed(original.mid(5), part));
+        output += part;
+        QVERIFY(stereo.finish(part));
+        output += part;
+        QCOMPARE(output.size(), qsizetype(8 * 2 * 2));
+        auto value = [](const QByteArray &bytes, int frame, int channel) {
+            const int i = frame * 4 + channel * 2;
+            return int(qint16(quint16(quint8(bytes[i])) |
+                                (quint16(quint8(bytes[i+1])) << 8)));
+        };
+        const QList<int> expected{1000,1500,2000,2500,3000,3500,4000,4000};
+        for (int i=0;i<expected.size();++i) {
+            QCOMPARE(value(output, i, 0), expected[i]);
+            QCOMPARE(value(output, i, 1), expected[i]);
+        }
+        QVERIFY(!stereo.feed(original, part)); // finalized converter is closed
+        Converter native;
+        QVERIFY(native.configure(24000,24000,1,QAudioFormat::Int16));
+        QVERIFY(native.feed(original,part));
+        QByteArray same = part;
+        QVERIFY(native.finish(part));
+        same += part;
+        QCOMPARE(same, original);
+        Converter down;
+        QVERIFY(down.configure(48000,24000,1,QAudioFormat::Int16));
+        const QByteArray longPcm = QByteArray::fromHex("0000e803d007b80ba00f8813");
+        QVERIFY(down.feed(longPcm,part));
+        QByteArray shortened = part;
+        QVERIFY(down.finish(part));
+        shortened += part;
+        QCOMPARE(shortened, QByteArray::fromHex("0000d007a00f"));
+        Converter floatStereo;
+        QVERIFY(floatStereo.configure(24000,48000,2,QAudioFormat::Float));
+        QVERIFY(floatStereo.feed(original,part));
+        QByteArray floated = part;
+        QVERIFY(floatStereo.finish(part));
+        floated += part;
+        QCOMPARE(floated.size(),qsizetype(8*2*4));
+        for (int frame = 0; frame < 8; ++frame) {
+            float left=0,right=0;
+            std::memcpy(&left, floated.constData()+frame*8,4);
+            std::memcpy(&right, floated.constData()+frame*8+4,4);
+            QVERIFY(std::abs(left - float(expected[frame])/32768) < 0.00001);
+            QCOMPARE(left,right);
+        }
+        Converter corrupt;
+        QVERIFY(corrupt.configure(24000,48000,2,QAudioFormat::Int16));
+        QVERIFY(corrupt.feed(QByteArray("\\x01", 1),part));
+        QVERIFY(!corrupt.finish(part));
+        QVERIFY(!corrupt.feed(QByteArray(32769,'0'),part));
+        QVERIFY(!corrupt.configure(24000,48000,3,QAudioFormat::Int16));
+        QVERIFY(!corrupt.configure(24000,48000,1,QAudioFormat::UInt8));
+    }
     void pcmDrainKeepsEndOfUtteranceIntact() {
         constexpr qint64 oneSecond24k = 48000;
         QVERIFY(!EmberCore::pcmPlaybackDrained(oneSecond24k, 24000, 950000));
@@ -789,6 +852,9 @@ private slots:
         QVERIFY(!EmberCore::pcmPlaybackDrained(47999, 24000, 1000000));
         QVERIFY(!EmberCore::pcmPlaybackDrained(48000, 192000, 1000000));
         QVERIFY(!EmberCore::pcmPlaybackDrained(48000, 24000, -1));
+        QVERIFY(EmberCore::pcmPlaybackDrained(192000, 48000, 1000000, 2));
+        QVERIFY(!EmberCore::pcmPlaybackDrained(192002, 48000, 1000000, 2));
+        QVERIFY(!EmberCore::pcmPlaybackDrained(192000, 48000, 1000000, 3));
     }
     void rejectsInvalidSpeechAudio() {
         const auto good = EmberCore::pcmToWav(QByteArray::fromHex("0100020003000400"), 24000);

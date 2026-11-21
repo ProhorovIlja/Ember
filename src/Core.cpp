@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstring>
 #include <numbers>
 namespace EmberCore {
 QString offlineSpeechModelFile(const QString &applicationRoot, const QString &alias) {
@@ -482,15 +483,113 @@ QString nativeDeliveryInstructions(int style) {
     }
 }
 bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate,
-                        qint64 processedUsecs) {
-    if (submittedBytes <= 0 || (submittedBytes % 2) != 0 ||
+                        qint64 processedUsecs, int channels) {
+    if (submittedBytes <= 0 || (channels != 1 && channels != 2) ||
+        (submittedBytes % (qint64(channels) * 2)) != 0 ||
         !validPcmSampleRate(sampleRate) || processedUsecs < 0)
         return false;
     // A 3 ms scheduling tolerance avoids truncating up to 20 ms of final
     // syllables, while Windows' IdleState still has to be observed separately.
     const qint64 expected = (submittedBytes * 1000000LL) /
-                            (qint64(sampleRate) * 2);
+                            (qint64(sampleRate) * channels * 2);
     return processedUsecs + 3000 >= expected;
+}
+
+void Pcm16OutputConverter::clear() {
+    m_sourceRate = m_outputRate = m_channels = m_sampleBytes = 0;
+    m_sampleFormat = QAudioFormat::Unknown;
+    m_sourceFrames = m_outputFrames = 0;
+    m_previous = 0;
+    m_carry = -1;
+    m_ready = m_closed = false;
+}
+bool Pcm16OutputConverter::configure(int sourceRate, int outputRate, int channels,
+                                     QAudioFormat::SampleFormat sampleFormat) {
+    clear();
+    if (!validPcmSampleRate(sourceRate) || !validPcmSampleRate(outputRate) ||
+        (channels != 1 && channels != 2) ||
+        (sampleFormat != QAudioFormat::Int16 &&
+         sampleFormat != QAudioFormat::Float))
+        return false;
+    m_sourceRate = sourceRate;
+    m_outputRate = outputRate;
+    m_channels = channels;
+    m_sampleFormat = sampleFormat;
+    m_sampleBytes = sampleFormat == QAudioFormat::Float ? 4 : 2;
+    m_ready = true;
+    return true;
+}
+void Pcm16OutputConverter::appendFrame(QByteArray &output, qint16 value) const {
+    // Windows x64 is little-endian, but write explicit little-endian data
+    // for deterministic CI and future non-Windows standalone converter tests.
+    if (m_sampleFormat == QAudioFormat::Int16) {
+        const quint16 raw = quint16(value);
+        for (int c = 0; c < m_channels; ++c) {
+            output.append(char(raw & 0xff));
+            output.append(char((raw >> 8) & 0xff));
+        }
+    } else {
+        const float converted = float(value) / 32768.0f;
+        quint32 bits = 0;
+        static_assert(sizeof(bits) == sizeof(converted));
+        std::memcpy(&bits, &converted, sizeof(bits));
+        for (int c = 0; c < m_channels; ++c)
+            for (int byte = 0; byte < 4; ++byte)
+                output.append(char((bits >> (byte * 8)) & 0xff));
+    }
+}
+bool Pcm16OutputConverter::feed(const QByteArray &input, QByteArray &output) {
+    output.clear();
+    if (!m_ready || m_closed || input.size() > 32768) return false;
+    // At most 16K source frames per call; even 8 kHz -> 96 kHz stereo
+    // Float32 cannot allocate a multi-minute intermediate audio buffer.
+    const qint64 maximumFrames = (qint64(input.size() / 2 + 2) *
+        m_outputRate + m_sourceRate - 1) / m_sourceRate + 2;
+    output.reserve(qsizetype(maximumFrames * bytesPerFrame()));
+    for (const unsigned char byte : input) {
+        if (m_carry < 0) {
+            m_carry = int(byte);
+            continue;
+        }
+        const quint16 raw = quint16(m_carry) | (quint16(byte) << 8);
+        m_carry = -1;
+        const qint16 next = qint16(raw);
+        if (m_sourceFrames == 0) {
+            m_previous = next;
+            ++m_sourceFrames;
+            continue;
+        }
+        const qint64 left = m_sourceFrames - 1;
+        for (;;) {
+            const qint64 time = m_outputFrames * qint64(m_sourceRate);
+            const qint64 index = time / m_outputRate;
+            if (index > left) break;
+            if (index != left) return false;
+            const qint64 fraction = time % m_outputRate;
+            const qint64 weighted = qint64(m_previous) *
+                (m_outputRate - fraction) + qint64(next) * fraction;
+            appendFrame(output, qint16(weighted / m_outputRate));
+            ++m_outputFrames;
+        }
+        m_previous = next;
+        ++m_sourceFrames;
+    }
+    return true;
+}
+bool Pcm16OutputConverter::finish(QByteArray &output) {
+    output.clear();
+    if (!m_ready || m_closed || m_carry >= 0 || m_sourceFrames <= 0)
+        return false;
+    m_closed = true;
+    // Last frame cannot be interpolated against a future sample. Hold its
+    // final value for at most the output-rate ratio, maintaining duration.
+    const qint64 needed = (m_sourceFrames * qint64(m_outputRate) +
+                           m_sourceRate - 1) / m_sourceRate;
+    while (m_outputFrames < needed) {
+        appendFrame(output, m_previous);
+        ++m_outputFrames;
+    }
+    return true;
 }
 QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice,
                                      const QString &text, int deliveryStyle) {
