@@ -758,6 +758,71 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 100
+                                    radius: 13
+                                    color: window.cardColor
+                                    border.color: window.borderColor
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 9
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text {
+                                                text: "Dictation recognition language"
+                                                color: "#D2E6F8"
+                                                font.pixelSize: 13
+                                                Layout.fillWidth: true
+                                            }
+                                            ComboBox {
+                                                id: languagePicker
+                                                Layout.preferredWidth: 212
+                                                implicitHeight: 38
+                                                model: ["Auto-detect · RU / EN", "English", "Russian"]
+                                                currentIndex: ember.recognitionLanguage
+                                                onActivated: ember.recognitionLanguage = currentIndex
+                                                font.pixelSize: 12
+                                                contentItem: Text {
+                                                    text: languagePicker.displayText
+                                                    leftPadding: 11
+                                                    color: "#E6F4FF"
+                                                    font.pixelSize: 12
+                                                    verticalAlignment: Text.AlignVCenter
+                                                }
+                                                background: Rectangle {
+                                                    radius: 10
+                                                    color: "#0A1B31"
+                                                    border.color: "#2B648D"
+                                                }
+                                                delegate: ItemDelegate {
+                                                    required property int index
+                                                    required property string modelData
+                                                    width: languagePicker.width
+                                                    height: 38
+                                                    text: modelData
+                                                    contentItem: Text {
+                                                        text: parent.text
+                                                        color: "#E6F4FF"
+                                                        font.pixelSize: 12
+                                                        verticalAlignment: Text.AlignVCenter
+                                                    }
+                                                    background: Rectangle {
+                                                        color: parent.highlighted ? "#15446A" : "#0C1C31"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            text: "Auto-detect works with multilingual Whisper weights. Voice replies stay English."
+                                            color: "#869CB6"
+                                            font.pixelSize: 11
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+                                }
                                 Text {
                                     text: "AUDIO ROUTING"
                                     color: "#D9ECFF"
