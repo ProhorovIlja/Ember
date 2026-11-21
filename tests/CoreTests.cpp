@@ -314,6 +314,8 @@ private slots:
         QVERIFY(!EmberCore::mostlyCyrillic(QString::fromUtf8(
             "The characters Ivan and Мария are waiting for you in London.")));
         QVERIFY(!EmberCore::mostlyCyrillic(QString("Speak to me in English, Ember.")));
+        QVERIFY(EmberCore::mostlyCyrillic(QString::fromUtf8("Привет!")));
+        QVERIFY(EmberCore::mostlyCyrillic(QString::fromUtf8("Это очень важно.")));
     }
     void longSpokenRepliesAreSplitWithoutSilentTruncation() {
         const QString input = QString("A thoughtful reply has a natural pause. ").repeated(70).trimmed();
