@@ -1289,7 +1289,7 @@ ApplicationWindow {
                                 Rectangle {
                                     visible: ember.voiceEngine === 1
                                     Layout.fillWidth: true
-                                    implicitHeight: 189
+                                    implicitHeight: 243
                                     color: window.cardColor
                                     radius: 13
                                     border.color: window.borderColor
@@ -1352,6 +1352,36 @@ ApplicationWindow {
                                                     color: "#0A192D"
                                                     radius: 9
                                                     border.color: "#254A73"
+                                                }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 9
+                                            Text {
+                                                text: "Female presets"
+                                                color: "#9AB8CF"
+                                                font.pixelSize: 11
+                                                Layout.fillWidth: true
+                                            }
+                                            PillButton {
+                                                text: "Vivian · bright"
+                                                implicitWidth: 146
+                                                implicitHeight: 32
+                                                enabled: !ember.busy && !ember.speaking
+                                                onClicked: {
+                                                    ember.localVoice = "vivian"
+                                                    externalVoice.text = "vivian"
+                                                }
+                                            }
+                                            PillButton {
+                                                text: "Serena · warm"
+                                                implicitWidth: 144
+                                                implicitHeight: 32
+                                                enabled: !ember.busy && !ember.speaking
+                                                onClicked: {
+                                                    ember.localVoice = "serena"
+                                                    externalVoice.text = "serena"
                                                 }
                                             }
                                         }
