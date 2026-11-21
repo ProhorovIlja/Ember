@@ -603,7 +603,7 @@ ApplicationWindow {
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: ember.speechServerReady && ember.voiceEngine === 1 ?
-                                      "Ember can begin English speech after its first complete LLM sentence. Audio streams through native PCM; voice remains push-to-talk." :
+                                      "Ember can start English speech after its first LLM sentence when Early Speech is enabled. Native PCM output remains push-to-talk." :
                                       "Conversation remains turn-based. Start native speech.cpp in Settings for incremental PCM playback."
                                 color: "#78909E"
                                 font.pixelSize: 11
@@ -1399,7 +1399,7 @@ ApplicationWindow {
                                 Rectangle {
                                     visible: ember.voiceEngine === 1
                                     Layout.fillWidth: true
-                                    implicitHeight: 167
+                                    implicitHeight: 227
                                     radius: 14
                                     color: window.cardColor
                                     border.color: window.borderColor
@@ -1436,6 +1436,32 @@ ApplicationWindow {
                                             wrapMode: Text.WordWrap
                                             color: "#8EABC5"
                                             font.pixelSize: 12
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 10
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 3
+                                                Text {
+                                                    text: "EARLY SENTENCE SPEECH"
+                                                    color: "#C9E3F5"
+                                                    font.pixelSize: 11
+                                                    font.letterSpacing: 0.8
+                                                }
+                                                Text {
+                                                    text: "Faster first phrase, but LLM/TTS share GPU headroom."
+                                                    color: "#86A5BE"
+                                                    font.pixelSize: 11
+                                                }
+                                            }
+                                            PillButton {
+                                                text: ember.earlySpeechEnabled ? "Enabled" : "Disabled"
+                                                implicitWidth: 112
+                                                implicitHeight: 34
+                                                enabled: !ember.busy && !ember.listening && !ember.speaking
+                                                onClicked: ember.earlySpeechEnabled = !ember.earlySpeechEnabled
+                                            }
                                         }
                                         RowLayout {
                                             Layout.fillWidth: true
