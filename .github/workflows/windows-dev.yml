@@ -60,6 +60,7 @@ jobs:
           }
           Get-Content $log -ErrorAction SilentlyContinue
           Get-Content $stdout -ErrorAction SilentlyContinue
+          Get-Content 'build/Release/qml-smoke-report.txt' -ErrorAction SilentlyContinue
           if ($process.ExitCode -ne 0) { throw "Native QML smoke test failed with exit code $($process.ExitCode)" }
       - name: Package unsigned development build
         shell: pwsh
