@@ -265,6 +265,22 @@ private slots:
                                      "And that concludes the example."}));
         QCOMPARE(cursor, qsizetype(draft.size()));
     }
+    void keepsInternalReasoningOutOfEarlyAndFallbackVoices() {
+        qsizetype cursor = 0;
+        QString draft = "<think>Let me consider an internal path.";
+        QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, false).isEmpty());
+        QCOMPARE(cursor, qsizetype(0));
+        draft += " Extra internal analysis.</think> I can help you. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false),
+                 QStringList({"I can help you."}));
+        QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, false).isEmpty());
+        const QString source = "<think>Hidden\\nreasoning.</think> Spoken English answer.";
+        QCOMPARE(EmberCore::speechFriendlyText(source),
+                 QString("Spoken English answer."));
+        QVERIFY(EmberCore::speechFriendlyText(
+                    "<think>Unfinished internal note.").isEmpty());
+        QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, true).size(), 0);
+    }
     void boundsSpeechCommitsForUnpunctuatedLongTokens() {
         qsizetype cursor = 0;
         QString text = QString("spoken phrase ").repeated(36);
