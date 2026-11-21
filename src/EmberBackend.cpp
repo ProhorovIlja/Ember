@@ -443,7 +443,9 @@ void EmberBackend::setOutputDeviceIndex(int index) {
     if (index < 0 || index > devices.size()) return;
     const QByteArray selected = index == 0 ? QByteArray() : devices.at(index - 1).id();
     if (selected == m_outputId) return;
+    if (m_speechSequence || m_pcmSink) cancelWork();
     m_mediaPlayer.stop();
+    m_mediaPlayer.setSource(QUrl());
     setSpeaking(false);
     m_outputId = selected;
     if (m_outputId.isEmpty()) m_settings.remove("audio/outputId");
@@ -483,9 +485,9 @@ void EmberBackend::onOutputInventoryChanged() {
     for (const auto &device : devices)
         if (device.id() == m_outputId) selectedExists = true;
     if (!selectedExists) {
-        m_speechSequence = false;
-        m_voiceQueue.clear();
+        if (m_speechSequence || m_pcmSink) cancelWork();
         m_mediaPlayer.stop();
+        m_mediaPlayer.setSource(QUrl());
         setSpeaking(false);
         m_outputId.clear();
         m_settings.remove("audio/outputId");
