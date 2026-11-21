@@ -238,6 +238,7 @@ private:
     EmberCore::VisibleAssistantStream m_visibleStream;
     QByteArray m_chatStreamBuffer;
     bool m_chatStreamDone = false, m_chatStreamInvalid = false;
+    bool m_chatStreamTruncated = false;
     bool m_chatPreviewActive = false;
     QVariantList m_sessions;
     std::unique_ptr<SessionStore> m_store;
