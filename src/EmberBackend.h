@@ -140,6 +140,7 @@ private:
     QTimer m_captureWatchdog;
     quint64 m_captureSession = 0;
     QElapsedTimer m_brainElapsed;
+    quint64 m_brainSession = 0;
     QElapsedTimer m_asrElapsed, m_llmElapsed, m_ttsElapsed;
     qint64 m_asrLastMs = -1, m_llmLastMs = -1, m_ttsLastMs = -1;
 };

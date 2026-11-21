@@ -12,6 +12,7 @@
 #include <QJsonObject>
 #include <QMediaDevices>
 #include <QNetworkRequest>
+#include <QNetworkProxy>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QUrl>
@@ -47,6 +48,9 @@ EmberBackend::EmberBackend(QObject *parent)
         QDir(appFolder()).filePath("cache/session-XXXXXX"));
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_voiceId = m_settings.value("voiceId", 0).toInt();
+    // Ignore Windows/system proxies for both local inference services.
+    // Otherwise an environment proxy could receive private conversation text.
+    m_network.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     m_voiceId = qBound(0, m_voiceId, 10);
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
     m_localModel = m_settings.value("voice/localModel", "qwen3-tts").toString();
@@ -451,6 +455,7 @@ void EmberBackend::startBrain() {
         setStatus("Configure a valid llama-server.exe and GGUF model in Settings.");
         return;
     }
+    ++m_brainSession; // invalidate late HTTP health checks from earlier runs
     m_brain.setWorkingDirectory(QFileInfo(binary).absolutePath());
     m_brain.setProgram(binary);
     m_brain.setArguments({"--model", model, "--alias", "ember",
@@ -473,12 +478,16 @@ void EmberBackend::pollBrain() {
     if (!EmberCore::allowedLocalEndpoint(url)) return;
     QNetworkRequest request{QUrl(url)};
     request.setTransferTimeout(1000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    const quint64 session = m_brainSession;
     QNetworkReply *check = m_network.get(request);
-    connect(check, &QNetworkReply::finished, this, [this, check]() {
+    connect(check, &QNetworkReply::finished, this, [this, check, session]() {
         const bool ok = check->error() == QNetworkReply::NoError &&
             check->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200;
         check->deleteLater();
-        if (ok && m_brain.state() == QProcess::Running) {
+        if (ok && session == m_brainSession &&
+            m_brain.state() == QProcess::Running) {
             m_healthTimer.stop();
             setBrainReady(true);
             setStatus("Local brain online · RTX acceleration requested.");
@@ -486,6 +495,7 @@ void EmberBackend::pollBrain() {
     });
 }
 void EmberBackend::stopBrain() {
+    ++m_brainSession;
     cancelWork();
     m_healthTimer.stop();
     setBrainReady(false);
@@ -526,6 +536,8 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     }
     QNetworkRequest request{QUrl(url)};
     request.setTransferTimeout(120000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     QNetworkReply *reply = m_network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     m_llmElapsed.start();
