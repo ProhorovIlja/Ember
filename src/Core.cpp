@@ -231,9 +231,18 @@ bool validSpeechWav(const QByteArray &wav) {
 }
 QString speechFriendlyText(const QString &markdown) {
     if (markdown.size() > 16384) return {};
+    QString speechSource = markdown;
+    // Exclude model-internal reasoning from spoken output even when the
+    // non-streaming Kokoro or generic WAV adapter is selected.
+    speechSource.remove(QRegularExpression(
+        R"(<think>[\\s\\S]*?</think>)",
+        QRegularExpression::CaseInsensitiveOption));
+    const qsizetype unclosedThought =
+        speechSource.indexOf("<think>", 0, Qt::CaseInsensitive);
+    if (unclosedThought >= 0) speechSource.truncate(unclosedThought);
     QStringList spokenLines;
     bool insideCode = false;
-    for (const QString &raw : markdown.split('\n')) {
+    for (const QString &raw : speechSource.split('\n')) {
         QString line = raw.trimmed();
         if (line.startsWith("```") || line.startsWith("~~~")) {
             if (!insideCode)
