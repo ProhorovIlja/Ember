@@ -18,6 +18,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Regression-test stable release gates before building
+        shell: pwsh
+        run: |
+          python release/verify_release.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Release gate tests failed.' }
+          if (Test-Path 'release/acceptance.json') { throw 'Development branch unexpectedly contains a stable release approval.' }
       - name: Install Qt 6.8.3 dynamic development modules
         uses: jurplel/install-qt-action@v4
         with:
