@@ -2,6 +2,7 @@
 #include "Core.h"
 #include "SessionStore.h"
 #include <QFile>
+#include <QLockFile>
 #include <QAudioDevice>
 #include <QAudioFormat>
 #include <QAudioOutput>
@@ -210,6 +211,7 @@ private:
     QMediaDevices m_mediaDevices;
     QByteArray m_inputId, m_outputId, m_captureDeviceId;
     std::unique_ptr<QTemporaryDir> m_work;
+    std::unique_ptr<QLockFile> m_workLock;
     std::unique_ptr<QAudioSource> m_audioSource;
     QFile m_captureFile;
     QStringList m_transcriptionSegments;

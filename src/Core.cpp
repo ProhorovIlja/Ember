@@ -202,6 +202,12 @@ QJsonObject speechRequest(const QString &model, const QString &voice,
         {"response_format", "wav"}
     };
 }
+bool safeScratchSessionName(const QString &name) {
+    // Never pass arbitrary user paths into abandoned-audio cleanup.
+    static const QRegularExpression pattern("^[A-Za-z0-9]{6}$");
+    return name.startsWith("session-") &&
+        name.size() == 14 && pattern.match(name.mid(8)).hasMatch();
+}
 bool validPcmSampleRate(int rate) {
     return rate >= 8000 && rate <= 96000;
 }
@@ -210,6 +216,7 @@ QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice
     auto request = speechRequest(model, voice, text);
     request.insert("response_format", "pcm");
     request.insert("stream_format", "audio");
+    request.insert("language", "en"); // managed speech.cpp can force English
     return request;
 }
 // Validate a bounded, ordinary PCM16 RIFF/WAV before writing to private

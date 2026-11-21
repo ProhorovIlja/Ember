@@ -75,3 +75,11 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Settings, native ASR cancellation and stale Whisper exit protection integrated; core tests cover only allowed native URL/model/language choices.
 - [ ] Actual speech.cpp server integration, spoken RU/EN WER/CER with controlled clips, VRAM/real-time factor, cancellation and voice capture need genuine Windows 10 RTX 4070 testing.
 - [ ] Only ship redistributable engine code/weights when current model and asset licenses are independently verified; no automatic model bundle or preview Release.
+
+### Crash-safe microphone scratch cleanup and English-native TTS (21 November 2026)
+
+- [x] New session temp folders have an ownership `QLockFile`; on startup only stale, correctly named and marked directories are candidates for cleanup, never a live session or arbitrary path.
+- [x] Native PCM speech.cpp requests explicitly specify English; generic WAV TTS servers remain backward-compatible.
+- [x] Core tests reject arbitrary or traversal-like session names and validate native-English-only TTS request shape.
+- [ ] Clean Windows 10 hardware crash/reboot tests verify orphan deletion, lock behavior, antivirus file locks and no impact on concurrently running Ember instances.
+- [ ] Physical securely erased media is **not** claimed; encrypted-at-rest archive and optional Drive backups remain separate future work.

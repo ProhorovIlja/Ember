@@ -20,6 +20,7 @@ QString recognitionLanguageTag(int languageChoice);
 QJsonObject speechRequest(const QString &model, const QString &voice, const QString &text);
 QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice, const QString &text);
 bool validPcmSampleRate(int rate);
+bool safeScratchSessionName(const QString &name);
 bool validSpeechWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
 QString speechFriendlyText(const QString &markdown);

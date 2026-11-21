@@ -435,6 +435,8 @@ private slots:
         QCOMPARE(pcm.value("input").toString(), QString("Hello, Ember"));
         QCOMPARE(pcm.value("response_format").toString(), QString("pcm"));
         QCOMPARE(pcm.value("stream_format").toString(), QString("audio"));
+        QCOMPARE(pcm.value("language").toString(), QString("en"));
+        QVERIFY(!payload.contains("language")); // generic WAV server compatibility
         QVERIFY(!payload.contains("stream_format")); // generic local WAV API stays intact
         QVERIFY(EmberCore::validPcmSampleRate(24000));
         QVERIFY(EmberCore::validPcmSampleRate(48000));
@@ -507,6 +509,16 @@ private slots:
         QCOMPARE(EmberCore::recognitionLanguageTag(-1), QString());
     }
 
+    void onlyRecognizesEmberOwnedScratchSessionDirectoryNames() {
+        QVERIFY(EmberCore::safeScratchSessionName("session-Ab12Z9"));
+        QVERIFY(EmberCore::safeScratchSessionName("session-a1b2c3"));
+        QVERIFY(!EmberCore::safeScratchSessionName("session-XXXX"));
+        QVERIFY(!EmberCore::safeScratchSessionName("session-abcdefgh"));
+        QVERIFY(!EmberCore::safeScratchSessionName("../session-Ab12Z9"));
+        QVERIFY(!EmberCore::safeScratchSessionName("session-Ab12Z9/private"));
+        QVERIFY(!EmberCore::safeScratchSessionName("cache"));
+        QVERIFY(!EmberCore::safeScratchSessionName("session-000000~"));
+    }
     void localOnlyEndpoint() {
         QVERIFY(EmberCore::allowedLocalEndpoint("http://127.0.0.1:43821/health"));
         QVERIFY(EmberCore::allowedLocalEndpoint("http://127.0.0.1:43821/v1/chat/completions"));

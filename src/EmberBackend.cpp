@@ -3,6 +3,7 @@
 #include <QAudioDevice>
 #include <QAudioFormat>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -11,6 +12,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QMediaDevices>
 #include <QNetworkRequest>
 #include <QNetworkProxy>
@@ -22,6 +24,25 @@
 namespace {
 QString appFolder() {
     return QCoreApplication::applicationDirPath();
+}
+void cleanupOldVoiceScratch() {
+    const QDir cache(QDir(appFolder()).filePath("cache"));
+    if (!cache.exists()) return;
+    const QDateTime now = QDateTime::currentDateTime();
+    for (const QFileInfo &folder : cache.entryInfoList(
+             {"session-*"}, QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks)) {
+        if (!EmberCore::safeScratchSessionName(folder.fileName()) ||
+            folder.lastModified().secsTo(now) < 15 * 60) continue;
+        const QString lockName = QDir(folder.absoluteFilePath()).filePath(".ember.lock");
+        // Never delete an old unmarked folder; it may belong to another app
+        // version or contain user files. New Ember instances own a lock.
+        if (!QFileInfo::exists(lockName)) continue;
+        QLockFile lock(lockName);
+        lock.setStaleLockTime(60 * 1000);
+        if (!lock.tryLock(0)) continue; // active Ember still owns this folder
+        lock.unlock();
+        QDir(folder.absoluteFilePath()).removeRecursively();
+    }
 }
 QString defaultPath(const QString &key) {
     const QDir root(appFolder());
@@ -47,8 +68,18 @@ EmberBackend::EmberBackend(QObject *parent)
       m_settings(QDir(appFolder()).filePath("data/ember.ini"), QSettings::IniFormat) {
     QDir().mkpath(QDir(appFolder()).filePath("data"));
     QDir().mkpath(QDir(appFolder()).filePath("cache"));
+    cleanupOldVoiceScratch();
     m_work = std::make_unique<QTemporaryDir>(
         QDir(appFolder()).filePath("cache/session-XXXXXX"));
+    if (m_work && m_work->isValid()) {
+        m_workLock = std::make_unique<QLockFile>(m_work->filePath(".ember.lock"));
+        m_workLock->setStaleLockTime(60 * 1000);
+        if (!m_workLock->tryLock(0)) {
+            // Fail closed on the scratch folder if ownership cannot be proven.
+            m_workLock.reset();
+            m_work.reset();
+        }
+    }
     m_store = std::make_unique<SessionStore>(
         QDir(appFolder()).filePath("data/ember-chats.sqlite"));
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
