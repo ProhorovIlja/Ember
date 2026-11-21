@@ -19,7 +19,7 @@ Use **component composition and measurable routing** rather than unsupported cla
 
 ### Hardware operating assumptions
 
-A single 12 GB RTX 4070 should prioritize a quantized ~8B-class language model and reserve headroom for context KV and graphics. ASR and small ONNX TTS may run on CPU while the LLM occupies GPU memory, trading latency for lower peak VRAM. Actual VRAM, token/s, first-phoneme latency, idle watts and peak memory must be benchmarked on the real Ryzen 5600 machine. The current starter does not claim a verified measured FPS or latency.
+A single 12 GB RTX 4070 should prioritize a quantized ~8B-class language model and reserve headroom for context KV and graphics. ASR and small ONNX TTS may run on CPU while the LLM occupies GPU memory, trading latency for lower peak VRAM. Actual VRAM, token/s, first-phoneme latency, idle watts and peak memory must be benchmarked on the real Ryzen 5600 machine. The current starter does not claim a verified measured FPS or latency. Microphone preferred formats now convert through a bounded native mono 16 kHz windowed-sinc resampler; this path is unit-tested with synthetic stereo/float samples, not yet recorded Windows hardware.
 
 ### Sequence and acceptance
 

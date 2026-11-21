@@ -15,7 +15,7 @@ This repository currently contains a **development foundation**. It compiles an 
 
 ## Current behavior
 
-The backend launches a local `llama-server` bound to `127.0.0.1:43821` with one GGUF model and a fixed `ember` API alias. It posts current-session messages to the local `/v1/chat/completions` endpoint, never a remote URL. Audio recording runs only on explicit command and stops after 30 seconds. The first voice path is **turn-based**, not streaming. The caller must supply compatible engine binaries and licensed models; not every microphone can capture directly at 16 kHz, and unsupported devices are rejected rather than silently resampled. The built-in Kokoro path currently targets the **English v0.19 voice pack**. Russian speech output and multilingual voice quality are future acceptance items, not implied by the English model.
+The backend launches a local `llama-server` bound to `127.0.0.1:43821` with one GGUF model and a fixed `ember` API alias. It posts current-session messages to the local `/v1/chat/completions` endpoint, never a remote URL. Audio recording runs only on explicit command and stops after 30 seconds. The first voice path is **turn-based**, not streaming. The caller must supply compatible engine binaries and licensed models; common stereo and 44.1/48 kHz microphones are converted to 16 kHz mono with a bounded resampler, while real hardware/device selection still needs acceptance testing. The built-in Kokoro path currently targets the **English v0.19 voice pack**. Russian speech output and multilingual voice quality are future acceptance items, not implied by the English model.
 
 ### Build
 
