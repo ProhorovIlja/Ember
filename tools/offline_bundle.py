@@ -225,6 +225,43 @@ def stage(root, manifest, destination):
     return output
 
 
+def assemble(staged_root, manifest, application, output):
+    """Combine clean windeployqt output and approved offline assets without user data."""
+    verify(staged_root, manifest, approved=True)
+    app = Path(application).resolve(strict=True)
+    for required in ("Ember.exe", "Qt6Core.dll", "LICENSE"):
+        if not (app / required).is_file():
+            raise ValueError(f"Missing clean native app dependency: {required}")
+    forbidden = {"data", "cache", "engines", "models", "licenses",
+                 "offline-assets.json"}
+    for candidate in app.rglob("*"):
+        if candidate.is_symlink():
+            raise ValueError(f"Application symlink rejected: {candidate}")
+        if candidate.relative_to(app).parts[0].casefold() in forbidden:
+            raise ValueError("Deployed Qt app contains user data or untracked models")
+        if not (candidate.is_file() or candidate.is_dir()):
+            raise ValueError("Unexpected native application file type")
+    out = Path(output)
+    if out.exists():
+        raise ValueError("Refusing to overwrite existing assembled directory")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    temp = Path(tempfile.mkdtemp(prefix=".ember-complete-", dir=out.parent))
+    try:
+        shutil.copytree(app, temp, dirs_exist_ok=True)
+        for entry in load_manifest(manifest):
+            name = entry["path"]
+            dest = temp.joinpath(*PurePosixPath(name).parts)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(local_file(staged_root, name), dest)
+        shutil.copyfile(manifest, temp / "offline-assets.json")
+        verify(temp, temp / "offline-assets.json", approved=True)
+        temp.rename(out)
+    finally:
+        if temp.exists():
+            shutil.rmtree(temp)
+    return out
+
+
 def self_test():
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
@@ -267,6 +304,23 @@ def self_test():
         stage(payload, approved, root / "stage")
         assert verify(root / "stage", root / "stage" / "offline-assets.json",
                       approved=True) == 7
+        app = root / "qt-deployed"
+        app.mkdir()
+        for name in ("Ember.exe", "Qt6Core.dll", "LICENSE"):
+            (app / name).write_bytes(b"synthetic native test payload")
+        assembled = assemble(root / "stage",
+                             root / "stage" / "offline-assets.json",
+                             app, root / "complete")
+        assert (assembled / "Ember.exe").is_file()
+        assert verify(assembled, assembled / "offline-assets.json", approved=True) == 7
+        (app / "data").mkdir()
+        (app / "data" / "ember-chats.sqlite").write_bytes(b"SECRET")
+        try:
+            assemble(root / "stage", root / "stage" / "offline-assets.json",
+                     app, root / "must-refuse")
+            raise AssertionError("Private chat data was accepted in distributable app")
+        except ValueError:
+            pass
         (payload / "models/llm/model.gguf").write_bytes(b"modified model bytes")
         try:
             verify(payload, approved, approved=True)
@@ -306,12 +360,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     actions = parser.add_subparsers(dest="action", required=True)
     actions.add_parser("self-test")
-    for name in ("inventory", "verify", "stage"):
+    for name in ("inventory", "verify", "stage", "assemble"):
         command = actions.add_parser(name)
         command.add_argument("--root", required=True, type=Path)
         command.add_argument("--manifest", required=True, type=Path)
-        if name == "stage":
+        if name in ("stage", "assemble"):
             command.add_argument("--output", required=True, type=Path)
+        if name == "assemble":
+            command.add_argument("--application", required=True, type=Path)
         if name == "verify":
             command.add_argument("--redistribution-required", action="store_true")
     args = parser.parse_args()
@@ -324,6 +380,8 @@ def main():
             print(f"Verified {verify(args.root, args.manifest, args.redistribution_required)} local files")
         elif args.action == "stage":
             print(f"Fully offline asset directory staged at {stage(args.root, args.manifest, args.output)}")
+        elif args.action == "assemble":
+            print(f"Complete offline native payload assembled at {assemble(args.root, args.manifest, args.application, args.output)}")
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         parser.error(f"{type(exc).__name__}: {exc}")
 

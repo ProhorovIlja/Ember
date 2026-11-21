@@ -67,7 +67,10 @@ jobs:
           Get-Content 'build/Release/qml-smoke-report.txt' -ErrorAction SilentlyContinue
           if ($process.ExitCode -ne 0) { throw 'Native QML startup failed.' }
           New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Compress-Archive -Path 'build/Release/*' -DestinationPath 'dist/Ember-win64-portable.zip' -CompressionLevel Optimal
+          # Python zipfile uses ZIP64 for multi-gigabyte GGUF/ONNX weight files.
+          # PowerShell Compress-Archive has per-file limitations for large models.
+          python tools/portable_zip.py --root build/Release --output dist/Ember-win64-portable.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Complete offline ZIP64 packaging failed.' }
       - name: Build versioned installer and prove install / launch / uninstall
         shell: pwsh
         run: |

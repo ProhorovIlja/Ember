@@ -44,6 +44,11 @@ jobs:
         run: |
           python tools/offline_bundle.py self-test
           if ($LASTEXITCODE -ne 0) { throw 'Offline asset inventory self-test failed.' }
+      - name: Test complete offline assembly and ZIP64 packaging
+        shell: pwsh
+        run: |
+          python tools/portable_zip.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Offline ZIP64 packaging test failed.' }
       - name: Install Qt 6.8.3 dynamic development modules
         uses: jurplel/install-qt-action@v4
         with:

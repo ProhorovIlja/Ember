@@ -25,7 +25,15 @@ python tools/offline_bundle.py verify --root D:\EmberInputs --manifest D:\approv
 python tools/offline_bundle.py stage --root D:\EmberInputs --manifest D:\approved-offline.json --output D:\EmberOfflineStaged
 ```
 
-The staged folder contains only allowlisted `engines/`, `models/`, `licenses/` plus `offline-assets.json`; SHA-256 is checked before and after copying. It refuses to overwrite a destination, links/symlinks, traversal paths, Windows case-insensitive collisions, unlisted files and changed bytes. No Python packages, cloud service, curl or runtime download are used. Never include `data/`, chats, private audio, saved device IDs or tokens in a distributable asset folder.
+The next step merges a clean Windows Qt deployment and reviewed offline assets, then builds a ZIP64 portable archive without redownloading anything:
+
+```powershell
+python tools/offline_bundle.py assemble --root D:\EmberOfflineStaged --manifest D:\EmberOfflineStaged\offline-assets.json --application build\Release --output D:\EmberComplete
+python tools/portable_zip.py --root D:\EmberComplete --output D:\EmberComplete-Windows.zip
+pwsh release/build-dev-installer.ps1 -PayloadDirectory D:\EmberComplete -OutputDirectory dist -RequireOfflineBundle -VerifyInstall
+```
+
+The assembler refuses to mix user `data/` chats or `cache/` audio into the installer. It also refuses untracked engine/model files in the Qt payload. ZIP64 supports multi-gigabyte GGUF files; already-compressed weights are stored without costly recompression, and each source asset is verified with SHA-256. This is a working packaging pathway using **locally supplied assets only**, not an official prepopulated Release. The staged folder contains only allowlisted `engines/`, `models/`, `licenses/` plus `offline-assets.json`; SHA-256 is checked before and after copying. It refuses to overwrite a destination, links/symlinks, traversal paths, Windows case-insensitive collisions, unlisted files and changed bytes. No Python packages, cloud service, curl or runtime download are used. Never include `data/`, chats, private audio, saved device IDs or tokens in a distributable asset folder.
 
 The stable tagged workflow now **fails closed** if `build/Release/offline-assets.json` is absent or verification fails, and passes `-RequireOfflineBundle` to the Inno installer builder. A future licensed artifact staging step is still needed before this workflow can publish a complete release. The Inno Setup wrapper accepts `-RequireOfflineBundle` when building a release installer. It will refuse any payload folder without a fully approved and verifiable `offline-assets.json`. Ordinary internal development builds remain partial and intentionally publish no preview downloads. The complete, signed-off release needs an additional step to insert vetted staged files into the native deployed Qt output **before** packaging; this has not been implemented or claimed complete yet.
 
