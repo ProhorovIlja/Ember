@@ -1076,7 +1076,7 @@ void EmberBackend::startCapture(bool dictation) {
     // Opening a fresh microphone turn must stop a previous streamed PCM
     // response as well as WAV playback, or the microphone can capture Ember
     // talking and stale local HTTP audio can leak into the next response.
-    if (m_speaking || m_speechSequence || m_pcmSink || m_speechReply)
+    if (interruptibleSpeech)
         cancelWork();
     m_speechSequence = false;
     m_voiceQueue.clear();
