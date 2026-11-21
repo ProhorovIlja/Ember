@@ -12,6 +12,42 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void interruptedDictationRecoversOnlyIntegrityCheckedAudio() {
+        QAudioFormat mono;
+        mono.setSampleRate(16000);
+        mono.setChannelCount(1);
+        mono.setSampleFormat(QAudioFormat::Int16);
+        QVERIFY(mono.isValid());
+        const qint64 oneSecond = 32000;
+        QVERIFY(EmberCore::canRecoverInterruptedDictation(
+            true, false, oneSecond, oneSecond, mono));
+        QVERIFY(!EmberCore::canRecoverInterruptedDictation(
+            false, false, oneSecond, oneSecond, mono)); // no auto-submit of partial voice
+        QVERIFY(!EmberCore::canRecoverInterruptedDictation(
+            true, true, oneSecond, oneSecond, mono)); // disk failure
+        QVERIFY(!EmberCore::canRecoverInterruptedDictation(
+            true, false, oneSecond, oneSecond - 2, mono)); // short write
+        QVERIFY(!EmberCore::canRecoverInterruptedDictation(
+            true, false, oneSecond + 1, oneSecond + 1, mono)); // partial frame
+        QVERIFY(!EmberCore::canRecoverInterruptedDictation(
+            true, false, 100, 100, mono)); // under 100 ms
+        QVERIFY(!EmberCore::canRecoverInterruptedDictation(
+            true, false, 0, 0, mono));
+
+        QAudioFormat stereo;
+        stereo.setSampleRate(48000);
+        stereo.setChannelCount(2);
+        stereo.setSampleFormat(QAudioFormat::Int16);
+        QVERIFY(stereo.isValid());
+        // A normal Windows stereo microphone still produces a valid
+        // recovery file with a 4-byte-aligned, >=100ms frame sequence.
+        QVERIFY(EmberCore::canRecoverInterruptedDictation(
+            true, false, 19200, 19200, stereo));
+        QVERIFY(!EmberCore::canRecoverInterruptedDictation(
+            true, false, 19196, 19196, stereo));
+        QVERIFY(!EmberCore::canRecoverInterruptedDictation(
+            true, false, 19202, 19202, stereo));
+    }
     void cancelledCaptureDeletesOnlyItsPrivateAudioAfterFileClose() {
         QTemporaryDir scratch;
         QVERIFY(scratch.isValid());
