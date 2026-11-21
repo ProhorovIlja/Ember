@@ -118,5 +118,6 @@ private:
     QProcess m_brain, m_whisper, m_tts;
     QTimer m_healthTimer;
     QTimer m_captureWatchdog;
+    quint64 m_captureSession = 0;
     QElapsedTimer m_brainElapsed;
 };

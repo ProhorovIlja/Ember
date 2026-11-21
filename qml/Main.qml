@@ -546,6 +546,157 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                                Text {
+                                    text: "AUDIO ROUTING"
+                                    color: "#DAE4EE"
+                                    font.pixelSize: 16
+                                    font.weight: Font.DemiBold
+                                    Layout.topMargin: 8
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 168
+                                    radius: 14
+                                    color: window.cardColor
+                                    border.color: window.borderColor
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 15
+                                        spacing: 12
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 16
+                                            Text {
+                                                text: "Microphone"
+                                                color: "#C3D5DF"
+                                                font.pixelSize: 13
+                                                Layout.preferredWidth: 125
+                                            }
+                                            ComboBox {
+                                                id: microphonePicker
+                                                Layout.fillWidth: true
+                                                model: ember.audioInputs
+                                                textRole: "name"
+                                                currentIndex: ember.selectedInputIndex
+                                                enabled: !ember.listening
+                                                onActivated: ember.setInputDeviceIndex(currentIndex)
+                                                implicitHeight: 41
+                                                font.pixelSize: 13
+                                                background: Rectangle {
+                                                    radius: 11
+                                                    color: "#152C30"
+                                                    border.color: "#416A63"
+                                                }
+                                                contentItem: Text {
+                                                    leftPadding: 14
+                                                    verticalAlignment: Text.AlignVCenter
+                                                    color: "#E8F7EE"
+                                                    elide: Text.ElideRight
+                                                    font.pixelSize: 13
+                                                    text: microphonePicker.displayText
+                                                }
+                                                popup: Popup {
+                                                    y: microphonePicker.height + 4
+                                                    width: microphonePicker.width
+                                                    implicitHeight: Math.min(contentItem.implicitHeight + 6, 280)
+                                                    padding: 3
+                                                    background: Rectangle { color: "#17252F"; radius: 10; border.color: "#49796B" }
+                                                    contentItem: ListView {
+                                                        clip: true
+                                                        implicitHeight: contentHeight
+                                                        model: microphonePicker.popup.visible ? microphonePicker.delegateModel : null
+                                                        currentIndex: microphonePicker.highlightedIndex
+                                                        ScrollIndicator.vertical: ScrollIndicator {}
+                                                    }
+                                                }
+                                                delegate: ItemDelegate {
+                                                    required property var modelData
+                                                    width: microphonePicker.width
+                                                    height: 38
+                                                    text: modelData.name
+                                                    font.pixelSize: 12
+                                                    contentItem: Text {
+                                                        text: parent.text
+                                                        color: "#EAF5F0"
+                                                        font: parent.font
+                                                        verticalAlignment: Text.AlignVCenter
+                                                        elide: Text.ElideRight
+                                                    }
+                                                    background: Rectangle { color: parent.highlighted ? "#31574F" : "#17252F" }
+                                                }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 16
+                                            Text {
+                                                text: "Speakers"
+                                                color: "#C3D5DF"
+                                                font.pixelSize: 13
+                                                Layout.preferredWidth: 125
+                                            }
+                                            ComboBox {
+                                                id: speakerPicker
+                                                Layout.fillWidth: true
+                                                model: ember.audioOutputs
+                                                textRole: "name"
+                                                currentIndex: ember.selectedOutputIndex
+                                                implicitHeight: 41
+                                                onActivated: ember.setOutputDeviceIndex(currentIndex)
+                                                font.pixelSize: 13
+                                                background: Rectangle {
+                                                    radius: 11
+                                                    color: "#152C30"
+                                                    border.color: "#416A63"
+                                                }
+                                                contentItem: Text {
+                                                    leftPadding: 14
+                                                    verticalAlignment: Text.AlignVCenter
+                                                    color: "#E8F7EE"
+                                                    elide: Text.ElideRight
+                                                    font.pixelSize: 13
+                                                    text: speakerPicker.displayText
+                                                }
+                                                popup: Popup {
+                                                    y: speakerPicker.height + 4
+                                                    width: speakerPicker.width
+                                                    implicitHeight: Math.min(contentItem.implicitHeight + 6, 280)
+                                                    padding: 3
+                                                    background: Rectangle { color: "#17252F"; radius: 10; border.color: "#49796B" }
+                                                    contentItem: ListView {
+                                                        clip: true
+                                                        implicitHeight: contentHeight
+                                                        model: speakerPicker.popup.visible ? speakerPicker.delegateModel : null
+                                                        currentIndex: speakerPicker.highlightedIndex
+                                                        ScrollIndicator.vertical: ScrollIndicator {}
+                                                    }
+                                                }
+                                                delegate: ItemDelegate {
+                                                    required property var modelData
+                                                    width: speakerPicker.width
+                                                    height: 38
+                                                    text: modelData.name
+                                                    font.pixelSize: 12
+                                                    contentItem: Text {
+                                                        text: parent.text
+                                                        color: "#EAF5F0"
+                                                        font: parent.font
+                                                        verticalAlignment: Text.AlignVCenter
+                                                        elide: Text.ElideRight
+                                                    }
+                                                    background: Rectangle { color: parent.highlighted ? "#31574F" : "#17252F" }
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            text: "Device choices are stored locally; disconnected devices fall back to Windows default."
+                                            color: "#889FAD"
+                                            font.pixelSize: 11
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+                                }
                                 Text { text: "PERSONALITY & VOICE"; color: "#DAE4EE"; font.pixelSize: 16; font.weight: Font.DemiBold; Layout.topMargin: 8 }
                                 Rectangle {
                                     Layout.fillWidth: true
