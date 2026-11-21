@@ -667,3 +667,62 @@ defines `finish_reason` and `[DONE]`; the
 implements compatible chat completion streams. Nothing here changes the
 requirement for actual RU/EN WER, English female TTS, RTX4070 co-resident
 memory and acoustic timing measurements before release.
+
+## 22 November 2026 — updated upstream English female voice candidate audit
+
+Source-level public research, **not** target-system A/B validation:
+
+- [Qwen3-TTS official project](https://github.com/QwenLM/Qwen3-TTS):
+  the 12Hz 1.7B CustomVoice model has **nine named timbres** and an
+  optional delivery instruction; the 0.6B CustomVoice model does **not**
+  support those natural-language instructions. The project lists its
+  built-in female timbres Vivian/Serena as **Chinese-native**,
+  Ono_Anna as Japanese-native and Sohee as Korean-native. Its
+  English-native built-in timbres Ryan/Aiden are male. These voices
+  can synthesize English, but this is not proof of a natural,
+  English-native-sounding female assistant. Test Vivian and Serena
+  against actual native female English alternatives rather than
+  assuming speaker gender implies the desired accent. The official
+  [VoiceDesign 1.7B and Base voice-clone workflow](https://github.com/QwenLM/Qwen3-TTS)
+  is a possible *consent-and-license-cleared, local-only* future route
+  to a stable original English female timbre. Do not download
+  unknown reference voices, copy existing media-character identities,
+  or claim Ember already supports this workflow.
+- [Resemble AI Chatterbox](https://github.com/resemble-ai/chatterbox):
+  its upstream README now says the repository has been **retired
+  since August 2026** and receives no maintenance/support.
+  Chatterbox-Turbo remains an archived MIT source candidate for
+  controlled comparisons (350M English, paralinguistic tags), not a
+  recommended permanently maintained dependency. Pin its artifact
+  hashes and all weights/codec licenses if independently accepted.
+- [LuxTTS](https://github.com/trd-jarvis/LuxTTS): a small Apache-2.0
+  code/model candidate that *upstream claims* 48-kHz generation,
+  CPU operation and a sub-1-GiB VRAM footprint. Its voice cloning,
+  text consistency, dependency packaging and independent native
+  Windows CI are **not verified** here. A candidate for a low-overhead
+  fallback, never a claimed measured improvement to existing Kokoro.
+- [Kokoro](https://github.com/hexgrad/kokoro) stays a low-memory
+  English-output baseline and CPU fallback; its timbre/accent
+  stability is evaluated against actual native female-English
+  recordings and headphone/desktop loudspeaker playback.
+
+**Selection protocol:** evaluate identical punctuation, short dialogue,
+long narrative, names/acronyms, emotional delivery and interruptions
+across engines with a fixed voice and model revision. Capture real
+p50/p95 input release to first device-buffer submission AND independent
+acoustic onset, WER on synthesized English text, MOS/AB preference,
+pronunciation and false emotion, peak resident RAM and VRAM with
+a simultaneously loaded 8,192-context local LLM, and model cold/warm
+load time. Audio and listening labels remain **local/private**.
+The best runtime may be a switchable combination (fast Kokoro for
+low latency, higher-quality speech.cpp Qwen for dialogue), not an
+unsafe averaging or merging of unrelated neural network weights.
+No undocumented model/model-file download at first install; every
+dependency requires a pinned SHA256 and an individually reviewed
+redistribution license before the final Russia offline installer.
+
+The UI now offers **Continue answer** on explicit local LLM
+`finish_reason=length`; it never schedules continuation on its
+own. The request follows the current chat context and keeps any
+unsent composer draft, but high-fidelity scene continuity and
+no-duplicate-sentence behavior still need real GGUF testing.
