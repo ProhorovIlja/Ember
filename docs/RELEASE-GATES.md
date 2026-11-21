@@ -166,3 +166,16 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] New chat/clear operations stay private while enabled; leaving or opening a saved session destroys private app-thread state, with no private text imported into SQLite.
 - [x] English sidebar indicates private mode; no automatic Cloud/Drive upload, no WebView/Android emulation.
 - [ ] Source-level persistence predicate has unit tests; additional end-to-end SQLite/WAL inspection and app crash/recording privacy tests are required before promoting this as a high-security feature.
+
+### 22 November 2026 — text/voice streaming state acceptance
+
+- [x] Reasoning streams from supported local chat templates are filtered
+  incrementally with at most seven pending UTF-16 marker units, not full raw
+  hidden-buffer retention or repeated full-response scanning. Tests include
+  fragmented model tags and 200,000-character hidden thought fixtures.
+- [x] A `finish_reason: "length"` SSE termination is surfaced as incomplete
+  assistant output and not silently accepted as a finished story/voice turn;
+  ordinary `stop` is kept. The visible-reply 16,384-character cap remains.
+- [ ] Repeat with actual installed GGUF reasoning/long-story models and true
+  multi-minute user input; quantify first-visible-token delay, response
+  completion accuracy, CPU/VRAM and safe cancellation on the target PC.
