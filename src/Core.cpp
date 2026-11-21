@@ -308,7 +308,7 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
                     const QString word = remaining.mid(start, i - start).toCaseFolded();
                     static const QStringList abbreviations{
                         "mr", "mrs", "ms", "dr", "prof", "sr", "jr",
-                        "st", "vs", "e.g", "i.e", "etc", "no"
+                        "st", "vs", "e.g", "i.e", "etc"
                     };
                     if (abbreviations.contains(word)) continue;
                 }
