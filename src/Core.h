@@ -99,8 +99,15 @@ bool validSpeechWav(const QByteArray &wav);
 // mono PCM16 input; never gate ordinary quiet voices or unrecognized WAVs.
 bool nearSilentAsrWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
-// Remove local-model thinking tags before any chat rendering, history or TTS.
-// Buffers a trailing partial <think> opener across streamed SSE chunks.
+// A constant-memory streaming filter. Never retain hidden reasoning tokens,
+// and withhold only partial <think> or </think> marker fragments (<= 7 chars).
+struct VisibleAssistantStream {
+    QString possibleTag;
+    bool insideThought = false;
+};
+QString consumeVisibleAssistantDelta(VisibleAssistantStream &state, const QString &delta);
+// Compatibility projection for bounded, already-accumulated responses/tests.
+// Live SSE should instead use consumeVisibleAssistantDelta incrementally.
 QString visibleAssistantText(const QString &draft);
 QString speechFriendlyText(const QString &markdown);
 // Commit only stable complete sentences from an LLM stream. Reuses a
