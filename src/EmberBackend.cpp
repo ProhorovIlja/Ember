@@ -239,20 +239,16 @@ EmberBackend::EmberBackend(QObject *parent)
             return;
         }
         if (m_captureTap && m_captureTap->writeFailed()) {
-            releaseCapture();
-            QFile::remove(m_captureFile.fileName());
-            setStatus("Microphone disk write failed. Incomplete audio was discarded.");
+            // Disk integrity failure must never be routed to transcription.
+            interruptCapture("Microphone disk write failed.", false);
             return;
         }
         if (m_captureTap && m_captureTap->quotaReached()) {
             stopRecording();
             return;
         }
-        if (m_audioSource && m_audioSource->error() != QAudio::NoError) {
-            releaseCapture();
-            QFile::remove(m_captureFile.fileName());
-            setStatus("Microphone stopped unexpectedly. Check device and Windows permissions.");
-        }
+        if (m_audioSource && m_audioSource->error() != QAudio::NoError)
+            interruptCapture("Microphone stopped unexpectedly.", true);
     });
     m_mediaPlayer.setAudioOutput(&m_audioOutput);
     m_audioOutput.setVolume(m_outputVolume / 100.0);
@@ -669,16 +665,16 @@ void EmberBackend::setInputDeviceIndex(int index) {
     if (index < 0 || index > devices.size()) return;
     const QByteArray selected = index == 0 ? QByteArray() : devices.at(index - 1).id();
     if (selected == m_inputId) return;
-    if (m_listening) {
-        releaseCapture();
-        QFile::remove(m_captureFile.fileName());
-    }
+    const bool interrupted = m_listening;
+    if (interrupted)
+        interruptCapture("Microphone selection changed.", true);
     m_inputId = selected;
     if (m_inputId.isEmpty()) m_settings.remove("audio/inputId");
     else m_settings.setValue("audio/inputId", m_inputId.toBase64());
     m_settings.sync();
     emit audioDevicesChanged();
-    setStatus("Microphone selection saved. The next recording uses this device.");
+    if (!interrupted)
+        setStatus("Microphone selection saved. The next recording uses this device.");
 }
 void EmberBackend::setOutputDeviceIndex(int index) {
     const auto devices = QMediaDevices::audioOutputs();
@@ -708,16 +704,15 @@ void EmberBackend::onInputInventoryChanged() {
         if (m_listening && device.id() == m_captureDeviceId)
             recordingDeviceExists = true;
     }
-    if (!recordingDeviceExists) {
-        releaseCapture();
-        QFile::remove(m_captureFile.fileName());
-        setStatus("Selected microphone disconnected; recording was discarded.");
-    }
+    const bool interrupted = !recordingDeviceExists;
+    if (interrupted)
+        interruptCapture("The recording microphone disconnected.", true);
     if (!selectedExists) {
         m_inputId.clear();
         m_settings.remove("audio/inputId");
         m_settings.sync();
-        setStatus("Saved microphone disconnected; using Windows default.");
+        if (!interrupted)
+            setStatus("Saved microphone disconnected; using Windows default.");
     }
     emit audioDevicesChanged();
 }
@@ -1384,6 +1379,30 @@ void EmberBackend::finishChatStream(bool interrupted) {
     m_voiceEarlyActive = false;
 }
 
+void EmberBackend::interruptCapture(const QString &reason,
+                                    bool allowDictationRecovery) {
+    if (!m_listening) return;
+    if (allowDictationRecovery && m_captureDictation &&
+        m_captureTap && !m_captureTap->writeFailed()) {
+        // stopRecording validates file length/frames AFTER QtAudio is stopped
+        // and file buffers are closed, then uses existing 25-second ASR jobs.
+        // The recovered content stays in the editable composer; there is
+        // never an automatic submit from an interrupted microphone.
+        m_captureWasInterrupted = true;
+        stopRecording();
+        if (m_transcriptionSize > 0)
+            setStatus(reason + " Recovering the recorded dictation locally; "
+                      "its ending may be incomplete.");
+        return;
+    }
+    // Voice-command capture and disk-damaged dictation are fail-closed:
+    // never turn a truncated user command into an unintended AI request.
+    m_captureWasInterrupted = false;
+    m_voiceTurnActive = false;
+    releaseCapture();
+    QFile::remove(m_captureFile.fileName());
+    setStatus(reason + " Partial voice recording discarded; nothing submitted.");
+}
 void EmberBackend::releaseCapture() {
     const bool wasDictation = m_captureDictation;
     m_captureWatchdog.stop();
@@ -1480,6 +1499,7 @@ void EmberBackend::startCapture(bool dictation) {
     // Invalidate cleanup retries from previous cancelled turns so they can
     // never delete the WAV/raw data of this new recording.
     ++m_voiceScratchRevision;
+    m_captureWasInterrupted = false;
     m_captureFile.setFileName(workFile("microphone.raw"));
     if (!m_captureFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         setStatus("Could not open temporary disk-backed microphone recording.");
@@ -1525,18 +1545,32 @@ void EmberBackend::stopRecording() {
     // before the capture watchdog gets a chance to reject bad audio.
     // An incomplete PCM segment must never reach Whisper/Qwen ASR.
     const qint64 observed = m_captureTap ? m_captureTap->writtenBytes() : -1;
-    const bool damaged = !m_captureTap || m_captureTap->writeFailed() ||
-        observed <= 0 || recording.size() != observed;
+    const int frameBytes = m_captureFormat.bytesPerFrame();
+    const bool writeFailed = !m_captureTap || m_captureTap->writeFailed();
+    const bool damaged = writeFailed || observed <= 0 ||
+        recording.size() != observed || frameBytes <= 0 ||
+        recording.size() % frameBytes != 0;
     if (damaged) {
+        m_captureWasInterrupted = false;
         QFile::remove(m_captureFile.fileName());
-        setStatus("Recorded audio failed local disk integrity checks; discarded before ASR.");
+        setStatus("Recorded audio failed local disk/frame integrity checks; discarded before ASR.");
         return;
     }
     const qint64 bytesPerSecond = qint64(m_captureFormat.sampleRate()) *
-        m_captureFormat.bytesPerFrame();
+        frameBytes;
     if (bytesPerSecond <= 0 || recording.size() < bytesPerSecond / 10) {
+        m_captureWasInterrupted = false;
         QFile::remove(m_captureFile.fileName());
         setStatus("Recording was too short to recognize.");
+        return;
+    }
+    if (m_captureWasInterrupted &&
+        !EmberCore::canRecoverInterruptedDictation(
+            wasDictation, writeFailed, observed, recording.size(),
+            m_captureFormat)) {
+        m_captureWasInterrupted = false;
+        QFile::remove(m_captureFile.fileName());
+        setStatus("Interrupted voice capture was discarded without submission.");
         return;
     }
     if (!wasDictation) {
@@ -1739,6 +1773,8 @@ void EmberBackend::transcribeViaNativeServer() {
 void EmberBackend::failTranscription(const QString &reason) {
     m_asrProcessWatchdog.stop();
     m_cliAsrActive = false;
+    const bool captureInterrupted = m_captureWasInterrupted;
+    m_captureWasInterrupted = false;
     if (m_whisper.state() != QProcess::NotRunning) m_whisper.kill();
     if (m_nativeAsrReply) {
         auto reply = m_nativeAsrReply;
@@ -1757,7 +1793,9 @@ void EmberBackend::failTranscription(const QString &reason) {
     retryCancelledAudioCleanup(m_voiceScratchRevision, 6);
     setBusy(false);
     if (partial.isEmpty()) {
-        setStatus(reason);
+        setStatus(captureInterrupted
+            ? "Microphone interruption. No recoverable dictation text. " + reason
+            : reason);
         return;
     }
     // A later ASR chunk can fail after several minutes of successful
@@ -1768,12 +1806,17 @@ void EmberBackend::failTranscription(const QString &reason) {
     m_dictatedText = partial;
     emit dictationChanged();
     emit dictationReady(partial);
-    setStatus("Dictation was interrupted. Recovered the recognized prefix for "
-              "editing; the ending may be missing. " + reason);
+    setStatus(captureInterrupted
+        ? "Microphone interruption; recovered partial dictation for editing. "
+          "The ending may be missing. " + reason
+        : "Dictation was interrupted. Recovered the recognized prefix for "
+          "editing; the ending may be missing. " + reason);
 }
 void EmberBackend::completeTranscription() {
     m_asrProcessWatchdog.stop();
     const bool dictate = m_transcribingDictation;
+    const bool captureInterrupted = m_captureWasInterrupted;
+    m_captureWasInterrupted = false;
     m_transcribingDictation = false;
     const QString text = EmberCore::joinTranscriptionSegments(m_transcriptionSegments);
     m_transcriptionSegments.clear();
@@ -1792,7 +1835,10 @@ void EmberBackend::completeTranscription() {
         m_dictatedText = text;
         emit dictationChanged();
         emit dictationReady(text);
-        setStatus("Dictation ready for editing. English/Russian text remains local.");
+        setStatus(captureInterrupted
+            ? "Microphone was interrupted. Recovered recorded text into the "
+              "editable composer; check the potentially missing ending."
+            : "Dictation ready for editing. English/Russian text remains local.");
     } else {
         submit(text, true);
     }
@@ -2278,6 +2324,7 @@ void EmberBackend::retryCancelledAudioCleanup(quint64 revision, int retriesLeft)
     }
 }
 void EmberBackend::cancelWork() {
+    m_captureWasInterrupted = false;
     m_visibleStream = {};
     m_asrProcessWatchdog.stop();
     m_ttsProcessWatchdog.stop();
