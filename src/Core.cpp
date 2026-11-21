@@ -120,8 +120,8 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
     // requests larger than the 8192-token llama.cpp context. Character count
     // is a conservative heuristic, not a tokenizer / exact context guarantee.
     const QString currentUser = user.left(4096);
-    int remainingChars = std::max(0, 12000 - persona.left(4096).size()
-                                  - currentUser.size());
+    int remainingChars = std::max(0, int(12000 - persona.left(4096).size()
+                                        - currentUser.size()));
     QList<Turn> selected;
     for (int i = history.size() - 1; i >= 0 && selected.size() < 24; --i) {
         const auto &turn = history.at(i);
