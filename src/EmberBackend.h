@@ -227,6 +227,7 @@ private:
     QString configPath(const QString &key) const;
     QString workFile(const QString &name) const;
     bool isRegularFile(const QString &path) const;
+    void interruptCapture(const QString &reason, bool allowDictationRecovery);
     void releaseCapture();
     void retryCancelledAudioCleanup(quint64 revision, int retriesLeft);
     QAudioDevice activeInput() const;
@@ -284,6 +285,7 @@ private:
     qint64 m_transcriptionOffset = 0, m_transcriptionSize = 0;
     qint64 m_transcriptionChunkSize = 0;
     bool m_captureDictation = false, m_transcribingDictation = false;
+    bool m_captureWasInterrupted = false;
     QAudioFormat m_captureFormat;
     QAudioOutput m_audioOutput;
     QMediaPlayer m_mediaPlayer;
