@@ -1,6 +1,7 @@
 #include "Core.h"
 #include "SessionStore.h"
 #include <QTemporaryDir>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QTest>
@@ -57,6 +58,34 @@ private slots:
             QVERIFY(restored.exists(bob));
             QCOMPARE(restored.totalMessages(bob), qint64(1));
         }
+    }
+    void localArchiveSearchAndFullExport() {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        SessionStore store(temp.filePath("history.db"));
+        QVERIFY2(store.ready(), qPrintable(store.error()));
+        const QString first = store.createSession();
+        const QString second = store.createSession();
+        QVERIFY(store.append(first, "you", "Let's write a dragon story."));
+        QVERIFY(store.append(first, "ember", "The dragon flies over a frozen city."));
+        QVERIFY(store.append(first, "you", "A 100% chance of snow, not 1000."));
+        QVERIFY(store.append(second, "you", "Separate private project."));
+        QCOMPARE(store.search("dragon").size(), 1);
+        QCOMPARE(store.search("dragon").first().toMap().value("id").toString(), first);
+        QVERIFY(store.search("100%").size() == 1);
+        QVERIFY(store.search("100_").isEmpty());
+        QVERIFY(store.search(QString(121, 'x')).isEmpty());
+        QVERIFY(store.search("private").size() == 1);
+        const QString file = temp.filePath("conversation.md");
+        QVERIFY(store.exportMarkdown(first, file));
+        QFile exported(file);
+        QVERIFY(exported.open(QIODevice::ReadOnly));
+        const QString content = QString::fromUtf8(exported.readAll());
+        QVERIFY(content.startsWith("# Ember conversation\n"));
+        QVERIFY(content.contains("## You\n\nLet's write a dragon story."));
+        QVERIFY(content.contains("## Ember\n\nThe dragon flies"));
+        QVERIFY(!content.contains("Separate private project."));
+        QVERIFY(!store.exportMarkdown("nonexistent", temp.filePath("absent.md")));
     }
     void assemblesCyrillicServerTokensAcrossByteBoundaries() {
         QByteArray pending;
