@@ -276,7 +276,7 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
         qsizetype boundary = -1;
         // A sentence is committed only after the next whitespace arrives.
         // This intentionally delays terminal punctuation split across SSE.
-        for (qsizetype i = 24; i + 1 < safeEnd && i < 440; ++i) {
+        for (qsizetype i = 8; i + 1 < safeEnd && i < 440; ++i) {
             const QChar c = remaining[i];
             if ((c == '.' || c == '!' || c == '?' || c == ';') &&
                 remaining[i + 1].isSpace()) {
