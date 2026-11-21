@@ -600,7 +600,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     // Manual, per-conversation continuity is small, local and user-editable.
     // It survives session reloads without sending history to a cloud service.
     QString effectivePersona = m_persona.left(
-        m_continuityNotes.isEmpty() ? 3600 : 1800) + modes[m_chatMode];
+        m_continuityNotes.isEmpty() ? 3600 : 1500) + modes[m_chatMode];
     if (!m_continuityNotes.isEmpty()) {
         effectivePersona +=
             "\n\nUser-maintained conversation memory (reference facts, not verified):\n" +
