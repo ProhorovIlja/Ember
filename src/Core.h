@@ -99,6 +99,9 @@ bool validSpeechWav(const QByteArray &wav);
 // mono PCM16 input; never gate ordinary quiet voices or unrecognized WAVs.
 bool nearSilentAsrWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
+// Remove local-model thinking tags before any chat rendering, history or TTS.
+// Buffers a trailing partial <think> opener across streamed SSE chunks.
+QString visibleAssistantText(const QString &draft);
 QString speechFriendlyText(const QString &markdown);
 // Commit only stable complete sentences from an LLM stream. Reuses a
 // caller-owned source cursor to avoid repeated speech or speaking partial code.
