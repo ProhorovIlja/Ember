@@ -602,7 +602,9 @@ ApplicationWindow {
                             Item { Layout.fillHeight: true }
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
-                                text: "The first voice pipeline is turn-based. Low-latency conversational audio is a later milestone."
+                                text: ember.speechServerReady && ember.voiceEngine === 1 ?
+                                      "Native PCM audio streams as it is generated. Conversation remains turn-based; acoustic latency depends on Windows output." :
+                                      "Conversation remains turn-based. Start native speech.cpp in Settings for incremental PCM playback."
                                 color: "#78909E"
                                 font.pixelSize: 11
                             }
@@ -1430,7 +1432,7 @@ ApplicationWindow {
                                         }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: "Optional native Qwen3 speech service. Install speech.exe above; first start may download licensed model weights. Only model downloads use the internet; inference stays on loopback."
+                                            text: "Optional native Qwen3 speech service. After Ready, sound streams into the selected Windows device without a full WAV download. First model start may download licensed weights; inference stays on loopback."
                                             wrapMode: Text.WordWrap
                                             color: "#8EABC5"
                                             font.pixelSize: 12
