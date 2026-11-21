@@ -1103,6 +1103,20 @@ QString EmberBackend::messageText(const QString &body) const {
 void EmberBackend::submitText(const QString &text) {
     submit(text, false);
 }
+void EmberBackend::continueIncompleteReply() {
+    // User-triggered continuation only: never launch another LLM response
+    // automatically after a token limit, and never discard a draft composer.
+    if (!m_lastReplyIncomplete || !m_brainReady || m_busy ||
+        m_listening || m_speaking || m_messages.isEmpty() ||
+        m_messages.last().toMap().value("role").toString() != "ember") {
+        setStatus("No incomplete local model reply is available to continue.");
+        return;
+    }
+    submit("Continue the immediately preceding answer exactly where it stopped. "
+           "Do not repeat, recap, summarize, or restart. Preserve the same "
+           "characters, narrative continuity, language and formatting. "
+           "Continue with the next sentence.", false);
+}
 void EmberBackend::submit(const QString &raw, bool voice) {
     const QString selected = !voice && !m_privateMode ? m_pendingImageId : QString();
     QByteArray imageData;
@@ -1141,6 +1155,12 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     m_mediaPlayer.stop();
     m_mediaPlayer.setSource(QUrl());
     setSpeaking(false);
+    // Any new prompt supersedes the incomplete-reply continuation offer;
+    // the previous text and in-progress composer draft are unaffected.
+    if (m_lastReplyIncomplete) {
+        m_lastReplyIncomplete = false;
+        emit lastReplyChanged();
+    }
     m_pendingUser = text;
     m_voicePending = voice;
     appendMessage("you", text + (selected.isEmpty() ? QString() :
@@ -1317,6 +1337,7 @@ void EmberBackend::finishChatStream(bool interrupted) {
             : QStringLiteral("\n\n[Response stopped]");
         renderChatStream();
         m_lastReply = m_chatStreamText;
+        m_lastReplyIncomplete = tokenLimit;
         emit lastReplyChanged();
         if (m_store && m_store->ready() &&
             EmberCore::shouldPersistConversation(m_privateMode, m_sessionId) &&
@@ -2493,6 +2514,7 @@ void EmberBackend::openSession(const QString &id) {
     rebuildConversationHistory();
     m_pendingUser.clear();
     m_lastReply.clear();
+    m_lastReplyIncomplete = false;
     m_transcript.clear();
     emit messagesChanged();
     emit lastReplyChanged();
@@ -2513,6 +2535,7 @@ void EmberBackend::clearConversation() {
     emit recognitionHintsChanged();
     m_pendingUser.clear();
     m_lastReply.clear();
+    m_lastReplyIncomplete = false;
     m_transcript.clear();
     emit messagesChanged();
     emit lastReplyChanged();
