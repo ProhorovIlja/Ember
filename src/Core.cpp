@@ -818,6 +818,45 @@ bool nearSilentAsrWav(const QByteArray &wav) {
     }
     return true;
 }
+QString visibleAssistantText(const QString &draft) {
+    // Some local model/template combinations embed <think> in delta.content
+    // instead of a separate reasoning_content field. This function is called
+    // on the accumulated bounded SSE content, never on a single token alone.
+    // Only the returned visible text can reach the UI, SQLite, or TTS.
+    if (draft.size() > 16384) return {};
+    constexpr auto open = "<think>";
+    constexpr auto close = "</think>";
+    const QString opener = QString::fromLatin1(open);
+    QString visible;
+    visible.reserve(draft.size());
+    qsizetype pos = 0;
+    while (pos < draft.size()) {
+        const qsizetype start = draft.indexOf(opener, pos, Qt::CaseInsensitive);
+        if (start < 0) {
+            qsizetype safeEnd = draft.size();
+            // A streamed opener may end at any character boundary: do not
+            // render "<th" before the next network packet completes "<think>".
+            // Withholding at most six characters never erases real prose.
+            for (qsizetype width = std::min<qsizetype>(opener.size() - 1,
+                                                       draft.size() - pos);
+                 width > 0; --width) {
+                if (draft.right(width).compare(
+                        opener.left(width), Qt::CaseInsensitive) == 0) {
+                    safeEnd -= width;
+                    break;
+                }
+            }
+            if (safeEnd > pos) visible += draft.mid(pos, safeEnd - pos);
+            return visible;
+        }
+        visible += draft.mid(pos, start - pos);
+        const qsizetype end = draft.indexOf(
+            QString::fromLatin1(close), start + opener.size(), Qt::CaseInsensitive);
+        if (end < 0) return visible; // unfinished thought: withhold all
+        pos = end + qsizetype(sizeof(close) - 1);
+    }
+    return visible;
+}
 QString speechFriendlyText(const QString &markdown) {
     if (markdown.size() > 16384) return {};
     QString speechSource = markdown;
