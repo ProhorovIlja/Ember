@@ -1018,6 +1018,66 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+
+                                Rectangle {
+                                    visible: ember.recognitionEngine > 0
+                                    Layout.fillWidth: true
+                                    implicitHeight: 121
+                                    radius: 13
+                                    color: window.cardColor
+                                    border.color: window.borderColor
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 8
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text {
+                                                text: "LOCAL RECOGNITION VOCABULARY"
+                                                color: window.mint
+                                                font.pixelSize: 11
+                                                font.letterSpacing: 0.8
+                                                Layout.fillWidth: true
+                                            }
+                                            Text {
+                                                text: asrHintEditor.text.length + " / 512"
+                                                color: "#8CA9C2"
+                                                font.pixelSize: 11
+                                            }
+                                        }
+                                        TextField {
+                                            id: asrHintEditor
+                                            Layout.fillWidth: true
+                                            implicitHeight: 37
+                                            maximumLength: 512
+                                            text: ember.recognitionHints
+                                            enabled: !ember.busy && !ember.listening
+                                            placeholderText: "Names, characters, technical jargon, C++, Yharnam…"
+                                            color: "#EAF4FF"
+                                            font.pixelSize: 12
+                                            onEditingFinished: ember.setRecognitionHints(text)
+                                            background: Rectangle {
+                                                radius: 9
+                                                color: "#071728"
+                                                border.color: "#27547C"
+                                            }
+                                            Connections {
+                                                target: ember
+                                                function onRecognitionHintsChanged() {
+                                                    if (!asrHintEditor.activeFocus)
+                                                        asrHintEditor.text = ember.recognitionHints
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: "Only Qwen3-ASR uses these local terms. They belong to this chat, not other sessions."
+                                            color: "#829FB8"
+                                            font.pixelSize: 11
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+                                }
                                 Text {
                                     text: "AUDIO ROUTING"
                                     color: "#D9ECFF"

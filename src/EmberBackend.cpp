@@ -1218,6 +1218,9 @@ void EmberBackend::transcribeViaNativeServer() {
     textField("model", EmberCore::nativeAsrModel(m_recognitionEngine).toUtf8());
     textField("response_format", "text");
     textField("language", EmberCore::recognitionLanguageTag(m_recognitionLanguage).toUtf8());
+    const QString hints = EmberCore::compactAsrHints(m_recognitionHints);
+    if (!hints.isEmpty())
+        textField("prompt", hints.toUtf8()); // Qwen3-ASR uses terms as background
     QHttpPart filePart;
     filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
         "form-data; name=\"file\"; filename=\"microphone.wav\"");
@@ -1774,6 +1777,27 @@ void EmberBackend::setContinuityNotes(const QString &text) {
     emit continuityNotesChanged();
     setStatus("Saved local conversation memory. It follows only this chat.");
 }
+void EmberBackend::setRecognitionHints(const QString &text) {
+    if (!m_store || !m_store->ready() || m_sessionId.isEmpty()) {
+        setStatus("Recognition terminology requires an active private local chat.");
+        return;
+    }
+    if (m_busy || m_listening || m_speaking) {
+        setStatus("Finish the current recording before editing recognition terms.");
+        return;
+    }
+    if (text.size() > 512) {
+        setStatus("Local recognition vocabulary is limited to 512 characters.");
+        return;
+    }
+    if (!m_store->setAsrHints(m_sessionId, text)) {
+        setStatus("Could not store this conversation's private recognition terms.");
+        return;
+    }
+    m_recognitionHints = text.trimmed();
+    emit recognitionHintsChanged();
+    setStatus("Recognition terms saved locally for this conversation only.");
+}
 void EmberBackend::refreshSessions() {
     m_sessions = m_store && m_store->ready() ? m_store->sessions() : QVariantList();
     emit sessionsChanged();
@@ -1798,6 +1822,8 @@ void EmberBackend::openSession(const QString &id) {
     m_sessionId = id;
     m_continuityNotes = m_store->notes(id);
     emit continuityNotesChanged();
+    m_recognitionHints = m_store->asrHints(id);
+    emit recognitionHintsChanged();
     m_messages = m_store->messages(id);
     rebuildConversationHistory();
     m_pendingUser.clear();
@@ -1817,6 +1843,8 @@ void EmberBackend::clearConversation() {
     m_messages.clear();
     m_continuityNotes.clear();
     emit continuityNotesChanged();
+    m_recognitionHints.clear();
+    emit recognitionHintsChanged();
     m_pendingUser.clear();
     m_lastReply.clear();
     m_transcript.clear();

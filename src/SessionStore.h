@@ -26,6 +26,8 @@ public:
     bool exists(const QString &session) const;
     qint64 totalMessages(const QString &session) const;
     QString notes(const QString &session) const;
+    QString asrHints(const QString &session) const;
+    bool setAsrHints(const QString &session, const QString &hints);
     bool setNotes(const QString &session, const QString &notes);
 private:
     bool execute(const QString &statement);

@@ -51,6 +51,9 @@ SessionStore::SessionStore(const QString &path) {
              "CREATE TABLE IF NOT EXISTS session_notes("
              "session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,"
              "body TEXT NOT NULL)",
+             "CREATE TABLE IF NOT EXISTS session_asr_hints("
+             "session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,"
+             "body TEXT NOT NULL)",
              "CREATE INDEX IF NOT EXISTS ix_messages_session ON messages(session_id,id)",
              "CREATE INDEX IF NOT EXISTS ix_sessions_updated ON sessions(updated_at DESC)"
          }) {
@@ -288,6 +291,31 @@ QString SessionStore::notes(const QString &session) const {
     query.prepare("SELECT body FROM session_notes WHERE session_id=? LIMIT 1");
     query.addBindValue(session);
     return query.exec() && query.next() ? query.value(0).toString() : QString();
+}
+QString SessionStore::asrHints(const QString &session) const {
+    if (!m_ready || session.isEmpty()) return {};
+    QSqlQuery query(m_db);
+    query.prepare("SELECT body FROM session_asr_hints WHERE session_id=? LIMIT 1");
+    query.addBindValue(session);
+    return query.exec() && query.next() ? query.value(0).toString() : QString();
+}
+bool SessionStore::setAsrHints(const QString &session, const QString &hints) {
+    if (!m_ready || !exists(session) || hints.size() > 512) return false;
+    QSqlQuery query(m_db);
+    if (hints.trimmed().isEmpty()) {
+        query.prepare("DELETE FROM session_asr_hints WHERE session_id=?");
+        query.addBindValue(session);
+    } else {
+        query.prepare("INSERT INTO session_asr_hints(session_id,body) VALUES(?,?) "
+                      "ON CONFLICT(session_id) DO UPDATE SET body=excluded.body");
+        query.addBindValue(session);
+        query.addBindValue(hints.trimmed());
+    }
+    if (!query.exec()) {
+        m_error = query.lastError().text();
+        return false;
+    }
+    return true;
 }
 bool SessionStore::setNotes(const QString &session, const QString &text) {
     if (!m_ready || !exists(session) || text.size() > 1800) return false;

@@ -17,6 +17,7 @@ bool allowedLocalSpeechEndpoint(const QString &url);
 bool allowedLocalAsrEndpoint(const QString &url);
 QString nativeAsrModel(int recognitionEngine);
 QString recognitionLanguageTag(int languageChoice);
+QString compactAsrHints(const QString &hints);
 QJsonObject speechRequest(const QString &model, const QString &voice, const QString &text);
 QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice,
                                       const QString &text, int deliveryStyle = 0);

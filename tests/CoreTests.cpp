@@ -519,6 +519,44 @@ private slots:
         QVERIFY(boundedMessages.at(2).toObject().value("content").toString().size() < 12000);
         QVERIFY(boundedMessages.at(2).toObject().value("content").toString().endsWith("xxx"));
     }
+    void perSessionRecognitionVocabularyStaysPrivate() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        QString first, second;
+        {
+            SessionStore db(tmp.filePath("voice-terms.sqlite"));
+            QVERIFY2(db.ready(), qPrintable(db.error()));
+            first = db.createSession();
+            second = db.createSession();
+            QCOMPARE(db.asrHints(first), QString());
+            const QString terms = QString::fromUtf8("Мара, Джейсон, Yharnam, RTX 4070, C++");
+            QVERIFY(db.setAsrHints(first, terms));
+            QVERIFY(db.setAsrHints(second, "unrelated private password-free terms"));
+            QCOMPARE(db.asrHints(first), terms);
+            QVERIFY(!db.asrHints(first).contains("unrelated"));
+            QVERIFY(!db.setAsrHints(first, QString(513, 'x')));
+            QCOMPARE(db.asrHints(first), terms);
+            QVERIFY(db.remove(first));
+            QCOMPARE(db.asrHints(first), QString());
+            QCOMPARE(db.asrHints(second), QString("unrelated private password-free terms"));
+        }
+        {
+            SessionStore reopened(tmp.filePath("voice-terms.sqlite"));
+            QVERIFY(reopened.ready());
+            QCOMPARE(reopened.asrHints(first), QString());
+            QCOMPARE(reopened.asrHints(second),
+                     QString("unrelated private password-free terms"));
+            QVERIFY(reopened.setAsrHints(second, "  "));
+            QCOMPARE(reopened.asrHints(second), QString());
+        }
+    }
+    void boundsAndCompactsMultilingualAsrTerminology() {
+        QCOMPARE(EmberCore::compactAsrHints(QString::fromUtf8(
+            "  Анна,\n  Марa,   C++,  RTX 4070  ")),
+            QString::fromUtf8("Анна, Марa, C++, RTX 4070"));
+        QCOMPARE(EmberCore::compactAsrHints(QString(1000, 'x')).size(), 400);
+        QVERIFY(EmberCore::compactAsrHints(QString()).isEmpty());
+    }
     void recognizesOnlyLocalNativeAsrProtocolAndKnownModels() {
         QVERIFY(EmberCore::allowedLocalAsrEndpoint(
             "http://127.0.0.1:43822/v1/audio/transcriptions"));

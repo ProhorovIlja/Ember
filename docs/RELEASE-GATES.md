@@ -104,3 +104,9 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Native localhost-only voice probe reports leading low-level PCM16 frame duration (threshold 256/32768) alongside first HTTP byte, without saving audio; mock protocol tests cover split frame alignment, silent and tone samples.
 - [x] Voice comparison probe can request 1.7B delivery presets but refuses unsupported instructions with 0.6B.
 - [ ] Measure actual first audible output and assess whether silence suppression would improve perception without removing soft consonants. No automatic silence trimming is currently applied.
+
+### Local ASR proper-noun vocabulary (21 November 2026)
+
+- [x] Optional Qwen3-ASR-specific per-chat compact background terminology uses a new SQLite table with cascade delete, a 512-character UI quota and 400-character request cap, without any new network endpoints.
+- [x] Tests enforce session separation, deletion, reopening, Unicode/Russian normalization and empty-value clearing.
+- [ ] Assess real WER/CER impact for fictional names, software paths and rare technical terms, and guard against model hallucinations on silent recordings.

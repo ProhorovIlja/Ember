@@ -193,6 +193,11 @@ QString recognitionLanguageTag(int choice) {
     if (choice == 2) return "ru";
     return {};
 }
+QString compactAsrHints(const QString &hints) {
+    // Background vocabulary only; bound token cost and remove line breaks.
+    // Never interpret recognized text or hint content as program commands.
+    return hints.simplified().left(400);
+}
 QJsonObject speechRequest(const QString &model, const QString &voice,
                           const QString &text) {
     return QJsonObject{
