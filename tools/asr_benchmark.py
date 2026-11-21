@@ -18,16 +18,17 @@ MAX_TEXT = 65536
 BOUNDARY = "----EmberASRBoundary562f"
 
 
-def transcribe(wav_data, model, language, port=43822):
+def transcribe(wav_data, model, language, port=43822, omit_model_id=False):
     if model not in MODELS or language not in LANGUAGES:
         raise ValueError("Unsupported model or language")
     if len(wav_data) > MAX_WAV or wav_data[:4] != b"RIFF" or wav_data[8:12] != b"WAVE":
         raise ValueError("Invalid or oversized local PCM WAV")
     fields = [
-        ("model", model.encode("ascii")),
         ("language", language.encode("ascii")),
         ("response_format", b"text"),
     ]
+    if not omit_model_id:
+        fields.insert(0, ("model", model.encode("ascii")))
     pieces = []
     for name, value in fields:
         pieces.append((f"--{BOUNDARY}\r\nContent-Disposition: form-data; "
@@ -99,11 +100,15 @@ def silent_wav():
 
 def self_test():
     class Mock(BaseHTTPRequestHandler):
+        omit_model_id = False
         def do_POST(self):
             assert self.path == "/v1/audio/transcriptions"
             request = self.rfile.read(int(self.headers["Content-Length"]))
-            assert b'name="file"' in request and b'name="model"' in request
-            assert b'qwen3-asr-0.6b' in request and b'name="language"' in request
+            assert b'name="file"' in request and b'name="language"' in request
+            if self.omit_model_id:
+                assert b'name="model"' not in request
+            else:
+                assert b'name="model"' in request and b'qwen3-asr-0.6b' in request
             assert b'name="response_format"' in request and b"RIFF" in request
             data = "The bell tower.".encode("utf-8")
             self.send_response(200)
@@ -122,6 +127,11 @@ def self_test():
     try:
         result, elapsed = transcribe(silent_wav(), MODELS[0], "en", server.server_port)
         assert result == "The bell tower." and elapsed >= 0
+        Mock.omit_model_id = True
+        omitted, latency = transcribe(silent_wav(), MODELS[0], "ru",
+                                      server.server_port, omit_model_id=True)
+        assert omitted == result and latency >= 0
+        Mock.omit_model_id = False
         assert metrics("The bell tower.", result)["wer"] == 0
         assert metrics("hello world", "hello")["wer"] == 0.5
         assert metrics("Привет мир", "Привет мир")["cer"] == 0
@@ -145,6 +155,8 @@ def main():
     p.add_argument("--reference-file", type=Path, help="Existing local UTF-8 reference transcript")
     p.add_argument("--model", choices=MODELS, default=MODELS[0])
     p.add_argument("--language", choices=LANGUAGES, default="auto")
+    p.add_argument("--omit-model-id", action="store_true",
+                   help="Use locally started speech.cpp GGUF without catalog name")
     p.add_argument("--output", type=Path,
                    help="Optional JSON with metrics only; no recognized words or audio")
     args = p.parse_args()
@@ -157,7 +169,8 @@ def main():
         p.error("WAV is larger than the 25 MiB service limit")
     data = args.file.read_bytes()
     expected = args.reference_file.read_text(encoding="utf-8")
-    recognized, elapsed = transcribe(data, args.model, args.language)
+    recognized, elapsed = transcribe(data, args.model, args.language,
+                                     omit_model_id=args.omit_model_id)
     result = metrics(expected, recognized)
     result.update({
         "model": args.model,

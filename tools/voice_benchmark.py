@@ -68,7 +68,7 @@ def percentile95(values):
     return ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)]
 
 
-def measure(endpoint, model, voice, prompt, delivery="natural"):
+def measure(endpoint, model, voice, prompt, delivery="natural", omit_model_id=False):
     u = urlsplit(endpoint)
     if (u.scheme != "http" or u.hostname != "127.0.0.1" or
             u.port is None or u.username is not None or
@@ -84,6 +84,8 @@ def measure(endpoint, model, voice, prompt, delivery="natural"):
     }
     if DELIVERIES[delivery]:
         body["instructions"] = DELIVERIES[delivery]
+    if omit_model_id:
+        body.pop("model")  # one local file-backed TTS model selected by the server
     payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
     req = Request(endpoint, payload, method="POST", headers={
         "Content-Type": "application/json", "Accept": "audio/pcm",
@@ -164,6 +166,9 @@ def self_test():
     try:
         result = measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.")
         assert result["pcm_bytes"] == 4800
+        result_local = measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.",
+                               omit_model_id=True)
+        assert result_local["pcm_bytes"] == 4800
         assert result["sample_rate_hz"] == 24000
         assert result["audio_seconds"] == 0.1
         assert result["leading_low_level_pcm_ms"] is None
@@ -212,6 +217,8 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--model", default="qwen3-tts-0.6b")
     parser.add_argument("--voice", default="vivian")
+    parser.add_argument("--omit-model-id", action="store_true",
+                        help="For speech.cpp started from a local GGUF path; no catalog alias")
     parser.add_argument("--delivery", choices=tuple(DELIVERIES),
                         default="natural", help="Style controls are supported by 1.7B only")
     parser.add_argument("--samples", type=int, default=8)
@@ -230,7 +237,8 @@ def main():
     for i in range(args.samples):
         prompt = PROMPTS[i % len(PROMPTS)]
         try:
-            result = measure(ENDPOINT, args.model, args.voice, prompt, args.delivery)
+            result = measure(ENDPOINT, args.model, args.voice, prompt,
+                             args.delivery, omit_model_id=args.omit_model_id)
         except (OSError, URLError, HTTPError, ValueError) as exc:
             parser.error(f"Local TTS sample {i + 1} failed: {type(exc).__name__}: {exc}")
         result["sample_number"] = i + 1

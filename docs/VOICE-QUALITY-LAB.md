@@ -67,6 +67,27 @@ Whisper/Qwen transcription segments. This improves reliability and avoids
 calling a truncated recording successful, but it does not improve WER
 without real reference-audio tests. Audio remains local and transient.
 
+## Offline GGUF path benchmark compatibility
+
+When speech.cpp is started with an explicit local GGUF model filename rather
+than its catalog alias, its OpenAI-compatible API permits leaving the model
+field out if exactly one speech model handles the endpoint. The ASR and PCM-TTS
+benchmark CLI now support `--omit-model-id`, matching Ember's in-process
+adapter and avoiding a false 404 when an offline model's actual server ID is a
+file path. The CLI `--model` remains a local label for experimental comparisons
+and to determine whether 1.7B style controls may be used. Both tools remain
+loopback-only and store only latency/WER metrics, not private transcripts or
+recorded WAV audio. See upstream documented request contracts:
+https://github.com/nyosegawa/speech.cpp/blob/main/docs/server.md .
+
+For 12GB RTX4070, Qwen3-TTS converted Q8 weights are 1.21GB (0.6B) or
+2.29GB (1.7B) and Qwen3-ASR converted Q8 weights 0.84GB (0.6B) or
+2.18GB (1.7B), according to the published on-disk catalog
+https://github.com/nyosegawa/speech.cpp/blob/main/docs/models.md .
+These disk sizes are NOT measured VRAM or evidence of acoustic superiority.
+A reliable recommendation needs cold/warm human listening, RU/EN WER/CER,
+first audible sound, TTS RTF and combined LLM+TTS+ASR VRAM traces.
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.
