@@ -211,6 +211,26 @@ private slots:
         corrupted = good.left(good.size() - 1);
         QVERIFY(!EmberCore::validSpeechWav(corrupted));
     }
+    void keepsRecentConversationWithinAdaptiveContext() {
+        QList<EmberCore::Turn> turns;
+        for (int i = 0; i < 30; ++i)
+            turns.append(EmberCore::Turn{QString("user-%1").arg(i),
+                                         QString("reply-%1").arg(i)});
+        const auto json = EmberCore::chatRequest("Natural dialogue", turns, "Continue", 1024);
+        const auto messages = json.value("messages").toArray();
+        QCOMPARE(messages.size(), 50); // system + 24 complete pairs + current
+        QCOMPARE(messages.at(1).toObject().value("content").toString(), "user-6");
+        QCOMPARE(messages.at(messages.size()-2).toObject().value("content").toString(),
+                 "reply-29");
+        QList<EmberCore::Turn> huge;
+        huge.append(EmberCore::Turn{"Short question", QString(16000, 'x')});
+        const auto bounded = EmberCore::chatRequest("Natural dialogue", huge,
+                                                    "Continue", 1024);
+        const auto boundedMessages = bounded.value("messages").toArray();
+        QCOMPARE(boundedMessages.size(), 4);
+        QVERIFY(boundedMessages.at(2).toObject().value("content").toString().size() < 12000);
+        QVERIFY(boundedMessages.at(2).toObject().value("content").toString().endsWith("xxx"));
+    }
     void localOnlyEndpoint() {
         QVERIFY(EmberCore::allowedLocalEndpoint("http://127.0.0.1:43821/health"));
         QVERIFY(EmberCore::allowedLocalEndpoint("http://127.0.0.1:43821/v1/chat/completions"));
