@@ -201,6 +201,18 @@ qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
             * bytesPerFrame;
 }
 
+bool canRecoverInterruptedDictation(bool dictation, bool writeFailed,
+                                   qint64 observedWrittenBytes, qint64 fileSize,
+                                   const QAudioFormat &format) {
+    if (!dictation || writeFailed || observedWrittenBytes <= 0 ||
+        observedWrittenBytes != fileSize || !format.isValid() ||
+        format.bytesPerFrame() <= 0 || format.sampleRate() < 8000 ||
+        format.sampleRate() > 96000 ||
+        fileSize % format.bytesPerFrame() != 0) return false;
+    const qint64 bytesPerSecond =
+        qint64(format.sampleRate()) * format.bytesPerFrame();
+    return bytesPerSecond > 0 && fileSize >= bytesPerSecond / 10;
+}
 static QString escapedInlineMarkdown(const QString &source) {
     QString out;
     out.reserve(source.size() * 2);
