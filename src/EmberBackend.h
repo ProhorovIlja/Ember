@@ -45,6 +45,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(int recognitionLanguage READ recognitionLanguage WRITE setRecognitionLanguage NOTIFY configurationChanged)
     Q_PROPERTY(int voiceId READ voiceId WRITE setVoiceId NOTIFY configurationChanged)
     Q_PROPERTY(int voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY configurationChanged)
+    Q_PROPERTY(bool earlySpeechEnabled READ earlySpeechEnabled WRITE setEarlySpeechEnabled NOTIFY configurationChanged)
     Q_PROPERTY(QString localVoice READ localVoice WRITE setLocalVoice NOTIFY configurationChanged)
     Q_PROPERTY(QString voiceSample READ voiceSample WRITE setVoiceSample NOTIFY configurationChanged)
     Q_PROPERTY(QString localModel READ localModel WRITE setLocalModel NOTIFY configurationChanged)
@@ -78,6 +79,7 @@ public:
     int recognitionLanguage() const { return m_recognitionLanguage; }
     int voiceId() const { return m_voiceId; }
     int voiceEngine() const { return m_voiceEngine; }
+    bool earlySpeechEnabled() const { return m_earlySpeechEnabled; }
     QString localVoice() const { return m_localVoice; }
     QString voiceSample() const { return m_voiceSample; }
     QString localModel() const { return m_localModel; }
@@ -93,6 +95,7 @@ public:
     Q_INVOKABLE void setRecognitionLanguage(int language);
     Q_INVOKABLE void setVoiceId(int index);
     Q_INVOKABLE void setVoiceEngine(int index);
+    Q_INVOKABLE void setEarlySpeechEnabled(bool value);
     Q_INVOKABLE void setLocalVoice(const QString &value);
     Q_INVOKABLE void setVoiceSample(const QString &value);
     Q_INVOKABLE void setLocalModel(const QString &value);
@@ -193,6 +196,7 @@ private:
     bool m_speechSequence = false;
     bool m_chatGenerating = false;
     bool m_voiceEarlyActive = false, m_voiceEarlyFailed = false;
+    bool m_earlySpeechEnabled = true;
     qsizetype m_liveSpeechCursor = 0;
     bool m_speechServerReady = false;
     // One WAV plays while the opposite private slot is synthesized ahead.
