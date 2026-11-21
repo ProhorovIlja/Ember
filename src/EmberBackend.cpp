@@ -1665,6 +1665,8 @@ void EmberBackend::failTranscription(const QString &reason) {
         reply->abort();
     }
     m_voiceTurnActive = false;
+    const QString partial = EmberCore::partialDictationOnError(
+        m_transcribingDictation, m_transcriptionSegments);
     m_transcribingDictation = false;
     m_transcriptionSegments.clear();
     m_transcriptionSize = m_transcriptionOffset = m_transcriptionChunkSize = 0;
@@ -1673,7 +1675,20 @@ void EmberBackend::failTranscription(const QString &reason) {
     // scratch cleanup, with a turn-generation guard against newer recording.
     retryCancelledAudioCleanup(m_voiceScratchRevision, 6);
     setBusy(false);
-    setStatus(reason);
+    if (partial.isEmpty()) {
+        setStatus(reason);
+        return;
+    }
+    // A later ASR chunk can fail after several minutes of successful
+    // push-to-release dictation. Recover ONLY the recognized prefix into
+    // the editable composer, never silently submit a partial voice request.
+    m_transcript = partial;
+    emit transcriptChanged();
+    m_dictatedText = partial;
+    emit dictationChanged();
+    emit dictationReady(partial);
+    setStatus("Dictation was interrupted. Recovered the recognized prefix for "
+              "editing; the ending may be missing. " + reason);
 }
 void EmberBackend::completeTranscription() {
     const bool dictate = m_transcribingDictation;
