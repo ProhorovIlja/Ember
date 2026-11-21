@@ -41,8 +41,8 @@ ApplicationWindow {
             color: "#D7E7F6"
             font.pixelSize: 13
             wrapMode: Text.WordWrap
-            implicitWidth: 360
-            implicitHeight: 95
+            width: 360
+            height: 95
         }
     }
     Timer {
