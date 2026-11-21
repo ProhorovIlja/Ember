@@ -178,6 +178,21 @@ assertion and cannot prove identical GPU load or driver settings. For actual
 naturalness compare blind audible recordings and transcription WER/CER using
 explicitly user-controlled source material on the target PC.
 
+## 22 November — complete built-in female Qwen3 CustomVoice shortlist
+
+The Qt native Settings panel now offers one-click female speaker IDs:
+`vivian` (bright), `serena` (warm), `ono_anna` (Japanese-native/playful),
+and `sohee` (Korean-native/emotive). All are known supported **Qwen3-TTS
+CustomVoice speakers**. Spoken output remains explicitly English by
+`language=en`, but **their original native languages differ**, so English
+pronunciation, accent, naturalness and stability must be measured instead
+of assuming all four are equivalent. Keep Kokoro voices as additional
+English-focused baselines.
+
+Official upstream description:
+https://github.com/QwenLM/Qwen3-TTS/blob/main/README.md
+https://github.com/nyosegawa/speech.cpp/blob/main/docs/models.md
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.

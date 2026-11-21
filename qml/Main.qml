@@ -1249,7 +1249,7 @@ ApplicationWindow {
                                         Text {
                                             text: ember.recognitionEngine === 0 ?
                                                   "Whisper remains offline and default. Speech replies stay English." :
-                                                  "Qwen3-ASR needs the manually started native speech service below; first use may download weights. RU/EN text stays local."
+                                                  "Qwen3-ASR uses installed local GGUF weights. Missing model downloads are blocked unless you explicitly allow them below; RU/EN text stays local."
                                             color: "#869CB6"
                                             font.pixelSize: 11
                                             wrapMode: Text.WordWrap
@@ -1693,7 +1693,7 @@ ApplicationWindow {
                                 Rectangle {
                                     visible: ember.voiceEngine === 1
                                     Layout.fillWidth: true
-                                    implicitHeight: ember.localModel === "qwen3-tts-1.7b" ? 388 : 338
+                                    implicitHeight: ember.localModel === "qwen3-tts-1.7b" ? 433 : 383
                                     color: window.cardColor
                                     radius: 13
                                     border.color: window.borderColor
@@ -1816,6 +1816,36 @@ ApplicationWindow {
                                                 onClicked: {
                                                     ember.localVoice = "serena"
                                                     externalVoice.text = "serena"
+                                                }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 9
+                                            Text {
+                                                text: "More female voices"
+                                                color: "#9AB8CF"
+                                                font.pixelSize: 11
+                                                Layout.fillWidth: true
+                                            }
+                                            PillButton {
+                                                text: "Ono Anna · playful"
+                                                implicitWidth: 148
+                                                implicitHeight: 32
+                                                enabled: !ember.busy && !ember.speaking
+                                                onClicked: {
+                                                    ember.localVoice = "ono_anna"
+                                                    externalVoice.text = "ono_anna"
+                                                }
+                                            }
+                                            PillButton {
+                                                text: "Sohee · emotive"
+                                                implicitWidth: 144
+                                                implicitHeight: 32
+                                                enabled: !ember.busy && !ember.speaking
+                                                onClicked: {
+                                                    ember.localVoice = "sohee"
+                                                    externalVoice.text = "sohee"
                                                 }
                                             }
                                         }
