@@ -581,23 +581,88 @@ ApplicationWindow {
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    spacing: 16
                                     Text {
                                         Layout.fillWidth: true
-                                        text: "Kokoro speaker ID · use IDs listed for your installed voice pack"
+                                        text: "Voice · Kokoro English v0.19"
                                         color: "#A7BBC8"
                                         font.pixelSize: 13
                                         wrapMode: Text.WordWrap
                                     }
-                                    SpinBox {
-                                        from: 0
-                                        to: 100
-                                        value: ember.voiceId
-                                        onValueModified: ember.voiceId = value
+                                    ComboBox {
+                                        id: voiceSelector
+                                        Layout.preferredWidth: 268
+                                        Layout.preferredHeight: 43
+                                        model: [
+                                            "af · Female · US",
+                                            "Bella · Female · US",
+                                            "Nicole · Female · US",
+                                            "Sarah · Female · US",
+                                            "Sky · Female · US",
+                                            "Adam · Male · US",
+                                            "Michael · Male · US",
+                                            "Emma · Female · UK",
+                                            "Isabella · Female · UK",
+                                            "George · Male · UK",
+                                            "Lewis · Male · UK"
+                                        ]
+                                        currentIndex: ember.voiceId
+                                        onActivated: ember.voiceId = currentIndex
+                                        contentItem: Text {
+                                            text: voiceSelector.displayText
+                                            color: "#E7F6ED"
+                                            font.pixelSize: 13
+                                            leftPadding: 14
+                                            verticalAlignment: Text.AlignVCenter
+                                            elide: Text.ElideRight
+                                        }
+                                        background: Rectangle {
+                                            color: "#172B31"
+                                            radius: 12
+                                            border.width: 1
+                                            border.color: "#437B6C"
+                                        }
+                                        delegate: ItemDelegate {
+                                            required property int index
+                                            required property string modelData
+                                            width: voiceSelector.width
+                                            height: 40
+                                            text: modelData
+                                            font.pixelSize: 13
+                                            highlighted: voiceSelector.highlightedIndex === index
+                                            contentItem: Text {
+                                                text: parent.text
+                                                font: parent.font
+                                                verticalAlignment: Text.AlignVCenter
+                                                color: "#E6F4EC"
+                                            }
+                                            background: Rectangle {
+                                                color: parent.highlighted ? "#31574F" : "#17252F"
+                                            }
+                                        }
+                                        popup: Popup {
+                                            y: voiceSelector.height + 4
+                                            width: voiceSelector.width
+                                            implicitHeight: Math.min(contentItem.implicitHeight + 6, 330)
+                                            padding: 3
+                                            background: Rectangle {
+                                                color: "#17252F"
+                                                radius: 10
+                                                border.color: "#49796B"
+                                            }
+                                            contentItem: ListView {
+                                                clip: true
+                                                implicitHeight: contentHeight
+                                                model: voiceSelector.popup.visible ? voiceSelector.delegateModel : null
+                                                currentIndex: voiceSelector.highlightedIndex
+                                                ScrollIndicator.vertical: ScrollIndicator {}
+                                            }
+                                        }
                                     }
                                 }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: "Only installed, licensed model voices are selectable. No synthetic cloud personalities, proprietary models or voice impersonation assets are bundled."
+                                    text: "All 11 speaker names and IDs come from the official Kokoro English v0.19 pack. Compare female voices with Test voice. No weights are bundled."
                                     wrapMode: Text.WordWrap
                                     color: "#8A9FAD"
                                     font.pixelSize: 12
