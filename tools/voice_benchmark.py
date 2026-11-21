@@ -55,6 +55,61 @@ class StreamingPcmOnset:
         if self.carry:
             raise ValueError("PCM16 stream ended in a partial 16-bit sample")
 
+
+def pcm_signal_metrics(pcm, sample_rate):
+    """Measure electrical PCM health only. Never infer audible naturalness.
+
+    Per-trial PCM lives in memory until the response has finished; calculating
+    metrics afterward prevents the Python analysis loop from delaying the HTTP
+    synthesis-duration measurement.
+    """
+    if (not 8000 <= sample_rate <= 96000 or len(pcm) < 2 or
+            len(pcm) % 2 or len(pcm) > MAX_BYTES):
+        raise ValueError("PCM signal has invalid rate, length or byte budget")
+    samples = len(pcm) // 2
+    first = last = None
+    peak = clipped = quiet = longest_quiet = current_quiet = 0
+    sum_values = sum_squares = 0
+    for i, (sample,) in enumerate(
+            struct.iter_unpack("<h", memoryview(pcm))):
+        mag = abs(sample)
+        peak = max(peak, mag)
+        sum_values += sample
+        sum_squares += sample * sample
+        if mag >= 32760:
+            clipped += 1
+        if mag < ONSET_THRESHOLD:
+            quiet += 1
+            current_quiet += 1
+            longest_quiet = max(longest_quiet, current_quiet)
+        else:
+            current_quiet = 0
+            if first is None:
+                first = i
+            last = i
+    rms = math.sqrt(sum_squares / samples) / 32768
+    peak_level = peak / 32768
+    def dbfs(level):
+        return round(20 * math.log10(level), 2) if level > 0 else None
+    return {
+        "digital_onset_ms": (
+            round(first * 1000 / sample_rate, 2) if first is not None else None),
+        "leading_low_level_pcm_ms": (
+            round(first * 1000 / sample_rate, 2) if first is not None else None),
+        "trailing_low_level_pcm_ms": (
+            round((samples - 1 - last) * 1000 / sample_rate, 2)
+            if last is not None else None),
+        "digital_voice_detected": first is not None,
+        "quiet_sample_percent": round(quiet * 100 / samples, 2),
+        "longest_quiet_span_ms": round(longest_quiet * 1000 / sample_rate, 2),
+        "clipped_sample_percent": round(clipped * 100 / samples, 4),
+        "peak_dbfs": dbfs(peak_level),
+        "rms_dbfs": dbfs(rms),
+        "dc_offset_percent_fullscale": round(
+            abs(sum_values / samples) * 100 / 32768, 4),
+    }
+
+
 class RejectRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None  # never forward locally generated spoken text to a remote host
@@ -104,30 +159,28 @@ def measure(endpoint, model, voice, prompt, delivery="natural", omit_model_id=Fa
         if not first:
             raise ValueError("Empty native PCM response")
         first_ms = (time.perf_counter() - started) * 1000
-        count = len(first)
-        onset = StreamingPcmOnset()
-        onset.feed(first)
+        sample_bytes = bytearray(first)
         while True:
             chunk = response.read(65536)
             if not chunk:
                 break
-            count += len(chunk)
-            if count > MAX_BYTES:
+            if len(sample_bytes) + len(chunk) > MAX_BYTES:
                 raise ValueError("PCM exceeded the 12 MiB local safety budget")
-            if onset.first_significant_sample is None:
-                onset.feed(chunk)
+            sample_bytes.extend(chunk)
+    # Stop latency clock BEFORE any CPU-heavy signal analysis. Each trial's
+    # PCM is transient in RAM; results contain numeric telemetry only.
     total_ms = (time.perf_counter() - started) * 1000
+    count = len(sample_bytes)
     if count % 2 or count < 2:
         raise ValueError("PCM16 response ended with incomplete sample frames")
     duration = count / (2 * rate)
+    health = pcm_signal_metrics(sample_bytes, rate)
     return {
         "sample_rate_hz": rate,
         "pcm_bytes": count,
         "audio_seconds": round(duration, 3),
         "first_http_pcm_byte_ms": round(first_ms, 2),
-        "leading_low_level_pcm_ms": (
-            round(onset.first_significant_sample * 1000 / rate, 2)
-            if onset.first_significant_sample is not None else None),
+        **health,
         "total_http_synthesis_ms": round(total_ms, 2),
         "audio_seconds_per_wall_second": round(duration / (total_ms / 1000), 2),
     }
@@ -179,6 +232,10 @@ def self_test():
         assert result["sample_rate_hz"] == 24000
         assert result["audio_seconds"] == 0.1
         assert result["leading_low_level_pcm_ms"] is None
+        assert result["digital_voice_detected"] is False
+        assert result["rms_dbfs"] is None
+        assert result["peak_dbfs"] is None
+        assert result["quiet_sample_percent"] == 100
         assert StreamingPcmOnset().first_significant_sample is None
         onset = StreamingPcmOnset()
         onset.feed(b"\x00")
@@ -188,6 +245,23 @@ def self_test():
         expressive = measure(uri, "qwen3-tts-1.7b", "serena", "Warm hello.",
                              delivery="warm")
         assert expressive["leading_low_level_pcm_ms"] == 50
+        assert expressive["digital_voice_detected"] is True
+        assert expressive["quiet_sample_percent"] == 50
+        assert expressive["clipped_sample_percent"] == 0
+        assert expressive["trailing_low_level_pcm_ms"] == 0
+        assert expressive["peak_dbfs"] is not None
+        clipped = b"\x00\x00" * 100 + struct.pack("<h", 32767) * 100
+        clipped += b"\x00\x00" * 100
+        metrics = pcm_signal_metrics(clipped, 24000)
+        assert metrics["clipped_sample_percent"] == round(100 / 300 * 100, 4)
+        assert metrics["digital_onset_ms"] == round(100 * 1000 / 24000, 2)
+        assert metrics["trailing_low_level_pcm_ms"] == round(100 * 1000 / 24000, 2)
+        assert metrics["longest_quiet_span_ms"] == round(100 * 1000 / 24000, 2)
+        try:
+            pcm_signal_metrics(b"\x00", 24000)
+            raise AssertionError("Odd PCM frame incorrectly accepted")
+        except ValueError:
+            pass
         Handler.payload = b"\x00\x00" * 2400
         try:
             measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.", delivery="warm")
@@ -249,16 +323,25 @@ def main():
         except (OSError, URLError, HTTPError, ValueError) as exc:
             parser.error(f"Local TTS sample {i + 1} failed: {type(exc).__name__}: {exc}")
         result["sample_number"] = i + 1
+        result["prompt_index"] = i % len(PROMPTS)  # never persist prompt text
         results.append(result)
     first = [r["first_http_pcm_byte_ms"] for r in results]
     leading = [r["leading_low_level_pcm_ms"] for r in results
                if r["leading_low_level_pcm_ms"] is not None]
+    clipped = [r["clipped_sample_percent"] for r in results]
+    leading_silence = [r["leading_low_level_pcm_ms"] for r in results
+                       if r["leading_low_level_pcm_ms"] is not None]
+    no_signal = sum(not r["digital_voice_detected"] for r in results)
     report = {
-        "note": "First HTTP PCM byte and first digital sample >=256 do NOT measure actual acoustic output.",
+        "note": "All PCM measurements are signal diagnostics, NOT acoustic onset, naturalness or MOS. They do not test output-device buffering. HTTP time ends before PCM analysis.",
         "model": args.model, "voice": args.voice, "delivery": args.delivery,
         "samples": len(results),
         "p50_leading_low_level_pcm_ms": (
             round(statistics.median(leading), 2) if leading else None),
+        "p95_leading_low_level_pcm_ms": (
+            round(percentile95(leading_silence), 2) if leading_silence else None),
+        "p95_clipped_sample_percent": round(percentile95(clipped), 4),
+        "no_digital_voice_trials": no_signal,
         "p50_first_http_pcm_byte_ms": round(statistics.median(first), 2),
         "p95_first_http_pcm_byte_ms": percentile95(first),
         "mean_audio_seconds_per_wall_second": round(statistics.mean(

@@ -88,6 +88,38 @@ These disk sizes are NOT measured VRAM or evidence of acoustic superiority.
 A reliable recommendation needs cold/warm human listening, RU/EN WER/CER,
 first audible sound, TTS RTF and combined LLM+TTS+ASR VRAM traces.
 
+## 22 November — signal health as a prerequisite, not a voice quality score
+
+`tools/voice_benchmark.py` now keeps at most one 12 MiB decoded PCM16
+response in temporary RAM and records HTTP timings **before** signal analysis,
+so processing millions of Python samples cannot be counted as model synthesis
+time. Per trial it reports digital-onset proxy, initial/final silence,
+overall silence occupancy, longest low-level span, peak and RMS in dBFS,
+clipping sample percentage and DC-offset magnitude. Aggregate reports include
+p95 initial silence, p95 clipping and the count of samples in which no
+above-threshold digital voice was detected. It still never stores PCM on disk,
+requires a user-started loopback service, and disables proxies/redirects.
+
+Silent and heavily clipped recordings are detectable as candidate defects, but
+these metrics do **not** reveal whether the voice sounds human, reads the
+correct words, uses pleasant prosody, is emotionally nuanced, or plays without
+driver-level glitches. Only blind listening, matched-prompt intelligibility
+(WER/CER) and actual output-device tests can establish those properties. A
+quiet expressive syllable below -42 dBFS may be counted as digital silence:
+do not automatically trim it. The Python mock-server test includes silence,
+a 50ms leading silence followed by a tone, clipping, odd PCM frames, invalid
+sample rates, catalog-ID omission and a loopback-only boundary.
+
+Research: the speech.cpp author explicitly documents extended early digital
+silence for some Qwen3-TTS 0.6B voices and distinguishes first model audio from
+the scheduled playback of actual voiced content:
+https://github.com/nyosegawa/speech.cpp/blob/main/docs/models/qwen3-tts.md
+https://nyosegawa.com/en/posts/speech-cpp/
+The reproducible open-source TTS evaluation approaches separate signal health,
+ASR-derived intelligibility and human/estimated naturalness:
+https://github.com/inworld-ai/open-tts-eval
+https://github.com/huggingface/open-tts-leaderboard
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.

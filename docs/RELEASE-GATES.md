@@ -74,6 +74,7 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Two private WAV speech slots with one-chunk prefetch while Windows plays the previous chunk; cleanup on normal completion/errors/cancel and bounded speech formatting. Test with actual Windows output devices.
 - [x] Speech rendering removes Markdown URLs/code fences while preserving the exact text chat; reject malformed WAV byte rates/unaligned PCM. Predominantly Cyrillic voice output is skipped rather than pronounced in Russian.
 - [ ] Benchmark actual Qwen3-TTS/Kokoro/Chatterbox female English voices, cold/warm model loads, VRAM co-residency, p50/p95 end-to-end spoken latency and real audio clipping/underruns on target RTX 4070.
+- [x] Add privacy-preserving in-RAM PCM16 signal health diagnostics (leading/trailing digital silence, clipping, level, DC offset) with deterministic synthetic mock-server tests; no claim of audible voice ranking.
 - [ ] Deliver native push-mode streaming PCM output with bounded buffering, first audible audio as soon as a model emits it, safe device-change/cancel handling, and robust fallback. Do not label current WAV playback as streaming audio.
 
 ### Managed PCM streaming implementation gate
