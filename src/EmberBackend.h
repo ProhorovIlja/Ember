@@ -167,7 +167,7 @@ private:
     void onOutputInventoryChanged();
     QString m_status = "Ready to configure local engines.";
     QString m_transcript, m_lastReply, m_pendingUser, m_persona;
-    QString m_localVoice = "Vivian", m_localModel = "qwen3-tts";
+    QString m_localVoice = "vivian", m_localModel = "qwen3-tts-0.6b";
     QString m_voiceSample;
     QString m_sessionId, m_dictatedText, m_continuityNotes;
     QString m_chatStreamText, m_chatStreamSession;
