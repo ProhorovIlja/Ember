@@ -145,6 +145,8 @@ private:
     void synthesize(const QString &text);
     void synthesizeViaLocalServer(const QString &text);
     void playSynthesizedFile();
+    QString speechFile(int slot) const;
+    void stopSpeechOnError(const QString &error);
     void pollBrain();
     void storeConfig();
     QString configPath(const QString &key) const;
@@ -173,6 +175,8 @@ private:
     bool m_brainReady = false, m_busy = false, m_listening = false;
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
     bool m_speechSequence = false;
+    // One WAV plays while the opposite private slot is synthesized ahead.
+    int m_playingSpeechSlot = -1, m_readySpeechSlot = -1, m_ttsOutputSlot = -1;
     QSettings m_settings;
     QMediaDevices m_mediaDevices;
     QByteArray m_inputId, m_outputId, m_captureDeviceId;
