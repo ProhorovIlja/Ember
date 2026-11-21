@@ -28,6 +28,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QVariantList messages READ messages NOTIFY messagesChanged)
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY sessionsChanged)
+    Q_PROPERTY(QString continuityNotes READ continuityNotes NOTIFY continuityNotesChanged)
     Q_PROPERTY(bool localHistoryReady READ localHistoryReady CONSTANT)
     Q_PROPERTY(bool dictationActive READ dictationActive NOTIFY dictationChanged)
     Q_PROPERTY(QString dictatedText READ dictatedText NOTIFY dictationChanged)
@@ -58,6 +59,7 @@ public:
     QVariantList messages() const { return m_messages; }
     QVariantList sessions() const { return m_sessions; }
     QString currentSessionId() const { return m_sessionId; }
+    QString continuityNotes() const { return m_continuityNotes; }
     bool localHistoryReady() const { return m_store && m_store->ready(); }
     bool dictationActive() const { return m_listening && m_captureDictation; }
     QString dictatedText() const { return m_dictatedText; }
@@ -102,6 +104,7 @@ public:
     Q_INVOKABLE void clearConversation();
     Q_INVOKABLE void openSession(const QString &id);
     Q_INVOKABLE void deleteCurrentSession();
+    Q_INVOKABLE void setContinuityNotes(const QString &text);
     Q_INVOKABLE QVariantList searchHistory(const QString &text) const;
     Q_INVOKABLE void exportCurrentSession();
 signals:
@@ -111,6 +114,7 @@ signals:
     void voiceTimingsChanged();
     void messagesChanged();
     void sessionsChanged();
+    void continuityNotesChanged();
     void dictationChanged();
     void dictationReady(const QString &text);
     void brainReadyChanged();
@@ -154,7 +158,7 @@ private:
     QString m_transcript, m_lastReply, m_pendingUser, m_persona;
     QString m_localVoice = "Vivian", m_localModel = "qwen3-tts";
     QString m_voiceSample;
-    QString m_sessionId, m_dictatedText;
+    QString m_sessionId, m_dictatedText, m_continuityNotes;
     QString m_chatStreamText, m_chatStreamSession;
     QByteArray m_chatStreamBuffer;
     bool m_chatStreamDone = false, m_chatStreamInvalid = false;
