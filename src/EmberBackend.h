@@ -297,6 +297,7 @@ private:
     QProcess m_brain, m_whisper, m_tts, m_speechServer;
     QTimer m_healthTimer, m_speechHealthTimer;
     QTimer m_captureWatchdog;
+    QTimer m_asrProcessWatchdog, m_ttsProcessWatchdog;
     QTimer m_chatRenderTimer;
     QTimer m_pcmPumpTimer;
     quint64 m_captureSession = 0;
