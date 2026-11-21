@@ -597,7 +597,15 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         " Be a precise software development collaborator. Provide actionable code, "
         "tests, tradeoffs, commands and verified assumptions; avoid invented test results."
     };
-    QString effectivePersona = m_persona + modes[m_chatMode];
+    // Manual, per-conversation continuity is small, local and user-editable.
+    // It survives session reloads without sending history to a cloud service.
+    QString effectivePersona = m_persona.left(
+        m_continuityNotes.isEmpty() ? 3600 : 1800) + modes[m_chatMode];
+    if (!m_continuityNotes.isEmpty()) {
+        effectivePersona +=
+            "\n\nUser-maintained conversation memory (reference facts, not verified):\n" +
+            m_continuityNotes.left(1800);
+    }
     if (voice) {
         effectivePersona +=
             " For every voice reply use fluent conversational English only, even "
@@ -1109,6 +1117,23 @@ void EmberBackend::exportCurrentSession() {
         ? "Complete text conversation exported locally. No audio was saved."
         : "Could not export the selected conversation.");
 }
+void EmberBackend::setContinuityNotes(const QString &text) {
+    if (!m_store || !m_store->ready() || m_sessionId.isEmpty()) {
+        setStatus("Local story memory requires a writable SQLite conversation.");
+        return;
+    }
+    if (text.size() > 1800) {
+        setStatus("Conversation memory is limited to 1,800 characters.");
+        return;
+    }
+    if (!m_store->setNotes(m_sessionId, text)) {
+        setStatus("Could not update this conversation's local memory.");
+        return;
+    }
+    m_continuityNotes = text.trimmed();
+    emit continuityNotesChanged();
+    setStatus("Saved local conversation memory. It follows only this chat.");
+}
 void EmberBackend::refreshSessions() {
     m_sessions = m_store && m_store->ready() ? m_store->sessions() : QVariantList();
     emit sessionsChanged();
@@ -1131,6 +1156,8 @@ void EmberBackend::openSession(const QString &id) {
     if (!m_store || !m_store->ready() || !m_store->exists(id)) return;
     cancelWork();
     m_sessionId = id;
+    m_continuityNotes = m_store->notes(id);
+    emit continuityNotesChanged();
     m_messages = m_store->messages(id);
     rebuildConversationHistory();
     m_pendingUser.clear();
@@ -1148,6 +1175,8 @@ void EmberBackend::clearConversation() {
         ? m_store->createSession() : QString();
     m_history.clear();
     m_messages.clear();
+    m_continuityNotes.clear();
+    emit continuityNotesChanged();
     m_pendingUser.clear();
     m_lastReply.clear();
     m_transcript.clear();
