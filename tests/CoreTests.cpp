@@ -281,6 +281,18 @@ private slots:
                     "<think>Unfinished internal note.").isEmpty());
         QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, true).size(), 0);
     }
+    void preservesTitlesAndShortSentencesDuringEarlyVoice() {
+        qsizetype cursor = 0;
+        const QString text = "I asked Dr. Watson for advice. She agreed. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(text, cursor, false),
+                 QStringList({"I asked Dr. Watson for advice.", "She agreed."}));
+        QCOMPARE(cursor, qsizetype(text.size()));
+        cursor = 0;
+        QCOMPARE(EmberCore::takeCommittedSpeech(
+            "No. That is not the answer. ", cursor, false),
+            QStringList({"That is not the answer."}));
+        // The very short "No." stays joined until a longer completed sentence.
+    }
     void boundsSpeechCommitsForUnpunctuatedLongTokens() {
         qsizetype cursor = 0;
         QString text = QString("spoken phrase ").repeated(36);
