@@ -304,7 +304,10 @@ can directly accept the full original WAV. On hardware that cannot
 support the whole WAV, measure chunked mode alone. The mock 32-second
 English source is silence with scripted ASR replies and deliberately tests
 the merger, segment count and local-only report; it is NOT evidence of
-model WER, naturalness or accuracy on Russian speakers.
+model WER, naturalness or accuracy on Russian speakers. The corpus loader
+verifies the WAV's **actual frame payload**, not just the RIFF header's
+declared frame count; truncated samples are rejected before making any
+local model request.
 
 ## Privacy and release boundaries
 

@@ -49,6 +49,11 @@ def check_wave(data):
                     reader.getnchannels() not in (1, 2) or
                     not 8000 <= rate <= 96000 or frames <= 0):
                 raise ValueError("WAV must contain 16-bit 1/2-channel PCM")
+            expected = frames * reader.getnchannels() * reader.getsampwidth()
+            if expected > len(data) or expected > MAX_WAV:
+                raise ValueError("WAV header declared more samples than available")
+            if len(reader.readframes(frames)) != expected:
+                raise ValueError("WAV sample data was truncated")
             return round(frames / rate, 3)
     except (EOFError, wave.Error) as exc:
         raise ValueError("Corrupt or unsupported RIFF WAV") from exc
@@ -141,11 +146,15 @@ def app_chunked_pcm_wavs(wav_data):
     Refuse other input formats rather than pretending to match Ember's sinc
     resampler for 44.1/48k stereo microphone capture.
     """
+    if len(wav_data) > MAX_WAV or len(wav_data) < 44:
+        raise ValueError("Out-of-budget WAV is not valid for local chunking")
     with wave.open(io.BytesIO(wav_data), "rb") as reader:
         rate = reader.getframerate()
         if reader.getnchannels() != 1 or reader.getsampwidth() != 2 or rate != 16000:
             raise ValueError("--app-chunking requires pre-resampled 16kHz mono PCM16")
         total = reader.getnframes()
+        if total <= 0 or total * 2 > MAX_WAV or total * 2 > len(wav_data):
+            raise ValueError("WAV declares unsupported or oversized frame count")
         samples = reader.readframes(total)
         if len(samples) != total * 2:
             raise ValueError("Truncated WAV has fewer frames than declared")
@@ -316,6 +325,16 @@ def self_test():
         assert long_report["overall"]["asr_segments"] == len(calls) == 2
         assert long_report["overall"]["real_time_factor"] > 0
         assert "river" not in json.dumps(long_report)
+        try:
+            check_wave(audio.getvalue()[:-10])
+            raise AssertionError("Truncated corpus WAV incorrectly accepted")
+        except ValueError:
+            pass
+        try:
+            list(app_chunked_pcm_wavs(audio.getvalue()[:-10]))
+            raise AssertionError("Truncated long chunked WAV incorrectly accepted")
+        except ValueError:
+            pass
         assert join_overlap_text(["Сегодня я читаю эту книгу",
                                  "эту книгу каждый день"]) == (
                                  "Сегодня я читаю эту книгу каждый день")
