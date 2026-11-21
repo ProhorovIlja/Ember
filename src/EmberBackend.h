@@ -131,6 +131,7 @@ private:
     void startCapture(bool dictation);
     void transcribeNextChunk();
     void completeTranscription();
+    void failTranscription(const QString &reason);
     void refreshSessions();
     void rebuildConversationHistory();
     void renderChatStream();
