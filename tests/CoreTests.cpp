@@ -1,6 +1,7 @@
 #include "Core.h"
 #include "SessionStore.h"
 #include <QTemporaryDir>
+#include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -9,6 +10,23 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void offlineSpeechRejectsUnknownAliasesAndInvalidGGUF() {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        QVERIFY(EmberCore::offlineSpeechModelFile(temp.path(), "qwen3-tts-0.6b").isEmpty());
+        QVERIFY(EmberCore::offlineSpeechModelFile(temp.path(), "../../evil").isEmpty());
+        QVERIFY(QDir().mkpath(temp.filePath("models/speech")));
+        QFile file(temp.filePath("models/speech/qwen3-tts-0.6b.gguf"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write(QByteArray("GGUF") + QByteArray(80, char(0))), qint64(84));
+        file.close();
+        QVERIFY(!EmberCore::offlineSpeechModelFile(temp.path(), "qwen3-tts-0.6b").isEmpty());
+        QVERIFY(EmberCore::offlineSpeechModelFile(temp.path(), "qwen3-asr-1.7b").isEmpty());
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QCOMPARE(file.write(QByteArray(84, char(0))), qint64(84));
+        file.close();
+        QVERIFY(EmberCore::offlineSpeechModelFile(temp.path(), "qwen3-tts-0.6b").isEmpty());
+    }
     void boundedCaptureWritesNeverCrossQuotaOrSplitPcmFrames() {
         using EmberCore::allowedCaptureBytes;
         const qint64 cap = 1024LL * 1024 * 1024;

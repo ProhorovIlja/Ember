@@ -1,5 +1,19 @@
 # Windows portable setup — first voice milestone
 
+**Offline native Qwen speech loading:** with downloaded packages blocked by
+default, place a trusted GGUF at `models/speech/qwen3-tts-0.6b.gguf`,
+`models/speech/qwen3-tts-1.7b.gguf`,
+`models/speech/qwen3-asr-0.6b.gguf` or
+`models/speech/qwen3-asr-1.7b.gguf` (only the selected model(s)).
+The local GGUF is opened by explicit absolute file path, rather than a catalog
+alias that triggers speech.cpp's `curl`-based model fetch.
+The Settings toggle **Allow model downloads** is disabled by default;
+allowing it is an explicit choice. The UI checks only the first four GGUF
+magic bytes and file path safety, **not weight integrity or license**; use
+the separate SHA-256 offline payload inventory before redistribution.
+This does not guarantee a third-party executable never contacts the Internet;
+a real disconnected-machine acceptance test remains mandatory.
+
 **Offline packaging:** Ember's desired final distribution must install and run
 fully without a VPN, zapret, GitHub, Hugging Face or model downloads. At this
 development checkpoint, models and engine DLLs are NOT bundled. The new
@@ -88,7 +102,7 @@ An optional [speech.cpp](https://github.com/nyosegawa/speech.cpp) installation p
 speech.exe serve qwen3-tts-0.6b --host 127.0.0.1 --port 43822 --device auto --threads 4
 ```
 
-The native server stays resident for subsequent sentences, uses the local health endpoint, is stopped explicitly or at Ember exit, and requires **no browser**. It is **not** started on application launch. On its first run speech.cpp may download GGUF model weights from Hugging Face. The Settings UI states this before the user starts the process. Inference requests are sent only to `127.0.0.1:43822`; the model download is an external network operation and may require internet access. Verify the engine release and the particular GGUF **model license** before use. You may instead start a compatible third-party local TTS server; that option remains supported without Ember managing its lifecycle. No weights or speech.exe are currently bundled.
+The native server stays resident for subsequent sentences, uses the local health endpoint, is stopped explicitly or at Ember exit, and requires **no browser**. It is **not** started on application launch. By default Ember requires local GGUF files for managed speech.cpp and passes them by path; missing files are refused without a fetch. Enable **Allow model downloads** explicitly to permit catalog downloads of absent files. The native engine itself is not an OS network sandbox; a disconnected Windows acceptance test is required. Inference requests are sent only to `127.0.0.1:43822`; the model download is an external network operation and may require internet access. Verify the engine release and the particular GGUF **model license** before use. You may instead start a compatible third-party local TTS server; that option remains supported without Ember managing its lifecycle. No weights or speech.exe are currently bundled.
 
 ### Speech playback improvements
 

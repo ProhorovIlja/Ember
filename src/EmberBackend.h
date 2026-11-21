@@ -54,6 +54,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(int deliveryStyle READ deliveryStyle WRITE setDeliveryStyle NOTIFY configurationChanged)
     Q_PROPERTY(int outputVolume READ outputVolume WRITE setOutputVolume NOTIFY configurationChanged)
     Q_PROPERTY(bool earlySpeechEnabled READ earlySpeechEnabled WRITE setEarlySpeechEnabled NOTIFY configurationChanged)
+    Q_PROPERTY(bool allowSpeechDownloads READ allowSpeechDownloads WRITE setAllowSpeechDownloads NOTIFY configurationChanged)
     Q_PROPERTY(QString localVoice READ localVoice WRITE setLocalVoice NOTIFY configurationChanged)
     Q_PROPERTY(QString voiceSample READ voiceSample WRITE setVoiceSample NOTIFY configurationChanged)
     Q_PROPERTY(QString localModel READ localModel WRITE setLocalModel NOTIFY configurationChanged)
@@ -95,6 +96,7 @@ public:
     int deliveryStyle() const { return m_deliveryStyle; }
     int outputVolume() const { return m_outputVolume; }
     bool earlySpeechEnabled() const { return m_earlySpeechEnabled; }
+    bool allowSpeechDownloads() const { return m_allowSpeechDownloads; }
     QString localVoice() const { return m_localVoice; }
     QString voiceSample() const { return m_voiceSample; }
     QString localModel() const { return m_localModel; }
@@ -114,6 +116,7 @@ public:
     Q_INVOKABLE void setDeliveryStyle(int style);
     Q_INVOKABLE void setOutputVolume(int percent);
     Q_INVOKABLE void setEarlySpeechEnabled(bool value);
+    Q_INVOKABLE void setAllowSpeechDownloads(bool value);
     Q_INVOKABLE void setLocalVoice(const QString &value);
     Q_INVOKABLE void setVoiceSample(const QString &value);
     Q_INVOKABLE void setLocalModel(const QString &value);
@@ -230,6 +233,8 @@ private:
     bool m_chatGenerating = false;
     bool m_voiceEarlyActive = false, m_voiceEarlyFailed = false;
     bool m_earlySpeechEnabled = true;
+    bool m_allowSpeechDownloads = false; // user explicit opt-in, not assumed
+    bool m_speechTtsPathMode = false, m_speechAsrPathMode = false;
     qsizetype m_liveSpeechCursor = 0;
     bool m_speechServerReady = false;
     // One WAV plays while the opposite private slot is synthesized ahead.

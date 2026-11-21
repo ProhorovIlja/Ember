@@ -1739,7 +1739,7 @@ ApplicationWindow {
                                 Rectangle {
                                     visible: ember.voiceEngine === 1 || ember.recognitionEngine > 0
                                     Layout.fillWidth: true
-                                    implicitHeight: 227
+                                    implicitHeight: 278
                                     radius: 14
                                     color: window.cardColor
                                     border.color: window.borderColor
@@ -1772,7 +1772,7 @@ ApplicationWindow {
                                         }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: "Optional native speech.cpp service can load TTS and your chosen ASR model together, or ASR alone with Kokoro. First start may download licensed weights; all inference stays on loopback."
+                                            text: "Offline-first speech.cpp: put GGUF files in models/speech/<alias>.gguf. External model downloads are blocked unless enabled below."
                                             wrapMode: Text.WordWrap
                                             color: "#8EABC5"
                                             font.pixelSize: 12
@@ -1801,6 +1801,24 @@ ApplicationWindow {
                                                 implicitHeight: 34
                                                 enabled: !ember.busy && !ember.listening && !ember.speaking
                                                 onClicked: ember.earlySpeechEnabled = !ember.earlySpeechEnabled
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: "ALLOW MODEL DOWNLOADS"
+                                                color: "#BDDDF4"
+                                                font.pixelSize: 11
+                                            }
+                                            PillButton {
+                                                text: ember.allowSpeechDownloads ? "Enabled" : "Blocked"
+                                                implicitWidth: 106
+                                                implicitHeight: 32
+                                                enabled: !ember.speechServerRunning
+                                                onClicked: ember.allowSpeechDownloads = !ember.allowSpeechDownloads
+                                                ToolTip.visible: hovered
+                                                ToolTip.text: "Blocked by default; opt-in may need access to a foreign model host."
                                             }
                                         }
                                         RowLayout {

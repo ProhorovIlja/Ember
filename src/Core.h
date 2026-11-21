@@ -47,6 +47,8 @@ qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
                            int bytesPerFrame, qint64 quota = 1024LL * 1024 * 1024);
 // Render a restricted local-only subset of Markdown. No external-resource HTML.
 QString safeMarkdownHtml(const QString &markdown);
+// User-supplied local GGUF model path, never a catalog download alias.
+QString offlineSpeechModelFile(const QString &applicationRoot, const QString &alias);
 bool validSpeechWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
 QString speechFriendlyText(const QString &markdown);

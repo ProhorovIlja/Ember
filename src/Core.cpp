@@ -1,5 +1,8 @@
 #include "Core.h"
 #include <QDataStream>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QIODevice>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -11,6 +14,23 @@
 #include <cstring>
 #include <numbers>
 namespace EmberCore {
+QString offlineSpeechModelFile(const QString &applicationRoot, const QString &alias) {
+    static const QStringList allowed{
+        "qwen3-tts-0.6b", "qwen3-tts-1.7b",
+        "qwen3-asr-0.6b", "qwen3-asr-1.7b"
+    };
+    if (!allowed.contains(alias)) return {};
+    const QFileInfo folder(QDir(applicationRoot).filePath("models/speech"));
+    if (!folder.isDir() || folder.isSymLink()) return {};
+    const QString canonicalFolder = folder.canonicalFilePath();
+    const QFileInfo candidate(QDir(folder.absoluteFilePath()).filePath(alias + ".gguf"));
+    if (!candidate.isFile() || candidate.isSymLink() || candidate.size() < 64) return {};
+    const QString canonical = candidate.canonicalFilePath();
+    if (!canonical.startsWith(canonicalFolder + QDir::separator())) return {};
+    QFile file(canonical);
+    if (!file.open(QIODevice::ReadOnly) || file.read(4) != "GGUF") return {};
+    return canonical;
+}
 bool captureAllowedWithInterruption(bool busy, bool listening,
                                     bool speechActive, bool recognitionActive) {
     return !listening && !recognitionActive && (!busy || speechActive);

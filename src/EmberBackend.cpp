@@ -192,6 +192,7 @@ EmberBackend::EmberBackend(QObject *parent)
     m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 4);
     m_outputVolume = qBound(0, m_settings.value("audio/outputVolume", 85).toInt(), 100);
     m_earlySpeechEnabled = m_settings.value("voice/earlySpeech", true).toBool();
+    m_allowSpeechDownloads = m_settings.value("voice/allowDownloads", false).toBool();
     m_autoEndOnSilence = m_settings.value("voice/autoEndOnSilence", false).toBool();
     m_localModel = m_settings.value("voice/localModel", "qwen3-tts-0.6b").toString();
     m_localVoice = m_settings.value("voice/localVoice", "vivian").toString();
@@ -801,6 +802,19 @@ void EmberBackend::setSpeechServerReady(bool ready) {
     m_speechServerReady = ready;
     emit speechServerChanged();
 }
+void EmberBackend::setAllowSpeechDownloads(bool value) {
+    if (m_allowSpeechDownloads == value) return;
+    if (m_speechServer.state() != QProcess::NotRunning) {
+        setStatus("Stop the native speech engine before changing download permission.");
+        return;
+    }
+    m_allowSpeechDownloads = value;
+    m_settings.setValue("voice/allowDownloads", value);
+    emit configurationChanged();
+    setStatus(value
+        ? "Speech model catalog downloads explicitly enabled; network may be required."
+        : "Speech model downloads blocked. Only installed local GGUF files accepted.");
+}
 void EmberBackend::startSpeechServer() {
     if (m_speechServer.state() != QProcess::NotRunning) {
         setStatus(m_speechServerReady ? "Native speech engine is ready."
@@ -812,21 +826,45 @@ void EmberBackend::startSpeechServer() {
         setStatus("Choose a trusted native speech.exe in Settings before starting.");
         return;
     }
-    // The user explicitly starts this optional process. speech.cpp may fetch
-    // model weights on its first run; Ember never automatically starts it.
+    // speech.cpp can take .gguf file paths directly. Untrusted catalog aliases
+    // are never allowed to fetch model bytes without the explicit toggle.
     const QRegularExpression modelRx("^[A-Za-z0-9_-]{1,80}$");
     if (m_voiceEngine == 1 && !modelRx.match(m_localModel).hasMatch()) {
-        setStatus("Choose a speech.cpp catalog model name, e.g. qwen3-tts-0.6b.");
+        setStatus("Select a supported native TTS model alias.");
         return;
     }
     QStringList models{"serve"};
-    if (m_voiceEngine == 1) models.append(m_localModel);
-    if (m_recognitionEngine > 0)
-        models.append(EmberCore::nativeAsrModel(m_recognitionEngine));
+    bool ttsPath = false, asrPath = false;
+    auto modelArg = [this](const QString &name, bool &fileUsed) -> QString {
+        const QString path = EmberCore::offlineSpeechModelFile(appFolder(), name);
+        fileUsed = !path.isEmpty();
+        return fileUsed ? path : (m_allowSpeechDownloads ? name : QString());
+    };
+    if (m_voiceEngine == 1) {
+        const QString arg = modelArg(m_localModel, ttsPath);
+        if (arg.isEmpty()) {
+            setStatus("Offline TTS GGUF missing at models/speech/<alias>.gguf. "
+                      "Import a model or explicitly enable catalog downloads.");
+            return;
+        }
+        models.append(arg);
+    }
+    if (m_recognitionEngine > 0) {
+        const QString arg = modelArg(
+            EmberCore::nativeAsrModel(m_recognitionEngine), asrPath);
+        if (arg.isEmpty()) {
+            setStatus("Offline ASR GGUF missing at models/speech/<alias>.gguf. "
+                      "Import a model or explicitly enable catalog downloads.");
+            return;
+        }
+        models.append(arg);
+    }
     if (models.size() < 2) {
         setStatus("Select a native voice or recognition model before starting speech.cpp.");
         return;
     }
+    m_speechTtsPathMode = ttsPath;
+    m_speechAsrPathMode = asrPath;
     ++m_speechServerSession;
     setSpeechServerReady(false);
     m_speechServer.setWorkingDirectory(QFileInfo(binary).absolutePath());
@@ -838,7 +876,12 @@ void EmberBackend::startSpeechServer() {
     m_speechHealthTimer.start();
     m_speechServer.start();
     emit speechServerChanged();
-    setStatus("Loading native local speech models. Explicit first start may download licensed weights.");
+    const bool fetchingAllowed = m_allowSpeechDownloads &&
+        ((m_voiceEngine == 1 && !m_speechTtsPathMode) ||
+         (m_recognitionEngine > 0 && !m_speechAsrPathMode));
+    setStatus(fetchingAllowed
+        ? "Local speech starting; external catalog downloads were explicitly allowed."
+        : "Loading pre-installed speech GGUF; no catalog download requested.");
 }
 void EmberBackend::stopSpeechServer() {
     ++m_speechServerSession;
@@ -1357,7 +1400,9 @@ void EmberBackend::transcribeViaNativeServer() {
         part.setBody(value);
         multipart->append(part);
     };
-    textField("model", EmberCore::nativeAsrModel(m_recognitionEngine).toUtf8());
+    if (!m_speechAsrPathMode)
+        textField("model", EmberCore::nativeAsrModel(m_recognitionEngine).toUtf8());
+    // For a single file-backed ASR model, omission selects the active model.
     textField("response_format", "text");
     textField("language", EmberCore::recognitionLanguageTag(m_recognitionLanguage).toUtf8());
     const QString hints = EmberCore::compactAsrHints(m_recognitionHints);
@@ -1614,8 +1659,9 @@ void EmberBackend::synthesizeStreamingPcm(const QString &text) {
                          QNetworkRequest::ManualRedirectPolicy);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Accept", "audio/pcm");
-    const QJsonObject payload = EmberCore::streamingPcmSpeechRequest(
+    QJsonObject payload = EmberCore::streamingPcmSpeechRequest(
         m_localModel, m_localVoice, text, m_deliveryStyle);
+    if (m_speechTtsPathMode) payload.remove("model");
     auto *reply = m_network.post(
         request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     // Backpressure: Qt must not buffer an entire multi-minute synthesized
