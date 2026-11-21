@@ -29,3 +29,25 @@ Sources below are **upstream documentation** checked for the initial design, not
 ### Native Sesame mobile parity reference: private text thread
 
 Official mobile listings document Incognito/privacy choices, continuous voice/text memory, sharing images and voice notes, reminders, and search cards: https://play.google.com/store/apps/details?id=com.sesame.consumer and https://apps.apple.com/us/app/sesame-personal-agents/id6756329076 . These are public functional references only; proprietary Sesame login/voices/assets/source code are not imported. Ember's native RAM-only text conversation is separate and does not guarantee removal of OS swap or temporary audio files.
+
+## 22 November 2026: current upstream voice licensing/maintenance check
+
+- Qwen3-TTS: https://github.com/QwenLM/Qwen3-TTS — Apache-2.0
+  upstream source; model and tokenizer redistribution must be
+  checked for the exact weight revisions, dependencies and notices.
+  The official built-in female speaker timbres are not English-native,
+  so choose English female sound by real listening tests rather than
+  speaker label. The 1.7B CustomVoice has delivery instructions,
+  whereas 0.6B CustomVoice omits them.
+- Chatterbox: https://github.com/resemble-ai/chatterbox —
+  MIT upstream archived as of August 2026; do not interpret its
+  published samples as proof that an ongoing maintained Windows
+  dependency exists. Weight and codec dependency provenance must
+  be reviewed separately.
+- LuxTTS: https://github.com/trd-jarvis/LuxTTS —
+  source/model Apache-2.0 claims, light CPU/GPU profile, not tested
+  in Ember, no packaging or benchmark acceptance. Evaluate it as
+  potential low-resource fallback, not a shipped component.
+
+All vendors' speed/quality figures are hardware- and protocol-specific
+and cannot substitute for Ember's RTX4070 real Windows benchmark.
