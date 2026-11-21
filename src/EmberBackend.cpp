@@ -119,29 +119,17 @@ EmberBackend::EmberBackend(QObject *parent)
                 }
                 if (state == QMediaPlayer::StoppedState && m_speaking) {
                     setSpeaking(false);
-                    if (m_speechSequence && !m_voiceQueue.isEmpty()) {
-                        // Defer the next TTS command so Qt can finish this
-                        // media-state transition before reusing voice.wav.
-                        QTimer::singleShot(0, this, [this] {
-                            if (m_speechSequence && !m_busy && !m_speaking)
-                                playNextSpeechChunk();
-                        });
-                    } else if (m_speechSequence) {
-                        m_speechSequence = false;
-                        setStatus("Finished speaking the complete reply.");
-                    } else {
-                        setStatus("Ready for your next question.");
-                    }
+                    // Release Windows' handle before reusing this slot later.
+                    m_mediaPlayer.setSource(QUrl());
+                    QTimer::singleShot(0, this, [this] {
+                        if (m_speechSequence) playNextSpeechChunk();
+                    });
                 }
             });
     connect(&m_mediaPlayer, &QMediaPlayer::errorOccurred, this,
             [this](QMediaPlayer::Error error, const QString &) {
-                if (error != QMediaPlayer::NoError) {
-                    m_speechSequence = false;
-                    m_voiceQueue.clear();
-                    setSpeaking(false);
-                    setStatus("Windows could not play the synthesized audio.");
-                }
+                if (error != QMediaPlayer::NoError)
+                    stopSpeechOnError("Windows could not play the synthesized audio.");
             });
 
     m_healthTimer.setInterval(1200);
@@ -192,25 +180,21 @@ EmberBackend::EmberBackend(QObject *parent)
                 if (!m_busy) return;
                 setBusy(false);
                 if (how != QProcess::NormalExit || code != 0 ||
-                    QFileInfo(workFile("voice.wav")).size() < 44) {
-                    m_speechSequence = false;
-                    m_voiceQueue.clear();
-                    setStatus("Voice synthesis failed. Check the Kokoro files and voice ID.");
+                    m_ttsOutputSlot < 0 ||
+                    QFileInfo(speechFile(m_ttsOutputSlot)).size() < 44) {
+                    stopSpeechOnError("Voice synthesis failed. Check the Kokoro files and voice ID.");
                     return;
                 }
                 m_ttsLastMs = m_ttsElapsed.isValid() ? m_ttsElapsed.elapsed() : -1;
                 emit voiceTimingsChanged();
-                playSynthesizedFile();
+                m_readySpeechSlot = m_ttsOutputSlot;
+                m_ttsOutputSlot = -1;
+                playNextSpeechChunk();
             });
     connect(&m_tts, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) {
-                if (m_busy && m_cliTtsActive) {
-                    m_cliTtsActive = false;
-                    m_speechSequence = false;
-                    m_voiceQueue.clear();
-                    setBusy(false);
-                    setStatus("sherpa-onnx TTS could not start. Check its executable and DLLs.");
-                }
+                if (m_busy && m_cliTtsActive)
+                    stopSpeechOnError("sherpa-onnx TTS could not start. Check its executable and DLLs.");
             });
     if (m_store && m_store->ready()) {
         const QVariantList saved = m_store->sessions(1);
@@ -935,19 +919,51 @@ void EmberBackend::completeTranscription() {
     }
 }
 
+QString EmberBackend::speechFile(int slot) const {
+    return workFile(slot == 0 ? "voice-a.wav" : "voice-b.wav");
+}
+void EmberBackend::stopSpeechOnError(const QString &error) {
+    m_speechSequence = false;
+    m_voiceQueue.clear();
+    m_readySpeechSlot = m_ttsOutputSlot = m_playingSpeechSlot = -1;
+    m_cliTtsActive = false;
+    if (m_speechReply) {
+        auto reply = m_speechReply;
+        m_speechReply = nullptr;
+        reply->abort();
+    }
+    if (m_tts.state() != QProcess::NotRunning) m_tts.kill();
+    m_mediaPlayer.stop();
+    m_mediaPlayer.setSource(QUrl());
+    setSpeaking(false);
+    setBusy(false);
+    setStatus(error);
+}
 void EmberBackend::beginSpeech(const QString &text) {
     m_voiceQueue = EmberCore::speechChunks(text);
     if (m_voiceQueue.isEmpty()) {
         setStatus("No valid text available for the local speech engine.");
         return;
     }
+    m_readySpeechSlot = m_playingSpeechSlot = m_ttsOutputSlot = -1;
     m_speechSequence = true;
     playNextSpeechChunk();
 }
 void EmberBackend::playNextSpeechChunk() {
-    if (!m_speechSequence || m_voiceQueue.isEmpty()) return;
-    const QString next = m_voiceQueue.takeFirst();
-    synthesize(next);
+    if (!m_speechSequence) return;
+    // The current chunk can play while the opposite WAV slot is synthesized.
+    // At most one prepared chunk is buffered, keeping scratch disk bounded.
+    if (!m_speaking && m_readySpeechSlot >= 0)
+        playSynthesizedFile();
+    if (m_busy || m_readySpeechSlot >= 0) return;
+    if (!m_voiceQueue.isEmpty()) {
+        const QString next = m_voiceQueue.takeFirst();
+        m_ttsOutputSlot = (m_playingSpeechSlot == 0 ? 1 : 0);
+        synthesize(next);
+    } else if (!m_speaking) {
+        m_speechSequence = false;
+        setStatus("Finished speaking the complete reply.");
+    }
 }
 void EmberBackend::synthesize(const QString &text) {
     if (m_voiceEngine == 1) {
@@ -955,9 +971,7 @@ void EmberBackend::synthesize(const QString &text) {
         return;
     }
     if (m_tts.state() != QProcess::NotRunning) {
-        m_speechSequence = false;
-        m_voiceQueue.clear();
-        setStatus("Previous Kokoro process is stopping. Try again shortly.");
+        stopSpeechOnError("Previous Kokoro process is stopping. Try again shortly.");
         return;
     }
     const QString root = configPath("ttsDir");
@@ -968,15 +982,12 @@ void EmberBackend::synthesize(const QString &text) {
     const QString dataDir = folder.filePath("espeak-ng-data");
     if (!isRegularFile(configPath("ttsExe")) || !isRegularFile(model) ||
         !isRegularFile(voices) || !isRegularFile(tokens) || !QFileInfo(dataDir).isDir()) {
-        m_speechSequence = false;
-        m_voiceQueue.clear();
-        setStatus("Configure sherpa-onnx and the complete Kokoro v0.19 pack, including espeak-ng-data.");
+        stopSpeechOnError("Configure sherpa-onnx and the complete Kokoro v0.19 pack, including espeak-ng-data.");
         return;
     }
-    // Release Windows' previous WAV file handle before regenerating a
-    // later spoken segment at the same private path.
-    m_mediaPlayer.setSource(QUrl());
-    QFile::remove(workFile("voice.wav"));
+    // Alternating private files allow synthesis during active playback.
+    // Never overwrite the WAV currently owned by QMediaPlayer.
+    QFile::remove(speechFile(m_ttsOutputSlot));
     m_tts.setWorkingDirectory(QFileInfo(configPath("ttsExe")).absolutePath());
     m_tts.setProgram(configPath("ttsExe"));
     m_tts.setArguments({"--kokoro-model=" + model,
@@ -985,7 +996,7 @@ void EmberBackend::synthesize(const QString &text) {
                         "--kokoro-data-dir=" + dataDir,
                         "--num-threads=2",
                         "--sid=" + QString::number(m_voiceId),
-                        "--output-filename=" + workFile("voice.wav"),
+                        "--output-filename=" + speechFile(m_ttsOutputSlot),
                         text.left(700)});
     setBusy(true);
     m_ttsElapsed.start();
@@ -994,20 +1005,22 @@ void EmberBackend::synthesize(const QString &text) {
     m_tts.start();
 }
 void EmberBackend::playSynthesizedFile() {
+    if (m_readySpeechSlot < 0) return;
+    const int slot = m_readySpeechSlot;
+    m_readySpeechSlot = -1;
+    m_playingSpeechSlot = slot;
     m_mediaPlayer.stop();
     m_mediaPlayer.setSource(QUrl());
-    m_mediaPlayer.setSource(QUrl::fromLocalFile(workFile("voice.wav")));
+    m_mediaPlayer.setSource(QUrl::fromLocalFile(speechFile(slot)));
     m_mediaPlayer.play();
     setSpeaking(true);
-    setStatus("Speaking locally — no cloud audio service.");
+    setStatus("Speaking locally — the next segment can prepare in parallel.");
 }
 void EmberBackend::synthesizeViaLocalServer(const QString &text) {
     constexpr qsizetype maxWavBytes = 8 * 1024 * 1024;
     const QString url = "http://127.0.0.1:43822/v1/audio/speech";
     if (!EmberCore::allowedLocalSpeechEndpoint(url) || !m_work || !m_work->isValid()) {
-        m_speechSequence = false;
-        m_voiceQueue.clear();
-        setStatus("Invalid private work folder or local speech service endpoint.");
+        stopSpeechOnError("Invalid private work folder or local speech service endpoint.");
         return;
     }
     QNetworkRequest request{QUrl(url)};
@@ -1015,8 +1028,7 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    m_mediaPlayer.setSource(QUrl());
-    QFile::remove(workFile("voice.wav"));
+    QFile::remove(speechFile(m_ttsOutputSlot));
     QNetworkReply *reply = m_network.post(
         request, QJsonDocument(EmberCore::speechRequest(
             m_localModel, m_localVoice, text)).toJson(QJsonDocument::Compact));
@@ -1040,25 +1052,21 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
         const QByteArray wav = ok ? reply->readAll() : QByteArray();
         reply->deleteLater();
         if (!ok || !EmberCore::validSpeechWav(wav)) {
-            m_speechSequence = false;
-            m_voiceQueue.clear();
-            setBusy(false);
-            setStatus("Local TTS is offline, returned unsupported WAV or exceeded the 8 MiB limit.");
+            stopSpeechOnError("Local TTS is offline, returned unsupported WAV or exceeded the 8 MiB limit.");
             return;
         }
-        QSaveFile output(workFile("voice.wav"));
+        QSaveFile output(speechFile(m_ttsOutputSlot));
         if (!output.open(QIODevice::WriteOnly) ||
             output.write(wav) != wav.size() || !output.commit()) {
-            m_speechSequence = false;
-            m_voiceQueue.clear();
-            setBusy(false);
-            setStatus("Could not save temporary local speech for playback.");
+            stopSpeechOnError("Could not save temporary local speech for playback.");
             return;
         }
         m_ttsLastMs = m_ttsElapsed.isValid() ? m_ttsElapsed.elapsed() : -1;
         emit voiceTimingsChanged();
         setBusy(false);
-        playSynthesizedFile();
+        m_readySpeechSlot = m_ttsOutputSlot;
+        m_ttsOutputSlot = -1;
+        playNextSpeechChunk();
     });
 }
 void EmberBackend::testVoice() {
@@ -1066,6 +1074,7 @@ void EmberBackend::testVoice() {
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_mediaPlayer.stop();
+    m_mediaPlayer.setSource(QUrl());
     setSpeaking(false);
     beginSpeech(m_voiceSample);
 }
@@ -1073,6 +1082,7 @@ void EmberBackend::cancelWork() {
     m_voiceTurnActive = false;
     m_speechSequence = false;
     m_voiceQueue.clear();
+    m_readySpeechSlot = m_ttsOutputSlot = m_playingSpeechSlot = -1;
     if (m_reply) {
         auto reply = m_reply;
         m_reply = nullptr;
@@ -1095,6 +1105,8 @@ void EmberBackend::cancelWork() {
     releaseCapture();
     m_mediaPlayer.stop();
     m_mediaPlayer.setSource(QUrl());
+    QFile::remove(speechFile(0));
+    QFile::remove(speechFile(1));
     setSpeaking(false);
     m_voicePending = false;
     setBusy(false);
