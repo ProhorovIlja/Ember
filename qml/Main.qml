@@ -603,7 +603,7 @@ ApplicationWindow {
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: ember.speechServerReady && ember.voiceEngine === 1 ?
-                                      "Native PCM audio streams as it is generated. Conversation remains turn-based; acoustic latency depends on Windows output." :
+                                      "Ember can begin English speech after its first complete LLM sentence. Audio streams through native PCM; voice remains push-to-talk." :
                                       "Conversation remains turn-based. Start native speech.cpp in Settings for incremental PCM playback."
                                 color: "#78909E"
                                 font.pixelSize: 11
