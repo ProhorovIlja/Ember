@@ -59,6 +59,12 @@ EmberBackend::EmberBackend(QObject *parent)
     const QRegularExpression voiceRx("^[A-Za-z0-9_-]{1,80}$");
     if (!modelRx.match(m_localModel).hasMatch()) m_localModel = "qwen3-tts";
     if (!voiceRx.match(m_localVoice).hasMatch()) m_localVoice = "Vivian";
+    const QString defaultSample =
+        "Hello. I'm Ember, your local voice assistant. "
+        "Let's make something interesting together.";
+    m_voiceSample = m_settings.value("voice/sample", defaultSample).toString();
+    if (m_voiceSample.trimmed().isEmpty() || m_voiceSample.size() > 1200)
+        m_voiceSample = defaultSample;
     // Stable, opaque Qt device identifiers; never persist the numeric list position.
     m_inputId = QByteArray::fromBase64(m_settings.value("audio/inputId").toByteArray());
     m_outputId = QByteArray::fromBase64(m_settings.value("audio/outputId").toByteArray());
@@ -277,6 +283,13 @@ void EmberBackend::setLocalVoice(const QString &value) {
     if (!safe.match(value).hasMatch() || m_localVoice == value) return;
     m_localVoice = value;
     m_settings.setValue("voice/localVoice", value);
+    storeConfig();
+}
+void EmberBackend::setVoiceSample(const QString &value) {
+    if (value.size() > 1200 || value.trimmed().isEmpty() ||
+        m_voiceSample == value) return;
+    m_voiceSample = value;
+    m_settings.setValue("voice/sample", m_voiceSample);
     storeConfig();
 }
 void EmberBackend::setLocalModel(const QString &value) {
@@ -805,7 +818,7 @@ void EmberBackend::testVoice() {
     m_voiceQueue.clear();
     m_mediaPlayer.stop();
     setSpeaking(false);
-    beginSpeech("Hello. I'm Ember, your local voice assistant. Let's make something interesting together.");
+    beginSpeech(m_voiceSample);
 }
 void EmberBackend::cancelWork() {
     m_speechSequence = false;
