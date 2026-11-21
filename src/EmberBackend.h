@@ -1,5 +1,7 @@
 #pragma once
 #include "Core.h"
+#include "SessionStore.h"
+#include <QFile>
 #include <QAudioDevice>
 #include <QAudioFormat>
 #include <QAudioOutput>
@@ -24,6 +26,11 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QString lastReply READ lastReply NOTIFY lastReplyChanged)
     Q_PROPERTY(QString voiceTimings READ voiceTimings NOTIFY voiceTimingsChanged)
     Q_PROPERTY(QVariantList messages READ messages NOTIFY messagesChanged)
+    Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
+    Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY sessionsChanged)
+    Q_PROPERTY(bool localHistoryReady READ localHistoryReady CONSTANT)
+    Q_PROPERTY(bool dictationActive READ dictationActive NOTIFY dictationChanged)
+    Q_PROPERTY(QString dictatedText READ dictatedText NOTIFY dictationChanged)
     Q_PROPERTY(bool brainReady READ brainReady NOTIFY brainReadyChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool listening READ listening NOTIFY listeningChanged)
@@ -47,6 +54,11 @@ public:
     QString lastReply() const { return m_lastReply; }
     QString voiceTimings() const;
     QVariantList messages() const { return m_messages; }
+    QVariantList sessions() const { return m_sessions; }
+    QString currentSessionId() const { return m_sessionId; }
+    bool localHistoryReady() const { return m_store && m_store->ready(); }
+    bool dictationActive() const { return m_listening && m_captureDictation; }
+    QString dictatedText() const { return m_dictatedText; }
     bool brainReady() const { return m_brainReady; }
     bool busy() const { return m_busy; }
     bool listening() const { return m_listening; }
@@ -76,16 +88,23 @@ public:
     Q_INVOKABLE void stopBrain();
     Q_INVOKABLE void submitText(const QString &text);
     Q_INVOKABLE void startRecording();
+    Q_INVOKABLE void startDictation();
+    Q_INVOKABLE void stopDictation();
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void testVoice();
     Q_INVOKABLE void cancelWork();
     Q_INVOKABLE void clearConversation();
+    Q_INVOKABLE void openSession(const QString &id);
+    Q_INVOKABLE void deleteCurrentSession();
 signals:
     void statusChanged();
     void transcriptChanged();
     void lastReplyChanged();
     void voiceTimingsChanged();
     void messagesChanged();
+    void sessionsChanged();
+    void dictationChanged();
+    void dictationReady(const QString &text);
     void brainReadyChanged();
     void busyChanged();
     void listeningChanged();
@@ -101,6 +120,11 @@ private:
     void appendMessage(const QString &role, const QString &text);
     void submit(const QString &text, bool asVoice);
     void transcribe();
+    void startCapture(bool dictation);
+    void transcribeNextChunk();
+    void completeTranscription();
+    void refreshSessions();
+    void rebuildConversationHistory();
     void beginSpeech(const QString &text);
     void playNextSpeechChunk();
     void synthesize(const QString &text);
@@ -119,6 +143,9 @@ private:
     QString m_transcript, m_lastReply, m_pendingUser, m_persona;
     QString m_localVoice = "Vivian", m_localModel = "qwen3-tts";
     QString m_voiceSample;
+    QString m_sessionId, m_dictatedText;
+    QVariantList m_sessions;
+    std::unique_ptr<SessionStore> m_store;
     QStringList m_voiceQueue;
     QVariantList m_messages;
     QList<EmberCore::Turn> m_history;
@@ -131,8 +158,11 @@ private:
     QByteArray m_inputId, m_outputId, m_captureDeviceId;
     std::unique_ptr<QTemporaryDir> m_work;
     std::unique_ptr<QAudioSource> m_audioSource;
-    QBuffer m_audioBuffer;
-    QByteArray m_pcm;
+    QFile m_captureFile;
+    QStringList m_transcriptionSegments;
+    qint64 m_transcriptionOffset = 0, m_transcriptionSize = 0;
+    qint64 m_transcriptionChunkSize = 0;
+    bool m_captureDictation = false, m_transcribingDictation = false;
     QAudioFormat m_captureFormat;
     QAudioOutput m_audioOutput;
     QMediaPlayer m_mediaPlayer;
