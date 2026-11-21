@@ -52,3 +52,10 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Long voice segment watchdog now budgets expected PCM playback duration and extra recovery margin, not a false eight-second total audio cap.
 - [ ] Audit concurrency race cases with a real native speech.cpp and llama-server pair, including user cancellation mid-sentence, disk failure, synthetic HTTP disconnect and no double playback.
 - [ ] Record physical first sound and per-stage latency on Ryzen 5 5600 / RTX 4070, compare listening-quality of Vivian, Serena, Kokoro and other licensed female English options; confirm no glitches from GPU contention.
+
+### LOCAL VOICE BENCHMARK 2026-11-21
+
+- [x] Standard-library-only localhost voice probe present, with sample-rate, PCM length, content-type, no-redirect and no-proxy protections. Mock-service self-tests are integrated into Windows CI.
+- [x] Local native Early Speech setting permits choosing sentence-first low latency or full-text GPU-headroom operation with the same PCM stream transport.
+- [ ] Collect real RTX 4070 results using paired Vivian/Serena/Kokoro/other approved female English voice tests and blind naturalness ratings; compare both Early Speech states under concurrent llama-server load.
+- [ ] Validate actual physical acoustic first-sound timing; the probe deliberately reports only first **HTTP byte** timing.
