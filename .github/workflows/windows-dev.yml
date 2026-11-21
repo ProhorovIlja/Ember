@@ -49,8 +49,18 @@ jobs:
           $env:QT_QPA_PLATFORM = 'offscreen'
           $env:QT_QUICK_BACKEND = 'software'
           $env:QT_OPENGL = 'software'
-          & (Resolve-Path 'build/Release/Ember.exe').Path --smoke-test
-          if ($LASTEXITCODE -ne 0) { throw "Native QML smoke test failed with exit code $LASTEXITCODE" }
+          $exe = (Resolve-Path 'build/Release/Ember.exe').Path
+          $log = Join-Path $env:RUNNER_TEMP 'ember-qml-stderr.txt'
+          $stdout = Join-Path $env:RUNNER_TEMP 'ember-qml-stdout.txt'
+          $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru -RedirectStandardError $log -RedirectStandardOutput $stdout
+          if (-not $process.WaitForExit(20000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Get-Content $log -ErrorAction SilentlyContinue
+            throw 'Ember headless window did not exit within 20 seconds.'
+          }
+          Get-Content $log -ErrorAction SilentlyContinue
+          Get-Content $stdout -ErrorAction SilentlyContinue
+          if ($process.ExitCode -ne 0) { throw "Native QML smoke test failed with exit code $($process.ExitCode)" }
       - name: Package unsigned development build
         shell: pwsh
         run: |
