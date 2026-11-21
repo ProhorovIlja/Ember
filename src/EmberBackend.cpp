@@ -91,12 +91,26 @@ EmberBackend::EmberBackend(QObject *parent)
             [this](QMediaPlayer::PlaybackState state) {
                 if (state == QMediaPlayer::StoppedState && m_speaking) {
                     setSpeaking(false);
-                    setStatus("Ready for your next question.");
+                    if (m_speechSequence && !m_voiceQueue.isEmpty()) {
+                        // Defer the next TTS command so Qt can finish this
+                        // media-state transition before reusing voice.wav.
+                        QTimer::singleShot(0, this, [this] {
+                            if (m_speechSequence && !m_busy && !m_speaking)
+                                playNextSpeechChunk();
+                        });
+                    } else if (m_speechSequence) {
+                        m_speechSequence = false;
+                        setStatus("Finished speaking the complete reply.");
+                    } else {
+                        setStatus("Ready for your next question.");
+                    }
                 }
             });
     connect(&m_mediaPlayer, &QMediaPlayer::errorOccurred, this,
             [this](QMediaPlayer::Error error, const QString &) {
                 if (error != QMediaPlayer::NoError) {
+                    m_speechSequence = false;
+                    m_voiceQueue.clear();
                     setSpeaking(false);
                     setStatus("Windows could not play the synthesized audio.");
                 }
@@ -157,6 +171,8 @@ EmberBackend::EmberBackend(QObject *parent)
                 setBusy(false);
                 if (how != QProcess::NormalExit || code != 0 ||
                     QFileInfo(workFile("voice.wav")).size() < 44) {
+                    m_speechSequence = false;
+                    m_voiceQueue.clear();
                     setStatus("Voice synthesis failed. Check the Kokoro files and voice ID.");
                     return;
                 }
@@ -164,7 +180,10 @@ EmberBackend::EmberBackend(QObject *parent)
             });
     connect(&m_tts, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) {
-                if (m_busy) {
+                if (m_busy && m_cliTtsActive) {
+                    m_cliTtsActive = false;
+                    m_speechSequence = false;
+                    m_voiceQueue.clear();
                     setBusy(false);
                     setStatus("sherpa-onnx TTS could not start. Check its executable and DLLs.");
                 }
@@ -364,6 +383,8 @@ void EmberBackend::onOutputInventoryChanged() {
     for (const auto &device : devices)
         if (device.id() == m_outputId) selectedExists = true;
     if (!selectedExists) {
+        m_speechSequence = false;
+        m_voiceQueue.clear();
         m_mediaPlayer.stop();
         setSpeaking(false);
         m_outputId.clear();
@@ -475,6 +496,8 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         if (text.size() > 4096) setStatus("Message too long; limit is 4,096 characters.");
         return;
     }
+    m_speechSequence = false;
+    m_voiceQueue.clear();
     m_mediaPlayer.stop();
     setSpeaking(false);
     m_pendingUser = text;
@@ -525,7 +548,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         const bool shouldSpeak = m_voicePending;
         m_voicePending = false;
         setBusy(false);
-        if (shouldSpeak) synthesize(answer);
+        if (shouldSpeak) beginSpeech(answer);
         else setStatus("Response complete · local inference.");
     });
 }
@@ -565,6 +588,8 @@ void EmberBackend::startRecording() {
         setStatus("Unsupported microphone format; choose a different Windows input device.");
         return;
     }
+    m_speechSequence = false;
+    m_voiceQueue.clear();
     m_mediaPlayer.stop();
     setSpeaking(false);
     m_pcm.clear();
@@ -620,12 +645,28 @@ void EmberBackend::transcribe() {
     m_whisper.start();
 }
 
+void EmberBackend::beginSpeech(const QString &text) {
+    m_voiceQueue = EmberCore::speechChunks(text);
+    if (m_voiceQueue.isEmpty()) {
+        setStatus("No valid text available for the local speech engine.");
+        return;
+    }
+    m_speechSequence = true;
+    playNextSpeechChunk();
+}
+void EmberBackend::playNextSpeechChunk() {
+    if (!m_speechSequence || m_voiceQueue.isEmpty()) return;
+    const QString next = m_voiceQueue.takeFirst();
+    synthesize(next);
+}
 void EmberBackend::synthesize(const QString &text) {
     if (m_voiceEngine == 1) {
         synthesizeViaLocalServer(text);
         return;
     }
     if (m_tts.state() != QProcess::NotRunning) {
+        m_speechSequence = false;
+        m_voiceQueue.clear();
         setStatus("Previous Kokoro process is stopping. Try again shortly.");
         return;
     }
@@ -637,6 +678,8 @@ void EmberBackend::synthesize(const QString &text) {
     const QString dataDir = folder.filePath("espeak-ng-data");
     if (!isRegularFile(configPath("ttsExe")) || !isRegularFile(model) ||
         !isRegularFile(voices) || !isRegularFile(tokens) || !QFileInfo(dataDir).isDir()) {
+        m_speechSequence = false;
+        m_voiceQueue.clear();
         setStatus("Configure sherpa-onnx and the complete Kokoro v0.19 pack, including espeak-ng-data.");
         return;
     }
@@ -667,6 +710,8 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
     constexpr qsizetype maxWavBytes = 8 * 1024 * 1024;
     const QString url = "http://127.0.0.1:43822/v1/audio/speech";
     if (!EmberCore::allowedLocalSpeechEndpoint(url) || !m_work || !m_work->isValid()) {
+        m_speechSequence = false;
+        m_voiceQueue.clear();
         setStatus("Invalid private work folder or local speech service endpoint.");
         return;
     }
@@ -698,6 +743,8 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
         const QByteArray wav = ok ? reply->readAll() : QByteArray();
         reply->deleteLater();
         if (!ok || !EmberCore::validSpeechWav(wav)) {
+            m_speechSequence = false;
+            m_voiceQueue.clear();
             setBusy(false);
             setStatus("Local TTS is offline, returned unsupported WAV or exceeded the 8 MiB limit.");
             return;
@@ -705,6 +752,8 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
         QSaveFile output(workFile("voice.wav"));
         if (!output.open(QIODevice::WriteOnly) ||
             output.write(wav) != wav.size() || !output.commit()) {
+            m_speechSequence = false;
+            m_voiceQueue.clear();
             setBusy(false);
             setStatus("Could not save temporary local speech for playback.");
             return;
@@ -715,11 +764,15 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
 }
 void EmberBackend::testVoice() {
     if (m_busy || m_listening) return;
+    m_speechSequence = false;
+    m_voiceQueue.clear();
     m_mediaPlayer.stop();
     setSpeaking(false);
-    synthesize("Hello. I'm Ember, your local voice assistant. Let's make something interesting together.");
+    beginSpeech("Hello. I'm Ember, your local voice assistant. Let's make something interesting together.");
 }
 void EmberBackend::cancelWork() {
+    m_speechSequence = false;
+    m_voiceQueue.clear();
     if (m_reply) {
         auto reply = m_reply;
         m_reply = nullptr;
