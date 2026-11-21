@@ -484,14 +484,14 @@ ApplicationWindow {
                             spacing: 15
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "LOCAL CONVERSATION"; color: "#9CB8D4"; font.pixelSize: 11; font.letterSpacing: 1.2 }
+                                Text { text: "LOCAL CONVERSATION"; visible: window.width >= 1040; color: "#9CB8D4"; font.pixelSize: 11; font.letterSpacing: 1.2 }
                                 Item { Layout.fillWidth: true }
                                 ComboBox {
                                     id: conversationMode
                                     model: ["Conversation", "Story studio", "Troubleshooting", "Development"]
                                     currentIndex: ember.chatMode
                                     onActivated: ember.chatMode = currentIndex
-                                    Layout.preferredWidth: 174
+                                    Layout.preferredWidth: window.width < 1100 ? 145 : 174
                                     implicitHeight: 36
                                     font.pixelSize: 12
                                     contentItem: Text {
@@ -542,8 +542,8 @@ ApplicationWindow {
                                     }
                                 }
                                 PillButton {
-                                    text: "Stop reply"
-                                    implicitWidth: 119
+                                    text: window.width < 1100 ? "Stop" : "Stop reply"
+                                    implicitWidth: window.width < 1100 ? 74 : 119
                                     implicitHeight: 36
                                     enabled: ember.busy
                                     visible: ember.busy
@@ -557,8 +557,8 @@ ApplicationWindow {
                                     onClicked: deleteChatDialog.open()
                                 }
                                 PillButton {
-                                    text: "New conversation"
-                                    implicitWidth: 166
+                                    text: window.width < 1100 ? "New chat" : "New conversation"
+                                    implicitWidth: window.width < 1100 ? 105 : 166
                                     implicitHeight: 36
                                     onClicked: ember.clearConversation()
                                 }
