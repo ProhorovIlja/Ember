@@ -244,7 +244,10 @@ EmberBackend::EmberBackend(QObject *parent)
             return;
         }
         if (m_captureTap && m_captureTap->quotaReached()) {
-            stopRecording();
+            // A safety quota stops capture without user consent. Recover only
+            // an editable dictation prefix; never silently submit a partial
+            // voice command when the user is still speaking.
+            interruptCapture("Microphone reached its 1 GiB capture safety quota.", true);
             return;
         }
         if (m_audioSource && m_audioSource->error() != QAudio::NoError)
