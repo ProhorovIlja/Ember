@@ -115,13 +115,36 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                         const QString &user, int maxTokens, double temperature) {
     QJsonArray messages;
     messages.append(QJsonObject{{"role", "system"}, {"content", persona.left(4096)}});
-    const int beginning = std::max(0, int(history.size()) - 8);
-    for (int i = beginning; i < history.size(); ++i) {
+    // Retain as many recent complete exchanges as fit the bounded request.
+    // This avoids both the old fixed eight-turn memory loss and accidental
+    // requests larger than the 8192-token llama.cpp context. Character count
+    // is a conservative heuristic, not a tokenizer / exact context guarantee.
+    const QString currentUser = user.left(4096);
+    int remainingChars = std::max(0, 12000 - persona.left(4096).size()
+                                  - currentUser.size());
+    QList<Turn> selected;
+    for (int i = history.size() - 1; i >= 0 && selected.size() < 24; --i) {
         const auto &turn = history.at(i);
-        messages.append(QJsonObject{{"role", "user"}, {"content", turn.user.left(4096)}});
-        messages.append(QJsonObject{{"role", "assistant"}, {"content", turn.assistant.left(16384)}});
+        const QString oldUser = turn.user.left(4096);
+        QString oldAssistant = turn.assistant.right(8192);
+        const int cost = oldUser.size() + oldAssistant.size() + 96;
+        if (cost > remainingChars) {
+            // Preserve the last assistant continuation when it is too large,
+            // instead of silently dropping the entire immediately prior turn.
+            if (selected.isEmpty() && remainingChars > oldUser.size() + 384) {
+                oldAssistant = oldAssistant.right(remainingChars - oldUser.size() - 96);
+                selected.prepend(Turn{oldUser, oldAssistant});
+            }
+            break;
+        }
+        selected.prepend(Turn{oldUser, oldAssistant});
+        remainingChars -= cost;
     }
-    messages.append(QJsonObject{{"role", "user"}, {"content", user.left(4096)}});
+    for (const auto &turn : selected) {
+        messages.append(QJsonObject{{"role", "user"}, {"content", turn.user}});
+        messages.append(QJsonObject{{"role", "assistant"}, {"content", turn.assistant}});
+    }
+    messages.append(QJsonObject{{"role", "user"}, {"content", currentUser}});
     return QJsonObject{{"model", "ember"}, {"messages", messages},
                        {"max_tokens", std::clamp(maxTokens, 64, 2048)},
                        {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
