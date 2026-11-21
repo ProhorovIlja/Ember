@@ -137,6 +137,7 @@ def self_test():
     class Handler(BaseHTTPRequestHandler):
         sample_rate = 24000
         payload = b"\x00\x00" * 2400
+        omit_model_id = False
 
         def do_POST(self):
             assert self.path == "/v1/audio/speech"
@@ -145,7 +146,11 @@ def self_test():
             assert body["response_format"] == "pcm"
             assert body["stream_format"] == "audio"
             assert body["language"] == "en"
-            if body["model"] == "qwen3-tts-1.7b":
+            if self.omit_model_id:
+                assert "model" not in body
+            else:
+                assert "model" in body
+            if body.get("model") == "qwen3-tts-1.7b":
                 assert "warmly" in body["instructions"]
             else:
                 assert "instructions" not in body
@@ -166,9 +171,11 @@ def self_test():
     try:
         result = measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.")
         assert result["pcm_bytes"] == 4800
+        Handler.omit_model_id = True
         result_local = measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.",
                                omit_model_id=True)
         assert result_local["pcm_bytes"] == 4800
+        Handler.omit_model_id = False
         assert result["sample_rate_hz"] == 24000
         assert result["audio_seconds"] == 0.1
         assert result["leading_low_level_pcm_ms"] is None
