@@ -102,6 +102,8 @@ public:
     Q_INVOKABLE void clearConversation();
     Q_INVOKABLE void openSession(const QString &id);
     Q_INVOKABLE void deleteCurrentSession();
+    Q_INVOKABLE QVariantList searchHistory(const QString &text) const;
+    Q_INVOKABLE void exportCurrentSession();
 signals:
     void statusChanged();
     void transcriptChanged();
