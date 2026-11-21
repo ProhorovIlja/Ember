@@ -565,6 +565,24 @@ private slots:
             QByteArray("not a legitimate WAV")));
         QVERIFY(!EmberCore::nearSilentAsrWav({}));
     }
+    void salvagesPartialDictationWithoutSubmittingBrokenVoiceRequests() {
+        const QStringList bilingual{
+            "We recorded a long English request and the main topic",
+            "and the main topic осталось незавершённым",
+            "осталось незавершённым after a later chunk failed"
+        };
+        const QString expected = EmberCore::joinTranscriptionSegments(bilingual);
+        QVERIFY(expected.contains("English request"));
+        QVERIFY(expected.contains(QString::fromUtf8("осталось незавершённым")));
+        QCOMPARE(EmberCore::partialDictationOnError(true, bilingual), expected);
+        // Interrupted voice chat is never automatically answered from a
+        // partial sentence; only explicit dictation can return editable text.
+        QVERIFY(EmberCore::partialDictationOnError(false, bilingual).isEmpty());
+        QVERIFY(EmberCore::partialDictationOnError(true, {}).isEmpty());
+        QVERIFY(EmberCore::partialDictationOnError(true, {"", "  "}).isEmpty());
+        QCOMPARE(EmberCore::partialDictationOnError(true, {"Привет"}),
+                 QString::fromUtf8("Привет"));
+    }
     void resamplesCommonWindowsStereoMicrophone() {
         QAudioFormat format;
         format.setSampleRate(48000);
