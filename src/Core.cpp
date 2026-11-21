@@ -786,9 +786,17 @@ QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool fi
             cursor += close >= 0 ? close + 8 : remaining.size();
             continue;
         }
-        const qsizetype fence = remaining.indexOf("```");
+        // Markdown accepts both backtick and tilde fences. Treat a streamed
+        // code block as a single non-spoken unit, and do not consume it until
+        // the matching closing marker has actually arrived.
+        const qsizetype backticks = remaining.indexOf("```");
+        const qsizetype tildes = remaining.indexOf("~~~");
+        const qsizetype fence = backticks >= 0 && tildes >= 0
+            ? std::min(backticks, tildes)
+            : (backticks >= 0 ? backticks : tildes);
+        const QString marker = fence == backticks ? "```" : "~~~";
         if (fence == 0) {
-            const qsizetype close = remaining.indexOf("```", 3);
+            const qsizetype close = remaining.indexOf(marker, 3);
             if (close < 0 && !final) break;
             cursor += close >= 0 ? close + 3 : remaining.size();
             ready.append("The code example is in the text chat.");
