@@ -83,7 +83,7 @@ EmberBackend::EmberBackend(QObject *parent)
         if (!m_listening) return;
         if (m_audioSource && m_audioSource->error() != QAudio::NoError) {
             releaseCapture();
-            m_pcm.clear();
+            QFile::remove(m_captureFile.fileName());
             setStatus("Microphone stopped unexpectedly. Check device and Windows permissions.");
         } else if (m_captureFile.isOpen() && m_captureFile.size() >= 1024LL * 1024 * 1024) {
             // Long dictation has a disk quota, but no 30-second time cap.
@@ -618,22 +618,34 @@ void EmberBackend::submit(const QString &raw, bool voice) {
 }
 
 void EmberBackend::releaseCapture() {
+    const bool wasDictation = m_captureDictation;
     m_captureWatchdog.stop();
     m_captureDeviceId.clear();
     if (m_audioSource) {
         m_audioSource->stop();
         m_audioSource.reset();
     }
-    if (m_audioBuffer.isOpen()) m_audioBuffer.close();
+    if (m_captureFile.isOpen()) m_captureFile.close();
+    m_captureDictation = false;
     setListening(false);
+    if (wasDictation) emit dictationChanged();
 }
-void EmberBackend::startRecording() {
-    if (!m_brainReady || m_busy || m_listening) {
-        setStatus("The local brain must be online and idle before recording.");
+void EmberBackend::startRecording() { startCapture(false); }
+void EmberBackend::startDictation() { startCapture(true); }
+void EmberBackend::stopDictation() {
+    if (m_listening && m_captureDictation) stopRecording();
+}
+void EmberBackend::startCapture(bool dictation) {
+    if ((!dictation && !m_brainReady) || m_busy || m_listening) {
+        setStatus("Finish the current task before recording voice.");
+        return;
+    }
+    if (!isRegularFile(configPath("asrExe")) || !isRegularFile(configPath("asrModel"))) {
+        setStatus("Choose the offline Whisper executable and multilingual weights in Settings.");
         return;
     }
     if (!m_work || !m_work->isValid()) {
-        setStatus("Could not create the private work folder in this installation.");
+        setStatus("Could not create a temporary private microphone session folder.");
         return;
     }
     const QAudioDevice input = activeInput();
@@ -642,61 +654,111 @@ void EmberBackend::startRecording() {
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
     if (input.isNull()) {
-        setStatus("The selected microphone is missing. Choose another device in Settings.");
+        setStatus("Microphone disconnected. Choose a Windows recording device.");
         return;
     }
     m_captureFormat = input.isFormatSupported(format) ? format : input.preferredFormat();
     if (!m_captureFormat.isValid() || m_captureFormat.sampleRate() < 8000 ||
-        m_captureFormat.sampleRate() > 96000 || m_captureFormat.channelCount() > 8 ||
+        m_captureFormat.sampleRate() > 96000 || m_captureFormat.channelCount() < 1 ||
+        m_captureFormat.channelCount() > 8 ||
         m_captureFormat.sampleFormat() == QAudioFormat::Unknown) {
-        setStatus("Unsupported microphone format; choose a different Windows input device.");
+        setStatus("Unsupported microphone format; choose a different recording device.");
         return;
     }
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_mediaPlayer.stop();
+    m_mediaPlayer.setSource(QUrl());
     setSpeaking(false);
-    m_pcm.clear();
-    m_audioBuffer.setBuffer(&m_pcm);
-    m_audioBuffer.open(QIODevice::WriteOnly);
+    m_captureFile.setFileName(workFile("microphone.raw"));
+    if (!m_captureFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        setStatus("Could not open temporary disk-backed microphone recording.");
+        return;
+    }
+    m_captureDictation = dictation;
     m_audioSource = std::make_unique<QAudioSource>(input, m_captureFormat);
-    m_audioSource->start(&m_audioBuffer);
+    m_audioSource->start(&m_captureFile);
     if (m_audioSource->error() != QAudio::NoError) {
         releaseCapture();
-        setStatus("Microphone capture could not start. Check Windows privacy and input device.");
+        setStatus("Microphone capture failed. Check Windows permissions and audio device.");
         return;
     }
     m_captureDeviceId = input.id();
     setListening(true);
+    if (dictation) emit dictationChanged();
     m_captureWatchdog.start();
-    setStatus("Recording from selected microphone · press Stop when you finish.");
+    setStatus(dictation
+        ? "Dictation recording locally — hold to speak, release to transcribe RU/EN."
+        : "Voice recording locally — stop when you finish.");
     const quint64 session = ++m_captureSession;
-    QTimer::singleShot(30000, this, [this, session]() {
-        if (m_listening && m_captureSession == session) stopRecording();
-    });
+    if (!dictation) {
+        QTimer::singleShot(30000, this, [this, session] {
+            if (m_listening && !m_captureDictation && session == m_captureSession)
+                stopRecording();
+        });
+    }
 }
 void EmberBackend::stopRecording() {
     if (!m_listening) return;
+    const bool wasDictation = m_captureDictation;
     releaseCapture();
     const qint64 bytesPerSecond = qint64(m_captureFormat.sampleRate()) *
         m_captureFormat.bytesPerFrame();
-    if (bytesPerSecond <= 0 || m_pcm.size() < bytesPerSecond / 10) {
-        setStatus("Recording was too short. Speak for at least a moment.");
+    const QFileInfo recording(m_captureFile.fileName());
+    if (bytesPerSecond <= 0 || recording.size() < bytesPerSecond / 10) {
+        QFile::remove(m_captureFile.fileName());
+        setStatus("Recording was too short to recognize.");
         return;
     }
-    const QByteArray wav = EmberCore::whisperWav(m_pcm, m_captureFormat);
-    m_pcm.clear();
-    QFile file(workFile("microphone.wav"));
-    if (wav.isEmpty() || !file.open(QIODevice::WriteOnly) || file.write(wav) != wav.size()) {
-        setStatus("Could not prepare a local WAV file for recognition.");
+    m_transcriptionSize = recording.size();
+    m_transcriptionOffset = 0;
+    m_transcriptionChunkSize = (bytesPerSecond * 25 /
+        m_captureFormat.bytesPerFrame()) * m_captureFormat.bytesPerFrame();
+    m_transcriptionSegments.clear();
+    m_transcribingDictation = wasDictation;
+    m_asrElapsed.start();
+    transcribeNextChunk();
+}
+void EmberBackend::transcribeNextChunk() {
+    if (m_transcriptionOffset >= m_transcriptionSize) {
+        completeTranscription();
         return;
     }
+    QFile file(m_captureFile.fileName());
+    if (!file.open(QIODevice::ReadOnly) || !file.seek(m_transcriptionOffset)) {
+        m_transcribingDictation = false;
+        setBusy(false);
+        setStatus("Could not read the temporary local microphone recording.");
+        return;
+    }
+    const qint64 size = std::min(m_transcriptionChunkSize,
+                                  m_transcriptionSize - m_transcriptionOffset);
+    const QByteArray raw = file.read(size);
     file.close();
+    if (size <= 0 || raw.size() != size) {
+        m_transcribingDictation = false;
+        setBusy(false);
+        setStatus("Microphone recording was truncated during transcription.");
+        return;
+    }
+    const QByteArray wav = EmberCore::whisperWav(raw, m_captureFormat);
+    QFile output(workFile("microphone.wav"));
+    if (wav.isEmpty() || !output.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+        output.write(wav) != wav.size()) {
+        m_transcribingDictation = false;
+        setBusy(false);
+        setStatus("Unable to resample a recorded voice segment into local PCM WAV.");
+        return;
+    }
+    output.close();
+    m_transcriptionOffset += raw.size();
     transcribe();
 }
 void EmberBackend::transcribe() {
     if (!isRegularFile(configPath("asrExe")) || !isRegularFile(configPath("asrModel"))) {
-        setStatus("Configure whisper-cli.exe and its model in Settings.");
+        m_transcribingDictation = false;
+        setBusy(false);
+        setStatus("Offline Whisper files are missing from this installation.");
         return;
     }
     QFile::remove(workFile("recognition.txt"));
@@ -705,9 +767,36 @@ void EmberBackend::transcribe() {
     m_whisper.setArguments({"-m", configPath("asrModel"), "-f", workFile("microphone.wav"),
                             "-otxt", "-of", workFile("recognition"), "-np"});
     setBusy(true);
-    m_asrElapsed.start();
-    setStatus("Transcribing speech fully offline…");
+    setStatus(QString("Offline transcription · %1% completed…")
+                  .arg(m_transcriptionOffset * 100 / m_transcriptionSize));
     m_whisper.start();
+}
+void EmberBackend::completeTranscription() {
+    const bool dictate = m_transcribingDictation;
+    m_transcribingDictation = false;
+    const QString text = m_transcriptionSegments.join(" ").simplified();
+    m_transcriptionSegments.clear();
+    m_transcriptionOffset = m_transcriptionSize = 0;
+    QFile::remove(workFile("microphone.raw"));
+    QFile::remove(workFile("microphone.wav"));
+    QFile::remove(workFile("recognition.txt"));
+    m_asrLastMs = m_asrElapsed.isValid() ? m_asrElapsed.elapsed() : -1;
+    emit voiceTimingsChanged();
+    setBusy(false);
+    if (text.isEmpty()) {
+        setStatus("No speech recognized. Try again with a clearer microphone signal.");
+        return;
+    }
+    m_transcript = text;
+    emit transcriptChanged();
+    if (dictate) {
+        m_dictatedText = text;
+        emit dictationChanged();
+        emit dictationReady(text);
+        setStatus("Dictation ready for editing. English/Russian text remains local.");
+    } else {
+        submit(text, true);
+    }
 }
 
 void EmberBackend::beginSpeech(const QString &text) {
@@ -859,6 +948,11 @@ void EmberBackend::cancelWork() {
     }
     m_cliTtsActive = false;
     if (m_whisper.state() != QProcess::NotRunning) m_whisper.kill();
+    m_transcribingDictation = false;
+    m_transcriptionSegments.clear();
+    m_transcriptionSize = m_transcriptionOffset = 0;
+    if (!m_captureFile.fileName().isEmpty())
+        QFile::remove(m_captureFile.fileName());
     if (m_tts.state() != QProcess::NotRunning) m_tts.kill();
     releaseCapture();
     m_mediaPlayer.stop();
