@@ -1099,7 +1099,7 @@ void EmberBackend::rebuildConversationHistory() {
             pending.clear();
         }
     }
-    while (m_history.size() > 8) m_history.removeFirst();
+    while (m_history.size() > 48) m_history.removeFirst();
 }
 void EmberBackend::openSession(const QString &id) {
     if (!m_store || !m_store->ready() || !m_store->exists(id)) return;
