@@ -58,6 +58,15 @@ The resulting preference should be configurable: different voice families can wi
 
 A lightweight capture tap now computes scalar RMS/peak from the exact Windows PCM buffers written to the existing temporary disk-backed recording. The UI shows an input level while recording. The optional energy-based pause endpointer requires sustained input and a ~2.2 s quiet tail; it is off by default and does not claim Silero VAD, speaker separation, automatic echo rejection or confidence estimation. It must be assessed on real microphones for false-ends during dramatic pauses, quiet speech and loud background noise. The mandatory RU/EN hold-to-dictate path remains manual release and has no new timer.
 
+## Microphone final-stop integrity fix
+
+A manual Stop/hold-release can happen between two 100ms watchdog ticks.
+The capture-stop path now checks the atomic number of successfully written
+PCM bytes and rejects any short or failed file before constructing
+Whisper/Qwen transcription segments. This improves reliability and avoids
+calling a truncated recording successful, but it does not improve WER
+without real reference-audio tests. Audio remains local and transient.
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.

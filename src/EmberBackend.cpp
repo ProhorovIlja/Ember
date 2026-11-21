@@ -297,7 +297,9 @@ EmberBackend::EmberBackend(QObject *parent)
             this, [this] { m_speechServer.readAllStandardOutput(); });
     connect(&m_speechServer, &QProcess::started, this, [this] {
         emit speechServerChanged();
-        setStatus("Native speech.cpp is loading; its first model run may download weights.");
+        setStatus(m_allowSpeechDownloads
+            ? "Native speech engine loading; external model downloads explicitly permitted."
+            : "Native speech engine loading locally. Catalog downloads are disabled.");
     });
     connect(&m_speechServer, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
         m_speechHealthTimer.stop();
@@ -1418,9 +1420,20 @@ void EmberBackend::stopRecording() {
     if (!m_listening) return;
     const bool wasDictation = m_captureDictation;
     releaseCapture();
+    const QFileInfo recording(m_captureFile.fileName());
+    // The user may release within 100ms of a filesystem write failure,
+    // before the capture watchdog gets a chance to reject bad audio.
+    // An incomplete PCM segment must never reach Whisper/Qwen ASR.
+    const qint64 observed = m_captureTap ? m_captureTap->writtenBytes() : -1;
+    const bool damaged = !m_captureTap || m_captureTap->writeFailed() ||
+        observed <= 0 || recording.size() != observed;
+    if (damaged) {
+        QFile::remove(m_captureFile.fileName());
+        setStatus("Recorded audio failed local disk integrity checks; discarded before ASR.");
+        return;
+    }
     const qint64 bytesPerSecond = qint64(m_captureFormat.sampleRate()) *
         m_captureFormat.bytesPerFrame();
-    const QFileInfo recording(m_captureFile.fileName());
     if (bytesPerSecond <= 0 || recording.size() < bytesPerSecond / 10) {
         QFile::remove(m_captureFile.fileName());
         setStatus("Recording was too short to recognize.");
