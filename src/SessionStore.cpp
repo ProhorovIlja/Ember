@@ -2,6 +2,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
@@ -111,6 +112,69 @@ QVariantList SessionStore::messages(const QString &session, int limit) const {
     }
     std::reverse(reverse.begin(), reverse.end());
     return reverse;
+}
+QVariantList SessionStore::search(const QString &text, int limit) const {
+    QVariantList result;
+    const QString term = text.trimmed();
+    if (!m_ready || term.isEmpty() || term.size() > 120) return result;
+    // Quote the LIKE wildcard and escape character: a literal 100% search
+    // must not turn into an unbounded wildcard query.
+    QString escaped = term;
+    escaped.replace("\\", "\\\\");
+    escaped.replace("%", "\\%");
+    escaped.replace("_", "\\_");
+    const QString pattern = "%" + escaped + "%";
+    QSqlQuery query(m_db);
+    query.prepare(
+        "SELECT s.id, s.title, s.updated_at,"
+        "COALESCE((SELECT substr(m.body,1,160) FROM messages m "
+        "WHERE m.session_id=s.id AND m.body LIKE ? ESCAPE '\\' "
+        "ORDER BY m.id DESC LIMIT 1),'') "
+        "FROM sessions s WHERE s.title LIKE ? ESCAPE '\\' "
+        "OR EXISTS(SELECT 1 FROM messages m WHERE m.session_id=s.id "
+        "AND m.body LIKE ? ESCAPE '\\') "
+        "ORDER BY s.updated_at DESC, s.rowid DESC LIMIT ?");
+    query.addBindValue(pattern);
+    query.addBindValue(pattern);
+    query.addBindValue(pattern);
+    query.addBindValue(std::clamp(limit, 1, 100));
+    if (!query.exec()) return result;
+    while (query.next()) {
+        result.append(QVariantMap{
+            {"id", query.value(0).toString()},
+            {"title", query.value(1).toString()},
+            {"updated", query.value(2).toLongLong()},
+            {"snippet", query.value(3).toString().simplified()}
+        });
+    }
+    return result;
+}
+bool SessionStore::exportMarkdown(const QString &session, const QString &path) const {
+    if (!m_ready || !exists(session) || path.trimmed().isEmpty()) return false;
+    // Stream the entire conversation, not just the last 300 UI messages.
+    // QSaveFile commits atomically so cancelled/failed writes do not leave
+    // a partial export. Nothing is sent to a remote service.
+    QSqlQuery query(m_db);
+    query.prepare("SELECT role,body FROM messages WHERE session_id=? ORDER BY id");
+    query.addBindValue(session);
+    if (!query.exec()) return false;
+    QSaveFile output(path);
+    if (!output.open(QIODevice::WriteOnly)) return false;
+    const QByteArray heading("# Ember conversation\n\n");
+    if (output.write(heading) != heading.size()) {
+        output.cancelWriting();
+        return false;
+    }
+    while (query.next()) {
+        const QString speaker = query.value(0).toString() == "you" ? "You" : "Ember";
+        const QByteArray row = QString("## %1\n\n%2\n\n")
+            .arg(speaker, query.value(1).toString()).toUtf8();
+        if (output.write(row) != row.size()) {
+            output.cancelWriting();
+            return false;
+        }
+    }
+    return output.commit();
 }
 bool SessionStore::exists(const QString &session) const {
     if (!m_ready || session.isEmpty()) return false;
