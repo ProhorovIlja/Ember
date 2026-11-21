@@ -750,6 +750,51 @@ private slots:
         QCOMPARE(EmberCore::takeCommittedSpeech("~~~sh\nrm test;\n", cursor, true),
                  QStringList({"The code example is in the text chat."}));
     }
+    void mixedAndFourMarkerCodeFencesNeverLeakIntoEnglishSpeech() {
+        // A mixed fence cannot close a tilde code block in batch TTS.
+        const QString mixed = "The example follows.\n~~~cpp\n"
+            "secret_call();\n```\nmore_secret_calls();\n~~~\n"
+            "That is the end.";
+        QCOMPARE(EmberCore::speechFriendlyText(mixed),
+                 QString("The example follows. The code example is in the text chat. "
+                         "That is the end."));
+        // Four backticks can safely contain a line of triple backticks.
+        const QString wide = "Review this example:\n````markdown\n"
+            "```\nnot_spoken();\n````\nAll done.";
+        QCOMPARE(EmberCore::speechFriendlyText(wide),
+                 QString("Review this example: The code example is in the text chat. All done."));
+
+        qsizetype cursor = 0;
+        QString streamed = "The details follow.\n````cpp\n"
+            "not_spoken();\n```\nstill_not_spoken();";
+        QCOMPARE(EmberCore::takeCommittedSpeech(streamed, cursor, false),
+                 QStringList({"The details follow."}));
+        QVERIFY(EmberCore::takeCommittedSpeech(streamed, cursor, false).isEmpty());
+        // A matching short marker inside a wider fence is not a closing line.
+        streamed += "\n````\nThis section is complete. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(streamed, cursor, false),
+                 QStringList({"The code example is in the text chat.",
+                              "This section is complete."}));
+        QCOMPARE(cursor, qsizetype(streamed.size()));
+
+        cursor = 0;
+        streamed = "~~~~txt\nnot_spoken();\n~~~\nstill_not_spoken();";
+        QVERIFY(EmberCore::takeCommittedSpeech(streamed, cursor, false).isEmpty());
+        streamed += "\n~~~~\nDone. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(streamed, cursor, false),
+                 QStringList({"The code example is in the text chat.", "Done."}));
+        QCOMPARE(cursor, qsizetype(streamed.size()));
+
+        cursor = 0;
+        // A marker in an inline source statement is never a closing fence.
+        streamed = "```cpp\nprintf(\"``` inline marker\");\n";
+        QVERIFY(EmberCore::takeCommittedSpeech(streamed, cursor, false).isEmpty());
+        streamed += "```\nThe explanation is visible. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(streamed, cursor, false),
+                 QStringList({"The code example is in the text chat.",
+                              "The explanation is visible."}));
+        QCOMPARE(cursor, qsizetype(streamed.size()));
+    }
     void doesNotSpeakImageAltTextAsVerifiedVision() {
         const QString markdown = "See ![Confidential chart](https://example.org/chart.png) "
             "and [the report](https://example.org/report).";
