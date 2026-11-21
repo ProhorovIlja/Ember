@@ -726,6 +726,30 @@ private slots:
                                      "And that concludes the example."}));
         QCOMPARE(cursor, qsizetype(draft.size()));
     }
+    void neverVocalizesTildeFencedCodeDuringStreaming() {
+        qsizetype cursor = 0;
+        QString draft = "The implementation is available.\\n~~~python\\n"
+                        "print('Internal code. Do not speak this.');";
+        QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false),
+                 QStringList({"The implementation is available."}));
+        QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, false).isEmpty());
+        // A mismatched backtick fence inside a tilde block must not close it.
+        draft += "\\n```\\nprint('Still code.');";
+        QVERIFY(EmberCore::takeCommittedSpeech(draft, cursor, false).isEmpty());
+        draft += "\\n~~~\\nI can explain the example. ";
+        QCOMPARE(EmberCore::takeCommittedSpeech(draft, cursor, false),
+                 QStringList({"The code example is in the text chat.",
+                              "I can explain the example."}));
+        QCOMPARE(cursor, qsizetype(draft.size()));
+        // Batch/fallback TTS uses the same non-spoken code boundary.
+        const QString offline = "Here is the example:\\n~~~cpp\\n"
+            "std::cout << 1;\\n~~~\\nIt prints one.";
+        QCOMPARE(EmberCore::speechFriendlyText(offline),
+                 QString("Here is the example: The code example is in the text chat. It prints one."));
+        cursor = 0;
+        QCOMPARE(EmberCore::takeCommittedSpeech("~~~sh\\nrm test;\\n", cursor, true),
+                 QStringList({"The code example is in the text chat."}));
+    }
     void keepsInternalReasoningOutOfEarlyAndFallbackVoices() {
         qsizetype cursor = 0;
         QString draft = "<think>Let me consider an internal path.";
