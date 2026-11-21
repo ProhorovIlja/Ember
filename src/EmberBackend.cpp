@@ -1201,6 +1201,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         return;
     }
     m_chatStreamBuffer.clear();
+    m_chatRawText.clear();
     m_chatStreamText.clear();
     m_chatStreamDone = m_chatStreamInvalid = m_chatPreviewActive = false;
     m_chatGenerating = true;
@@ -1220,20 +1221,28 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         if (m_reply != reply || m_chatStreamDone || m_chatStreamInvalid) return;
         const auto received = reply->readAll();
         const auto tokens = EmberCore::consumeChatStream(m_chatStreamBuffer, received);
-        if (tokens.error || m_chatStreamText.size() + tokens.text.size() > 16384) {
+        if (tokens.error || m_chatRawText.size() + tokens.text.size() > 16384) {
             m_chatStreamInvalid = true;
             reply->abort();
             return;
         }
         if (!tokens.text.isEmpty()) {
-            if (m_llmFirstTokenMs < 0 && m_llmElapsed.isValid()) {
-                m_llmFirstTokenMs = m_llmElapsed.elapsed();
-                emit voiceTimingsChanged();
+            // Reasoning may be either a separate reasoning_content field
+            // (which the SSE parser ignores) or inline <think> tags.
+            // Only the visible projection can reach the UI, history or TTS.
+            m_chatRawText += tokens.text;
+            const QString visible =
+                EmberCore::visibleAssistantText(m_chatRawText);
+            if (visible != m_chatStreamText) {
+                if (m_llmFirstTokenMs < 0 && m_llmElapsed.isValid()) {
+                    m_llmFirstTokenMs = m_llmElapsed.elapsed();
+                    emit voiceTimingsChanged();
+                }
+                m_chatStreamText = visible;
+                if (!m_chatRenderTimer.isActive()) m_chatRenderTimer.start();
+                if (m_voiceEarlyActive && !m_voiceEarlyFailed)
+                    enqueueLiveSpeech(false);
             }
-            m_chatStreamText += tokens.text;
-            if (!m_chatRenderTimer.isActive()) m_chatRenderTimer.start();
-            if (m_voiceEarlyActive && !m_voiceEarlyFailed)
-                enqueueLiveSpeech(false);
         }
         if (tokens.done) m_chatStreamDone = true;
     };
@@ -1309,6 +1318,7 @@ void EmberBackend::finishChatStream(bool interrupted) {
         rebuildConversationHistory();
     }
     m_chatStreamBuffer.clear();
+    m_chatRawText.clear(); // never retain private model reasoning after the turn
     m_chatPreviewActive = false;
     m_chatStreamDone = m_chatStreamInvalid = false;
     m_chatStreamSession.clear();
