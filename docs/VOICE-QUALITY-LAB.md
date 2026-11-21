@@ -550,3 +550,44 @@ https://github.com/ggml-org/whisper.cpp/blob/master/examples/cli/README.md
 No real target-machine microphone, acoustic quality, hallucination reduction,
 GPU/VRAM contention, or complete offline licensing acceptance is implied by
 CI fixtures. Stable release gates remain closed.
+
+## 22 November — bounded external inference and anti-phase microphone resilience
+
+The native Windows process supervisor now drains and immediately discards
+merged stdout/stderr from the **local text LLM**, `whisper-cli` and
+`sherpa-onnx` Kokoro child processes rather than indefinitely accumulating
+unconsumed diagnostic data in Qt's QProcess buffers. Local speech.cpp was
+already drained separately. The diagnostic streams are not saved or copied
+into chat history; model output text still arrives through the bounded local
+HTTP/ASR data paths, not process logging. This is a privacy and memory-footprint
+hardening measure, not proof of a measured RAM reduction.
+
+Each **individual offline 25-second Whisper transcription job** now has
+a 180-second watchdog and each individual **Kokoro synthesis job** a
+120-second watchdog. Stalled processes are killed, their timers are stopped
+on normal finish, failure and user cancellation, and stale QProcess signals
+are ignored. The microphone's user-controlled recording length is unchanged.
+On a *late* Whisper timeout, prior successfully transcribed segments of an
+explicit hold-to-dictate recording are recovered into the editable composer,
+with a clear incomplete-warning, via the existing nonautomatic recovery path.
+For an ordinary voice turn the incomplete text is never auto-submitted. These
+deadlines are generous defaults for target high-end hardware and may not suit
+slower CPU-only third-party engines; genuine on-device benchmarking is required.
+
+Microphone resampling now detects a particularly destructive stereo input
+configuration: channels capturing the same speech in opposing polarity.
+At most 4096 distributed source frames are inspected; only where the ordinary
+channel average's power is below one sixteenth of the strongest channel's
+power and that channel has a non-negligible signal does the 16-kHz resampler
+select the strongest single channel instead of cancelling the voice.
+Other mono, normal stereo and one-sided stereo recordings retain the existing
+average; original raw recordings are not rewritten. Windows QtTests supply
+out-of-phase Int16 and Float32 audio plus ordinary single-active-channel
+stereo as deterministic regression fixtures. This addresses digital phase
+cancellation, **not** noise suppression, acoustic echo cancellation, true
+multimicrophone beamforming or measured RU/EN WER improvements.
+
+Implementation constraints were checked against
+[Qt 6.8 QProcess signals and kill behavior](https://doc.qt.io/qt-6.8/qprocess.html)
+and the upstream [whisper-cli documentation](https://github.com/ggml-org/whisper.cpp/blob/master/examples/cli/README.md).
+No model binaries or weights are bundled, and release gates remain closed.
