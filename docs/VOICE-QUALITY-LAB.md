@@ -219,6 +219,30 @@ mono identity, truncated input and channel-aware sink drain timing.
 Device format-check API: https://doc.qt.io/qt-6.8/qaudiodevice.html ,
 https://doc.qt.io/qt-6.8/qaudiosink.html .
 
+## 22 November — private microphone cancellation and live default-output recovery
+
+Fixed the actual Windows cancellation order: previous `cancelWork` removed
+`microphone.raw` while Qt's capture file was still open, and left the
+`microphone.wav` and `recognition.txt` scratch outputs in the session
+directory after a cancelled ASR turn. Capture is now stopped/closed before
+file removal; all three precisely named local scratch files are removed.
+If Windows is briefly holding a WAV through a closing ASR file reader or
+multipart HTTP reply, a bounded 350-ms retry may run up to six times.
+Each retry is tied to the microphone turn revision; starting a new capture
+invalidates all previously scheduled deletions. The helper doesn't delete
+any other files and has a real QFile/QTemporaryDir regression test.
+
+System-default audio output now reacts to Qt's audio-device inventory change,
+interrupting a stream using a removed/stale default and switching the
+next response to Windows' newly selected device. Explicit saved output
+selection still falls back if that selected device disappears.
+
+Clicking Test Voice again can now interrupt its current playback/stream
+without launching overlapping PCM sinks, but cannot interrupt an active
+mic transcription or LLM generation. The test controls should still be
+verified with physical Windows speakers and real GGUF models; successful
+CI proves logic/build only, not hotplug behaviour on Bluetooth/USB hardware.
+
 ## Privacy and release boundaries
 
 Model/audio data never reaches a remote inference endpoint from the Ember client; localhost HTTP bypasses proxies and rejects redirects. A third-party server must independently be configured to bind **only** 127.0.0.1. If model software downloads weights, that is a separate external action and requires separate trust and license review.

@@ -688,7 +688,25 @@ void EmberBackend::onInputInventoryChanged() {
 }
 void EmberBackend::onOutputInventoryChanged() {
     const auto devices = QMediaDevices::audioOutputs();
-    bool selectedExists = m_outputId.isEmpty();
+    // Windows may change the default output while an answer is streaming.
+    // Tracking only explicitly pinned IDs leaves a stale QAudioSink attached
+    // to the removed device in the ordinary "System default" selection.
+    if (m_outputId.isEmpty()) {
+        const QAudioDevice currentDefault = QMediaDevices::defaultAudioOutput();
+        if (currentDefault.id() != m_audioOutput.device().id()) {
+            if (m_speechSequence || m_pcmSink || m_speechReply ||
+                m_speaking || m_cliTtsActive) cancelWork();
+            m_mediaPlayer.stop();
+            m_mediaPlayer.setSource(QUrl());
+            if (!currentDefault.isNull()) m_audioOutput.setDevice(currentDefault);
+            setStatus(currentDefault.isNull()
+                ? "Windows default speaker disappeared. Select a valid output."
+                : "Windows default speaker changed; the next answer uses the new device.");
+        }
+        emit audioDevicesChanged();
+        return;
+    }
+    bool selectedExists = false;
     for (const auto &device : devices)
         if (device.id() == m_outputId) selectedExists = true;
     if (!selectedExists) {
@@ -1381,6 +1399,9 @@ void EmberBackend::startCapture(bool dictation) {
     m_mediaPlayer.stop();
     m_mediaPlayer.setSource(QUrl());
     setSpeaking(false);
+    // Invalidate cleanup retries from previous cancelled turns so they can
+    // never delete the WAV/raw data of this new recording.
+    ++m_voiceScratchRevision;
     m_captureFile.setFileName(workFile("microphone.raw"));
     if (!m_captureFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         setStatus("Could not open temporary disk-backed microphone recording.");
@@ -2090,18 +2111,38 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
     });
 }
 void EmberBackend::testVoice() {
-    if (m_busy || m_listening) return;
+    const bool voicePlaying = m_speaking || m_speechSequence || m_pcmSink ||
+        m_speechReply || m_cliTtsActive ||
+        m_mediaPlayer.playbackState() == QMediaPlayer::PlayingState;
+    // Interrupt an already-playing voice test/reply, never an active ASR,
+    // microphone take or in-progress LLM generation.
+    if (m_listening || m_chatGenerating || m_cliAsrActive || m_nativeAsrReply ||
+        m_transcriptionSize > 0 || (m_busy && !voicePlaying)) return;
     if (m_voiceEngine == 1 &&
         m_speechServer.state() != QProcess::NotRunning && !m_speechServerReady) {
         setStatus("Native speech model is still loading; test it after Ready appears.");
         return;
     }
+    if (voicePlaying) cancelWork();
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_mediaPlayer.stop();
     m_mediaPlayer.setSource(QUrl());
     setSpeaking(false);
     beginSpeech(m_voiceSample);
+}
+void EmberBackend::retryCancelledAudioCleanup(quint64 revision, int retriesLeft) {
+    if (revision != m_voiceScratchRevision || m_listening ||
+        m_transcriptionSize > 0 || m_transcribingDictation) return;
+    if (m_whisper.state() == QProcess::NotRunning &&
+        EmberCore::discardPrivateVoiceScratch(
+            m_captureFile, m_work && m_work->isValid() ? m_work->path() : QString()))
+        return;
+    if (retriesLeft > 0) {
+        QTimer::singleShot(350, this, [this, revision, retriesLeft] {
+            retryCancelledAudioCleanup(revision, retriesLeft - 1);
+        });
+    }
 }
 void EmberBackend::cancelWork() {
     m_cliAsrActive = false;
@@ -2133,10 +2174,13 @@ void EmberBackend::cancelWork() {
     m_transcribingDictation = false;
     m_transcriptionSegments.clear();
     m_transcriptionSize = m_transcriptionOffset = 0;
-    if (!m_captureFile.fileName().isEmpty())
-        QFile::remove(m_captureFile.fileName());
     if (m_tts.state() != QProcess::NotRunning) m_tts.kill();
+    // Critical on Windows: QAudioSource and QFile must close BEFORE removal.
+    // Also discard the per-segment WAV and Whisper's recognition text, not
+    // only the original microphone.raw. Never log these private contents.
     releaseCapture();
+    const quint64 scratchRevision = m_voiceScratchRevision;
+    retryCancelledAudioCleanup(scratchRevision, 6);
     m_mediaPlayer.stop();
     m_mediaPlayer.setSource(QUrl());
     QFile::remove(speechFile(0));

@@ -12,9 +12,24 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <cstring>
 #include <numbers>
 namespace EmberCore {
+bool discardPrivateVoiceScratch(QFile &microphone, const QString &folder) {
+    if (microphone.isOpen()) microphone.close();
+    if (folder.isEmpty() || !QFileInfo(folder).isDir() ||
+        QFileInfo(folder).isSymLink()) return false;
+    const QDir directory(folder);
+    bool success = true;
+    for (const char *file : {"microphone.raw", "microphone.wav", "recognition.txt"}) {
+        const QString path = directory.filePath(QLatin1String(file));
+        const QFileInfo info(path);
+        // A symbolic link is removed as a link; its outside target is never
+        // followed or modified. Do not enumerate unknown user files.
+        if ((info.exists() || info.isSymLink()) && !QFile::remove(path))
+            success = false;
+    }
+    return success;
+}
 QString offlineSpeechModelFile(const QString &applicationRoot, const QString &alias) {
     static const QStringList allowed{
         "qwen3-tts-0.6b", "qwen3-tts-1.7b",

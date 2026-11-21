@@ -5,6 +5,7 @@
 #include <QList>
 #include <QString>
 #include <QStringList>
+class QFile;
 namespace EmberCore {
 struct Turn { QString user; QString assistant; };
 // Non-persisted capture-energy inspection, not speech classification.
@@ -65,6 +66,10 @@ private:
 };
 bool validPcmSampleRate(int rate);
 bool safeScratchSessionName(const QString &name);
+// Close the microphone handle first, then delete only Ember-owned scratch files.
+// A Windows backend may temporarily lock one of the files; false requests a
+// bounded retry after its writer/network upload has exited.
+bool discardPrivateVoiceScratch(QFile &microphone, const QString &folder);
 bool shouldPersistConversation(bool privateMode, const QString &sessionId);
 // Half-duplex user-controlled voice interruption; never interrupt active ASR.
 bool captureAllowedWithInterruption(bool busy, bool listening,

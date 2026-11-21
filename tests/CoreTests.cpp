@@ -12,6 +12,33 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void cancelledCaptureDeletesOnlyItsPrivateAudioAfterFileClose() {
+        QTemporaryDir scratch;
+        QVERIFY(scratch.isValid());
+        QFile raw(scratch.filePath("microphone.raw"));
+        QVERIFY(raw.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QCOMPARE(raw.write("private voice bytes"), qint64(19));
+        const QStringList temporary{"microphone.wav", "recognition.txt"};
+        for (const QString &name : temporary) {
+            QFile file(scratch.filePath(name));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QVERIFY(file.write("sensitive transcript content") > 0);
+            file.close();
+        }
+        QFile sentinel(scratch.filePath("do-not-delete.txt"));
+        QVERIFY(sentinel.open(QIODevice::WriteOnly));
+        QVERIFY(sentinel.write("persistent user content") > 0);
+        sentinel.close();
+        QVERIFY(raw.isOpen());
+        QVERIFY(EmberCore::discardPrivateVoiceScratch(raw, scratch.path()));
+        QVERIFY(!raw.isOpen());
+        for (const QString &name : {"microphone.raw", "microphone.wav",
+                                    "recognition.txt"})
+            QVERIFY(!QFileInfo::exists(scratch.filePath(name)));
+        QVERIFY(QFileInfo::exists(sentinel.fileName()));
+        QVERIFY(EmberCore::discardPrivateVoiceScratch(raw, scratch.path()));
+        QVERIFY(!EmberCore::discardPrivateVoiceScratch(raw, QString()));
+    }
     void imageAttachmentMarkersAreStrictlyLocalAndNonExecutable() {
         const QString id(64, QLatin1Char('a'));
         const QString body = QStringLiteral("Please inspect this diagram.")

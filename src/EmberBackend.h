@@ -225,6 +225,7 @@ private:
     QString workFile(const QString &name) const;
     bool isRegularFile(const QString &path) const;
     void releaseCapture();
+    void retryCancelledAudioCleanup(quint64 revision, int retriesLeft);
     QAudioDevice activeInput() const;
     void onInputInventoryChanged();
     void onOutputInventoryChanged();
@@ -287,6 +288,7 @@ private:
     qint64 m_pcmTotalReceived = 0, m_pcmBytesSubmitted = 0;
     int m_pcmSampleRate = 0, m_pcmSourceRate = 0, m_pcmOutputChannels = 0;
     int m_pcmOutputBytesPerFrame = 0;
+    quint64 m_voiceScratchRevision = 0;
     bool m_pcmHttpDone = false, m_pcmStarted = false;
     QNetworkAccessManager m_network;
     QPointer<QNetworkReply> m_reply;
