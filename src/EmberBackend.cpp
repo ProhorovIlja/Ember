@@ -150,6 +150,8 @@ EmberBackend::EmberBackend(QObject *parent)
                     setStatus("No speech was recognized. Try recording again.");
                     return;
                 }
+                m_asrLastMs = m_asrElapsed.isValid() ? m_asrElapsed.elapsed() : -1;
+                emit voiceTimingsChanged();
                 m_transcript = transcript;
                 emit transcriptChanged();
                 setBusy(false);
@@ -176,6 +178,8 @@ EmberBackend::EmberBackend(QObject *parent)
                     setStatus("Voice synthesis failed. Check the Kokoro files and voice ID.");
                     return;
                 }
+                m_ttsLastMs = m_ttsElapsed.isValid() ? m_ttsElapsed.elapsed() : -1;
+                emit voiceTimingsChanged();
                 playSynthesizedFile();
             });
     connect(&m_tts, &QProcess::errorOccurred, this,
@@ -396,6 +400,14 @@ void EmberBackend::onOutputInventoryChanged() {
     }
     emit audioDevicesChanged();
 }
+QString EmberBackend::voiceTimings() const {
+    auto display = [](qint64 value) {
+        return value < 0 ? QString("not measured") :
+            QString("%1 ms").arg(value);
+    };
+    return QString("Last successful stages · STT %1   /   LLM %2   /   TTS chunk %3")
+        .arg(display(m_asrLastMs), display(m_llmLastMs), display(m_ttsLastMs));
+}
 void EmberBackend::setStatus(const QString &text) {
     if (m_status == text) return;
     m_status = text;
@@ -516,6 +528,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     request.setTransferTimeout(120000);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     QNetworkReply *reply = m_network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    m_llmElapsed.start();
     m_reply = reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         if (m_reply != reply) { reply->deleteLater(); return; }
@@ -540,6 +553,8 @@ void EmberBackend::submit(const QString &raw, bool voice) {
             setStatus("The local model returned an invalid or empty response.");
             return;
         }
+        m_llmLastMs = m_llmElapsed.isValid() ? m_llmElapsed.elapsed() : -1;
+        emit voiceTimingsChanged();
         m_lastReply = answer;
         emit lastReplyChanged();
         m_history.append(EmberCore::Turn{m_pendingUser, answer});
@@ -641,6 +656,7 @@ void EmberBackend::transcribe() {
     m_whisper.setArguments({"-m", configPath("asrModel"), "-f", workFile("microphone.wav"),
                             "-otxt", "-of", workFile("recognition"), "-np"});
     setBusy(true);
+    m_asrElapsed.start();
     setStatus("Transcribing speech fully offline…");
     m_whisper.start();
 }
@@ -698,6 +714,7 @@ void EmberBackend::synthesize(const QString &text) {
                         "--output-filename=" + workFile("voice.wav"),
                         text.left(700)});
     setBusy(true);
+    m_ttsElapsed.start();
     m_cliTtsActive = true;
     setStatus("Synthesizing speech locally with Kokoro…");
     m_tts.start();
@@ -731,6 +748,7 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
             m_localModel, m_localVoice, text)).toJson(QJsonDocument::Compact));
     m_speechReply = reply;
     setBusy(true);
+    m_ttsElapsed.start();
     setStatus("Synthesizing with local high-quality TTS service…");
     connect(reply, &QNetworkReply::downloadProgress, this,
             [this, reply](qint64 received, qint64) {
@@ -763,6 +781,8 @@ void EmberBackend::synthesizeViaLocalServer(const QString &text) {
             setStatus("Could not save temporary local speech for playback.");
             return;
         }
+        m_ttsLastMs = m_ttsElapsed.isValid() ? m_ttsElapsed.elapsed() : -1;
+        emit voiceTimingsChanged();
         setBusy(false);
         playSynthesizedFile();
     });
