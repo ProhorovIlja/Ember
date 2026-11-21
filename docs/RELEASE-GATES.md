@@ -98,3 +98,9 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Playback volume persists locally, controls existing WAV and currently active PCM sink, and never requests Internet connectivity.
 - [x] PCM duration-to-drain guard requires Qt processed audio within 3 ms of intended segment length, plus audio IdleState, not the earlier 20 ms tolerance.
 - [ ] Validate subjective female English voice naturalness, pronunciation, sentence-to-sentence prosody and physical device tails on actual Windows 10 RTX 4070 headphones/speakers. Do not publish previews.
+
+### Subaudible initial-silence measurement (21 November)
+
+- [x] Native localhost-only voice probe reports leading low-level PCM16 frame duration (threshold 256/32768) alongside first HTTP byte, without saving audio; mock protocol tests cover split frame alignment, silent and tone samples.
+- [x] Voice comparison probe can request 1.7B delivery presets but refuses unsupported instructions with 0.6B.
+- [ ] Measure actual first audible output and assess whether silence suppression would improve perception without removing soft consonants. No automatic silence trimming is currently applied.

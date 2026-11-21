@@ -150,3 +150,9 @@ Grounded upstream source: https://github.com/nyosegawa/speech.cpp/blob/main/docs
 #### Physical listening acceptance for delivery presets
 
 Compare Vivian and Serena on Qwen3-TTS 0.6B (native unconditioned) and 1.7B, with natural, warm, soft, curious and narration presets on the **same phrases**; judge natural pauses, inhalations, loudness, pronoun stress, dialogue differentiation, truncation, pronunciation of code/names and first sound at the actual speaker. Use numeric-only local timing benchmarks to measure first HTTP PCM byte and audio throughput; subjective ratings require blinded playback, and the user has not yet recorded them. Avoid declaring any voice objectively superior based only on vendor benchmarks.
+
+### 21 November — first significant PCM level measurement without audio retention
+
+The standard-library-only `tools/voice_benchmark.py` now additionally records the *length of initially low-level PCM16 audio* until the first sample with magnitude at least 256/32768 (roughly -42 dBFS peak). This diagnostic is distinct from first HTTP PCM byte and from **physical first audible sound** on the selected Windows headphone. The streaming parser tracks 16-bit sample boundaries even when HTTP chunks end on odd bytes, and saves no waveforms. Completely silent test clips return null rather than a fabricated onset; mock CI exercises a 50-ms synthetic silence followed by a synthetic tone. The benchmark also supports `--model qwen3-tts-1.7b --delivery warm|soft|bright|story` and rejects style instructions for 0.6B. Repeated trials with the exact same test phrases and voice are still required before any quality claims.
+
+Example: `python tools/voice_benchmark.py --model qwen3-tts-1.7b --voice serena --delivery warm --samples 12 --output native-serena-warm.json`. The JSON contains numeric timing, seed-independent model/voice/style names and text-free metadata only, not PCM, recognition or user conversation.
