@@ -25,3 +25,7 @@ Sources below are **upstream documentation** checked for the initial design, not
 | Piper | https://github.com/OHF-Voice/piper1-gpl | Alternative fast TTS; **GPL-3.0-or-later**, not freely interchangeable with permissive code without obligations |
 
 **No winner has been demonstrated** on the target PC. "Best" will be decided using repeatable audio quality / ASR WER / token/s / time-to-first-sound / stability / energy usage benchmarks, not project stars or anecdotal claims.
+
+### Native Sesame mobile parity reference: private text thread
+
+Official mobile listings document Incognito/privacy choices, continuous voice/text memory, sharing images and voice notes, reminders, and search cards: https://play.google.com/store/apps/details?id=com.sesame.consumer and https://apps.apple.com/us/app/sesame-personal-agents/id6756329076 . These are public functional references only; proprietary Sesame login/voices/assets/source code are not imported. Ember's native RAM-only text conversation is separate and does not guarantee removal of OS swap or temporary audio files.

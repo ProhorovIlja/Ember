@@ -30,7 +30,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: 430
         modal: true
-        title: "Delete local chat?"
+        title: ember.privateMode ? "Clear private session?" : "Delete local chat?"
         standardButtons: Dialog.Yes | Dialog.Cancel
         onAccepted: ember.deleteCurrentSession()
         background: Rectangle {
@@ -44,7 +44,9 @@ ApplicationWindow {
             implicitHeight: 83
             Text {
                 anchors.fill: parent
-                text: "Only this conversation will be deleted from the local SQLite archive. The other chats will remain available."
+                text: ember.privateMode
+                      ? "Discard this private conversation from live memory. Saved chats remain untouched."
+                      : "Only this conversation will be deleted from the local SQLite archive. Other chats remain available."
                 wrapMode: Text.WordWrap
                 font.pixelSize: 13
                 color: "#D8EBFB"
@@ -247,7 +249,7 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         Text {
-                            text: "LOCAL HISTORY"
+                            text: ember.privateMode ? "PRIVATE SESSION / LOCAL HISTORY" : "LOCAL HISTORY"
                             color: "#8099AC"
                             font.pixelSize: 10
                             font.letterSpacing: 1.4
@@ -255,7 +257,7 @@ ApplicationWindow {
                         }
                         Item { Layout.fillWidth: true }
                         Text {
-                            text: ember.localHistoryReady ? "SQLite" : "Memory"
+                            text: ember.privateMode ? "RAM" : ember.localHistoryReady ? "SQLite" : "Memory"
                             font.pixelSize: 10
                             color: ember.localHistoryReady ? window.mint : "#CF9B88"
                         }
@@ -353,8 +355,20 @@ ApplicationWindow {
                         enabled: ember.localHistoryReady && ember.currentSessionId.length > 0 && !ember.busy
                         onClicked: ember.exportCurrentSession()
                     }
+                    PillButton {
+                        Layout.fillWidth: true
+                        text: ember.privateMode ? "Private session · END" : "Start private session"
+                        implicitHeight: 36
+                        enabled: !ember.busy && !ember.listening
+                        onClicked: {
+                            ember.privateMode = !ember.privateMode
+                            window.page = 1
+                        }
+                    }
                     Text {
-                        text: "Only text is saved. No audio recordings."
+                        text: ember.privateMode
+                              ? "Private text stays in RAM. Voice recognition still uses temporary local WAV files."
+                              : "Only chat text is archived in SQLite. No permanent audio recordings."
                         color: "#718CA5"
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
@@ -413,7 +427,10 @@ ApplicationWindow {
                         }
                         Text {
                             text: window.page === 0 ? "English voice · modular local engines · no browser wrapper" :
-                                  window.page === 1 ? "Persistent on-device history · RU/EN dictation · no cloud sync" :
+                                  window.page === 1
+                                  ? (ember.privateMode
+                                      ? "PRIVATE SESSION · RAM-ONLY TEXT · NO CHAT ARCHIVE"
+                                      : "Persistent on-device history · RU/EN dictation · no cloud sync") :
                                   "Modular engines, voices and personality"
                             font.pixelSize: 12
                             color: "#92A5B8"
@@ -685,14 +702,14 @@ ApplicationWindow {
                                     text: "Memory"
                                     implicitWidth: 94
                                     implicitHeight: 36
-                                    enabled: ember.localHistoryReady
+                                    enabled: ember.localHistoryReady && !ember.privateMode
                                     onClicked: continuityDialog.open()
                                 }
                                 PillButton {
-                                    text: "Delete"
-                                    implicitWidth: 84
+                                    text: ember.privateMode ? "Clear private" : "Delete"
+                                    implicitWidth: ember.privateMode ? 122 : 84
                                     implicitHeight: 36
-                                    enabled: ember.localHistoryReady
+                                    enabled: ember.privateMode || ember.localHistoryReady
                                     onClicked: deleteChatDialog.open()
                                 }
                                 PillButton {

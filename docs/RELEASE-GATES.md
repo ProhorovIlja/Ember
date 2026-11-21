@@ -110,3 +110,10 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [x] Optional Qwen3-ASR-specific per-chat compact background terminology uses a new SQLite table with cascade delete, a 512-character UI quota and 400-character request cap, without any new network endpoints.
 - [x] Tests enforce session separation, deletion, reopening, Unicode/Russian normalization and empty-value clearing.
 - [ ] Assess real WER/CER impact for fictional names, software paths and rare technical terms, and guard against model hallucinations on silent recordings.
+
+### Native RAM-only private sessions — 21 November 2026
+
+- [x] Explicit per-process private mode isolates private conversation context from saved chats, bypasses both user and assistant SQLite append paths, prevents private export and persistent note/ASR vocabulary writes.
+- [x] New chat/clear operations stay private while enabled; leaving or opening a saved session destroys private app-thread state, with no private text imported into SQLite.
+- [x] English sidebar indicates private mode; no automatic Cloud/Drive upload, no WebView/Android emulation.
+- [ ] Source-level persistence predicate has unit tests; additional end-to-end SQLite/WAL inspection and app crash/recording privacy tests are required before promoting this as a high-security feature.
