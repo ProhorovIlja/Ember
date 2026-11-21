@@ -1,6 +1,7 @@
 #include "Core.h"
 #include <QJsonArray>
 #include <QTest>
+#include <cstring>
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
@@ -15,6 +16,39 @@ private slots:
         QCOMPARE(EmberCore::pcmToWav({}, 16000), QByteArray());
         QCOMPARE(EmberCore::pcmToWav(QByteArray("odd"), 16000), QByteArray());
         QCOMPARE(EmberCore::pcmToWav(pcm, 0), QByteArray());
+    }
+    void resamplesCommonWindowsStereoMicrophone() {
+        QAudioFormat format;
+        format.setSampleRate(48000);
+        format.setChannelCount(2);
+        format.setSampleFormat(QAudioFormat::Int16);
+        QByteArray audio;
+        audio.resize(480 * 4);
+        for (qsizetype i = 0; i < audio.size(); i += 4) {
+            audio[i] = 0;
+            audio[i+1] = 0x40;
+            audio[i+2] = 0;
+            audio[i+3] = 0x40;
+        }
+        const auto wav = EmberCore::whisperWav(audio, format);
+        QCOMPARE(wav.size(), 44 + 160 * 2);
+        QCOMPARE(wav.left(4), QByteArray("RIFF"));
+        const int byte = 44 + 80 * 2;
+        const qint16 center = qint16(quint16(quint8(wav[byte])) |
+                              quint16(quint8(wav[byte + 1])) << 8);
+        QVERIFY(center > 15000 && center < 17000);
+        QVERIFY(EmberCore::whisperWav(audio.left(audio.size()-1), format).isEmpty());
+        format.setSampleRate(0);
+        QVERIFY(EmberCore::whisperWav(audio, format).isEmpty());
+        format.setSampleRate(48000);
+        format.setSampleFormat(QAudioFormat::Float);
+        QByteArray floats;
+        floats.resize(480 * 2 * 4);
+        for (qsizetype i = 0; i < floats.size(); i += 4) {
+            const float sample = 0.25f;
+            std::memcpy(floats.data() + i, &sample, 4);
+        }
+        QCOMPARE(EmberCore::whisperWav(floats, format).size(), 44 + 160 * 2);
     }
     void localOnlyEndpoint() {
         QVERIFY(EmberCore::allowedLocalEndpoint("http://127.0.0.1:43821/health"));

@@ -375,8 +375,15 @@ void EmberBackend::startRecording() {
     format.setSampleRate(16000);
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
-    if (input.isNull() || !input.isFormatSupported(format)) {
-        setStatus("Microphone does not support 16 kHz mono PCM. A resampler is needed for this device.");
+    if (input.isNull()) {
+        setStatus("No microphone is configured in Windows.");
+        return;
+    }
+    m_captureFormat = input.isFormatSupported(format) ? format : input.preferredFormat();
+    if (!m_captureFormat.isValid() || m_captureFormat.sampleRate() < 8000 ||
+        m_captureFormat.sampleRate() > 96000 || m_captureFormat.channelCount() > 8 ||
+        m_captureFormat.sampleFormat() == QAudioFormat::Unknown) {
+        setStatus("Unsupported microphone format; choose a different Windows input device.");
         return;
     }
     m_mediaPlayer.stop();
@@ -384,7 +391,7 @@ void EmberBackend::startRecording() {
     m_pcm.clear();
     m_audioBuffer.setBuffer(&m_pcm);
     m_audioBuffer.open(QIODevice::WriteOnly);
-    m_audioSource = std::make_unique<QAudioSource>(input, format);
+    m_audioSource = std::make_unique<QAudioSource>(input, m_captureFormat);
     m_audioSource->start(&m_audioBuffer);
     if (m_audioSource->error() != QAudio::NoError) {
         releaseCapture();
@@ -400,11 +407,13 @@ void EmberBackend::startRecording() {
 void EmberBackend::stopRecording() {
     if (!m_listening) return;
     releaseCapture();
-    if (m_pcm.size() < 3200) {
+    const qint64 bytesPerSecond = qint64(m_captureFormat.sampleRate()) *
+        m_captureFormat.bytesPerFrame();
+    if (bytesPerSecond <= 0 || m_pcm.size() < bytesPerSecond / 10) {
         setStatus("Recording was too short. Speak for at least a moment.");
         return;
     }
-    const QByteArray wav = EmberCore::pcmToWav(m_pcm, 16000);
+    const QByteArray wav = EmberCore::whisperWav(m_pcm, m_captureFormat);
     m_pcm.clear();
     QFile file(workFile("microphone.wav"));
     if (wav.isEmpty() || !file.open(QIODevice::WriteOnly) || file.write(wav) != wav.size()) {

@@ -1,5 +1,6 @@
 #pragma once
 #include "Core.h"
+#include <QAudioFormat>
 #include <QAudioOutput>
 #include <QAudioSource>
 #include <QBuffer>
@@ -91,6 +92,7 @@ private:
     std::unique_ptr<QAudioSource> m_audioSource;
     QBuffer m_audioBuffer;
     QByteArray m_pcm;
+    QAudioFormat m_captureFormat;
     QAudioOutput m_audioOutput;
     QMediaPlayer m_mediaPlayer;
     QNetworkAccessManager m_network;
