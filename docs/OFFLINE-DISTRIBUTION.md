@@ -46,3 +46,7 @@ For components that cannot be redistributed, provide exact expected folder names
 ## Still missing before final release
 
 Real Windows 10 / RTX 4070 test with airplane/network disconnect, clean installer, full ASR/TTS/LLM and warm/cold voice benches; human-graded English female voices, RU/EN WER, GPU coexistence, asset code-signing/provenance, full offline weights with legal approval, usable import UI, alternate distribution endpoint and final installer size review. Optional Internet tools and Drive backups must stay independent from the offline core.
+
+The installer builder accepts either repository-relative CI paths or absolute
+`-PayloadDirectory` / `-OutputDirectory` paths, so a large offline payload can
+reside on a separate storage drive without being copied into the Git repository.

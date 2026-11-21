@@ -12,8 +12,19 @@ if ($Version -notmatch '^([0-9]+[.][0-9]+[.][0-9]+)(-dev)?$') {
 }
 $numericVersion = $Matches[1] + '.0'
 $root = Split-Path -Parent $PSScriptRoot
-$payload = (Resolve-Path (Join-Path $root $PayloadDirectory)).Path
-$output = Join-Path $root $OutputDirectory
+# Accept both repository-relative CI paths and absolute user-selected offline
+# assembly paths, including large payloads staged on another drive.
+$payloadPath = if ([System.IO.Path]::IsPathRooted($PayloadDirectory)) {
+    $PayloadDirectory
+} else {
+    Join-Path $root $PayloadDirectory
+}
+$payload = (Resolve-Path $payloadPath).Path
+$output = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
+    $OutputDirectory
+} else {
+    Join-Path $root $OutputDirectory
+}
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 if (!(Test-Path (Join-Path $payload 'Ember.exe'))) { throw 'Native EXE missing.' }
 if (!(Test-Path (Join-Path $payload 'Qt6Core.dll'))) { throw 'Qt runtime missing.' }
