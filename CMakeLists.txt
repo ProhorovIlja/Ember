@@ -18,5 +18,7 @@ if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     qt_add_executable(ember-core-tests tests/CoreTests.cpp)
     target_link_libraries(ember-core-tests PRIVATE EmberCore Qt6::Test)
-    add_test(NAME ember-core COMMAND ember-core-tests)
+    set_target_properties(ember-core-tests PROPERTIES WIN32_EXECUTABLE FALSE)
+    add_test(NAME ember-core COMMAND ember-core-tests
+             -o "${CMAKE_BINARY_DIR}/ember-test-report.txt,txt")
 endif()

@@ -41,7 +41,13 @@ jobs:
         run: cmake --build build --config Release --parallel 2
       - name: Execute core regressions
         shell: pwsh
-        run: ctest --test-dir build -C Release --output-on-failure -V
+        run: |
+          ctest --test-dir build -C Release --output-on-failure -V
+          $code = $LASTEXITCODE
+          if (Test-Path 'build/ember-test-report.txt') {
+            Get-Content 'build/ember-test-report.txt'
+          }
+          if ($code -ne 0) { throw "QtTest failed with code $code" }
       - name: Deploy dynamic Qt runtime
         shell: pwsh
         run: |
