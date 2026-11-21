@@ -149,6 +149,7 @@ private:
     void rebuildConversationHistory();
     void renderChatStream();
     void finishChatStream(bool interrupted);
+    void enqueueLiveSpeech(bool final);
     void beginSpeech(const QString &text);
     void playNextSpeechChunk();
     void synthesize(const QString &text);
@@ -190,6 +191,9 @@ private:
     bool m_brainReady = false, m_busy = false, m_listening = false;
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
     bool m_speechSequence = false;
+    bool m_chatGenerating = false;
+    bool m_voiceEarlyActive = false, m_voiceEarlyFailed = false;
+    qsizetype m_liveSpeechCursor = 0;
     bool m_speechServerReady = false;
     // One WAV plays while the opposite private slot is synthesized ahead.
     int m_playingSpeechSlot = -1, m_readySpeechSlot = -1, m_ttsOutputSlot = -1;
