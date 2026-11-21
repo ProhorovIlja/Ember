@@ -13,6 +13,10 @@ Sources below are **upstream documentation** checked for the initial design, not
 | English Kokoro CLI | https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html#kokoro-en-v0-19-english-11-speakers | `--kokoro-model`, `--kokoro-voices`, `--kokoro-tokens`, `--kokoro-data-dir=espeak-ng-data`, `--sid=0..10`, `--output-filename`; official v0.19 bundle does not require `--kokoro-lexicon` |
 | Qwen3-8B | https://huggingface.co/Qwen/Qwen3-8B | Apache-2.0 primary candidate; benchmark actual GGUF conversion |
 | Qwen3.5-9B | https://huggingface.co/Qwen/Qwen3.5-9B | Apache-2.0 newer candidate; check llama.cpp/GGUF compatibility and speed first |
+| Native Qwen3-TTS HTTP | https://github.com/gabriele-mastrapasqua/qwen3-tts/blob/main/docs/serving/api.md | Community C++ local server with OpenAI-compatible `/v1/audio/speech`; validate the exact commit, Windows CUDA compatibility and license before using |
+| Qwen3 Audio API | https://github.com/second-state/qwen3_audio_api | Community Python/Rust wrapper exposing local TTS and ASR endpoints; API server itself is a *separate* process; default API compatibility must be tested end-to-end |
+| Chatterbox local server | https://github.com/devnen/Chatterbox-TTS-Server | Community OpenAI speech endpoint for original/Multilingual/Turbo Chatterbox, with variants and distinct licenses/VRAM demands |
+| Qwen3-TTS models | https://github.com/QwenLM/Qwen3-TTS | Qwen's 0.6B and 1.7B CustomVoice/VoiceDesign; official release supports 10 languages including Russian, and English/female voices must be A/B listened for quality |
 | Piper | https://github.com/OHF-Voice/piper1-gpl | Alternative fast TTS; **GPL-3.0-or-later**, not freely interchangeable with permissive code without obligations |
 
 **No winner has been demonstrated** on the target PC. "Best" will be decided using repeatable audio quality / ASR WER / token/s / time-to-first-sound / stability / energy usage benchmarks, not project stars or anecdotal claims.

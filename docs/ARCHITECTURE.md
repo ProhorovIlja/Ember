@@ -1,6 +1,6 @@
 # Ember architecture and development sequence
 
-**Native shell:** Qt 6 Quick + C++20 using Qt Network, Multimedia and Widgets solely for native file dialogs. Qt DLLs are deployed dynamically to comply with the relevant LGPL obligations. No WebView2/Chromium or Android layer.
+**Native shell:** Qt 6 Quick + C++20 using Qt Network, Multimedia and Widgets solely for native file dialogs. Qt DLLs are deployed dynamically while respecting relevant LGPL obligations. No WebView2/Chromium or Android layer. Input/output hardware is enumerated by `QMediaDevices` and preferences are saved as opaque device IDs; removed devices invalidate selection instead of silently accessing an unrelated device. Native capture is capped by a watchdog and by a 30-second per-recording timer with a session generation check.
 
 **Logical layers:**
 ```text
@@ -9,7 +9,10 @@ QML native workspace
   │                                     -> text in current session
   ├─ Local LLM: llama-server process (127.0.0.1:43821)
   │               JSON chat completion with fixed local model alias
-  └─ Voice output: sherpa-onnx CLI + Kokoro -> WAV -> QMediaPlayer
+  └─ Voice output: native switchable providers
+       ├─ sherpa-onnx CLI + Kokoro -> WAV
+       └─ localhost only (127.0.0.1:43822) OpenAI speech API -> bounded PCM16 WAV
+       -> selected QAudioOutput / QMediaPlayer
          Shared C++ backend / bounded in-memory transcript / portable settings
 ```
 
@@ -19,7 +22,7 @@ Use **component composition and measurable routing** rather than unsupported cla
 
 ### Hardware operating assumptions
 
-A single 12 GB RTX 4070 should prioritize a quantized ~8B-class language model and reserve headroom for context KV and graphics. ASR and small ONNX TTS may run on CPU while the LLM occupies GPU memory, trading latency for lower peak VRAM. Actual VRAM, token/s, first-phoneme latency, idle watts and peak memory must be benchmarked on the real Ryzen 5600 machine. The current starter does not claim a verified measured FPS or latency. Microphone preferred formats now convert through a bounded native mono 16 kHz windowed-sinc resampler; this path is unit-tested with synthetic stereo/float samples, not yet recorded Windows hardware.
+A single 12 GB RTX 4070 should prioritize a quantized ~8B-class language model and reserve headroom for context KV and graphics. ASR and small ONNX TTS may run on CPU while the LLM occupies GPU memory, trading latency for lower peak VRAM. An optional Qwen3/Chatterbox speech service must be monitored for **combined** VRAM, not just single-model fit. The native API adapter blocks redirects and nonloopback URLs, validates 16-bit PCM WAV containers and caps response bytes. Actual VRAM, token/s, first-phoneme latency, idle watts and peak memory must be benchmarked on the real Ryzen 5600 machine. The current starter does not claim a verified measured FPS or latency. Microphone preferred formats now convert through a bounded native mono 16 kHz windowed-sinc resampler; this path is unit-tested with synthetic stereo/float samples, not yet recorded Windows hardware.
 
 ### Sequence and acceptance
 

@@ -6,16 +6,16 @@ This repository currently contains a **development foundation**. It compiles an 
 
 ## Design priorities
 
-- Speech first: explicitly start the microphone → local `whisper.cpp` transcription → local `llama.cpp` response → `sherpa-onnx` Kokoro synthesis → Windows audio playback.
+- Speech first: choose a real Windows microphone → local `whisper.cpp` transcription → local `llama.cpp` response → either offline `sherpa-onnx` Kokoro or a separate **localhost-only** OpenAI-compatible Qwen3-TTS/Chatterbox service → selected Windows speakers.
 - Text chat: the same local LLM can be used without a microphone. Current session is held in memory, not silently uploaded.
 - Efficient native UI: GPU-rendered Qt Quick, subtle animations, dark colors, original procedural voice stage, keyboard-controlled composer. No runtime web UI.
-- Replaceable intelligence: separate speech recognition, reasoning, voice generation and desktop UI; measure each against alternatives instead of assuming that merging incompatible model weights will help.
+- Replaceable intelligence: independently choose the voice backend (fast CPU Kokoro or higher-end local TTS API), the speaker and the local reasoner. Benchmark each component; model weight blending is a separate research path, not an assumed feature.
 - Portable storage under `D:\Games\Ember` by default, including `data/ember.ini`, per-session cache, engines and GGUF/ONNX weights. The actual install location is user-selected.
 - Permission boundaries for future local files, programs, Internet and GitHub/Drive automation. No universal implicit access is granted by a text prompt.
 
 ## Current behavior
 
-The backend launches a local `llama-server` bound to `127.0.0.1:43821` with one GGUF model and a fixed `ember` API alias. It posts current-session messages to the local `/v1/chat/completions` endpoint, never a remote URL. Audio recording runs only on explicit command and stops after 30 seconds. The first voice path is **turn-based**, not streaming. The caller must supply compatible engine binaries and licensed models; common stereo and 44.1/48 kHz microphones are converted to 16 kHz mono with a bounded resampler, while real hardware/device selection still needs acceptance testing. The built-in Kokoro path currently targets the **English v0.19 voice pack**. Russian speech output and multilingual voice quality are future acceptance items, not implied by the English model.
+The backend launches a local `llama-server` bound to `127.0.0.1:43821` with one GGUF model and a fixed `ember` API alias. It posts current-session messages to the local `/v1/chat/completions` endpoint, never a remote URL. Audio recording runs only on explicit command and stops after 30 seconds. The first voice path is **turn-based**, not streaming. A compatible local TTS server, when selected, must already be running on `127.0.0.1:43822`; requests cannot be redirected to remote addresses. The caller must supply compatible engine binaries and licensed models; common stereo and 44.1/48 kHz microphones are converted to 16 kHz mono with a bounded resampler, while real hardware/device selection still needs acceptance testing. The built-in Kokoro path currently targets the **English v0.19 voice pack**. Russian speech output and multilingual voice quality are future acceptance items, not implied by the English model.
 
 ### Build
 
