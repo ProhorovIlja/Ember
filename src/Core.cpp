@@ -1008,6 +1008,9 @@ QString joinTranscriptionSegments(const QStringList &segments) {
     }
     return combined.join(' ');
 }
+QString partialDictationOnError(bool dictation, const QStringList &segments) {
+    return dictation ? joinTranscriptionSegments(segments) : QString();
+}
 StreamResult consumeChatStream(QByteArray &buffer, const QByteArray &incoming) {
     StreamResult result;
     if (incoming.size() > 128 * 1024 || buffer.size() + incoming.size() > 256 * 1024) {
