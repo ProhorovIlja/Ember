@@ -635,7 +635,7 @@ ApplicationWindow {
                                         id: composer
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        enabled: ember.brainReady && !ember.busy
+                                        enabled: !ember.busy
                                         color: "#ECF4F8"
                                         font.pixelSize: 14
                                         wrapMode: TextEdit.Wrap
@@ -644,7 +644,7 @@ ApplicationWindow {
                                                           ember.chatMode === 2 ? "Describe the problem, symptoms, and observations…" :
                                                           ember.chatMode === 3 ? "Describe the code, repository, or feature…" :
                                                           "Ask Ember anything…") :
-                                                          "Start the local brain to write a message"
+                                                          "Type or dictate locally · start the brain to send"
                                         placeholderTextColor: "#748C9C"
                                         background: Rectangle { color: "transparent" }
                                         Keys.onPressed: function(event) {
