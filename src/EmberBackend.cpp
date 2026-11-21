@@ -58,6 +58,8 @@ EmberBackend::EmberBackend(QObject *parent)
     m_chatRenderTimer.setSingleShot(true);
     connect(&m_chatRenderTimer, &QTimer::timeout,
             this, &EmberBackend::renderChatStream);
+    m_pcmPumpTimer.setInterval(15);
+    connect(&m_pcmPumpTimer, &QTimer::timeout, this, &EmberBackend::pumpPcmPlayback);
     m_voiceId = m_settings.value("voiceId", 0).toInt();
     // Ignore Windows/system proxies for both local inference services.
     // Otherwise an environment proxy could receive private conversation text.
@@ -1053,6 +1055,7 @@ void EmberBackend::stopSpeechOnError(const QString &error) {
     m_voiceQueue.clear();
     m_readySpeechSlot = m_ttsOutputSlot = m_playingSpeechSlot = -1;
     m_cliTtsActive = false;
+    resetPcmPlayback();
     if (m_speechReply) {
         auto reply = m_speechReply;
         m_speechReply = nullptr;
@@ -1104,7 +1107,13 @@ void EmberBackend::playNextSpeechChunk() {
 }
 void EmberBackend::synthesize(const QString &text) {
     if (m_voiceEngine == 1) {
-        synthesizeViaLocalServer(text);
+        // Only the explicitly started, health-verified speech.cpp server is
+        // known to support chunked raw PCM. Other compatible providers keep
+        // the existing validated complete-WAV request and two-slot fallback.
+        if (m_speechServerReady && m_speechServer.state() == QProcess::Running)
+            synthesizeStreamingPcm(text);
+        else
+            synthesizeViaLocalServer(text);
         return;
     }
     if (m_tts.state() != QProcess::NotRunning) {
@@ -1153,6 +1162,161 @@ void EmberBackend::playSynthesizedFile() {
     if (!m_speechSequence) return; // synchronous media error may cancel playback
     setSpeaking(true);
     setStatus("Speaking locally — the next segment can prepare in parallel.");
+}
+void EmberBackend::resetPcmPlayback() {
+    m_pcmPumpTimer.stop();
+    m_pcmDevice = nullptr; // QAudioSink owns this temporary push-mode device
+    if (m_pcmSink) {
+        m_pcmSink->stop();
+        m_pcmSink.reset();
+    }
+    m_pcmPending.clear();
+    m_pcmTotalReceived = 0;
+    m_pcmSampleRate = 0;
+    m_pcmHttpDone = false;
+    m_pcmStarted = false;
+}
+void EmberBackend::synthesizeStreamingPcm(const QString &text) {
+    const QString url = "http://127.0.0.1:43822/v1/audio/speech";
+    if (!EmberCore::allowedLocalSpeechEndpoint(url) || m_pcmSink ||
+        !m_speechServerReady || m_speechServer.state() != QProcess::Running) {
+        stopSpeechOnError("The managed local PCM speech service is not ready.");
+        return;
+    }
+    resetPcmPlayback();
+    QNetworkRequest request{QUrl(url)};
+    request.setTransferTimeout(120000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setRawHeader("Accept", "audio/pcm");
+    const QJsonObject payload = EmberCore::streamingPcmSpeechRequest(
+        m_localModel, m_localVoice, text);
+    auto *reply = m_network.post(
+        request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    m_speechReply = reply;
+    setBusy(true);
+    m_ttsElapsed.start();
+    setStatus("Streaming private PCM16 speech directly from native Qwen3-TTS…");
+    connect(reply, &QNetworkReply::readyRead,
+            this, [this, reply] { readPcmResponse(reply); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        if (m_speechReply != reply) {
+            reply->deleteLater();
+            return;
+        }
+        // Consume the final partial packet before checking word alignment.
+        readPcmResponse(reply);
+        if (m_speechReply != reply) {
+            reply->deleteLater();
+            return;
+        }
+        const bool valid = reply->error() == QNetworkReply::NoError &&
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
+            m_pcmSampleRate > 0 && m_pcmTotalReceived > 0 &&
+            (m_pcmTotalReceived % 2) == 0;
+        m_speechReply = nullptr;
+        reply->deleteLater();
+        if (!valid) {
+            stopSpeechOnError("Native PCM stream failed or returned invalid audio.");
+            return;
+        }
+        m_pcmHttpDone = true;
+        m_ttsLastMs = m_ttsElapsed.isValid() ? m_ttsElapsed.elapsed() : -1;
+        emit voiceTimingsChanged();
+        pumpPcmPlayback(); // drain the final queued samples before next sentence
+    });
+}
+void EmberBackend::readPcmResponse(QNetworkReply *reply) {
+    if (m_speechReply != reply) return;
+    if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200) {
+        stopSpeechOnError("Native speech API rejected the streaming PCM request.");
+        return;
+    }
+    if (!m_pcmSink) {
+        const QByteArray contentType = reply->rawHeader("Content-Type").toLower();
+        bool rateOk = false;
+        const int rate = reply->rawHeader("X-Sample-Rate").trimmed().toInt(&rateOk);
+        if (!contentType.startsWith("audio/pcm") || !rateOk ||
+            !EmberCore::validPcmSampleRate(rate)) {
+            stopSpeechOnError("Native TTS response must be mono PCM16 with a valid X-Sample-Rate.");
+            return;
+        }
+        QAudioFormat format;
+        format.setSampleRate(rate);
+        format.setChannelCount(1);
+        format.setSampleFormat(QAudioFormat::Int16);
+        const QAudioDevice selected = m_audioOutput.device();
+        if (selected.isNull() || !selected.isFormatSupported(format)) {
+            stopSpeechOnError("Selected Windows output does not support this PCM rate and format.");
+            return;
+        }
+        m_pcmSampleRate = rate;
+        m_pcmSink = std::make_unique<QAudioSink>(selected, format);
+        m_pcmSink->setVolume(m_audioOutput.volume());
+        m_pcmSink->setBufferSize(rate / 2); // ~250 ms mono PCM16 audio buffer
+        m_pcmDevice = m_pcmSink->start();
+        if (!m_pcmDevice || m_pcmSink->error() != QAudio::NoError) {
+            stopSpeechOnError("Could not initialize the selected Windows streaming audio device.");
+            return;
+        }
+        m_pcmPumpTimer.start();
+    }
+    const QByteArray incoming = reply->readAll();
+    if (incoming.isEmpty()) return;
+    constexpr qint64 maxChunkBytes = 12LL * 1024 * 1024;
+    constexpr qsizetype maxPendingBytes = 768 * 1024;
+    // Never let a malicious/buggy local server build an unbounded PCM queue.
+    if (incoming.size() > maxChunkBytes - m_pcmTotalReceived ||
+        incoming.size() > maxPendingBytes - m_pcmPending.size()) {
+        stopSpeechOnError("Native PCM stream exceeded its bounded audio buffer or duration.");
+        return;
+    }
+    m_pcmTotalReceived += incoming.size();
+    m_pcmPending += incoming;
+    pumpPcmPlayback();
+}
+void EmberBackend::pumpPcmPlayback() {
+    if (!m_pcmSink || !m_pcmDevice) return;
+    if (m_pcmSink->error() != QAudio::NoError &&
+        m_pcmSink->error() != QAudio::UnderrunError) {
+        stopSpeechOnError("The Windows PCM playback stream encountered an audio device error.");
+        return;
+    }
+    const qint64 available = std::max<qint64>(0, m_pcmSink->bytesFree());
+    // PCM16 frame boundaries may span separate HTTP readyRead notifications.
+    const qint64 writeBytes = std::min<qint64>(
+        available, m_pcmPending.size()) & ~qint64(1);
+    if (writeBytes > 0) {
+        const qint64 written = m_pcmDevice->write(m_pcmPending.constData(), writeBytes);
+        if (written < 0 || (written % 2)) {
+            stopSpeechOnError("Windows rejected the PCM16 audio buffer.");
+            return;
+        }
+        if (written > 0) {
+            m_pcmPending.remove(0, qsizetype(written));
+            if (!m_pcmStarted) {
+                m_pcmStarted = true;
+                setSpeaking(true);
+                // Approximate first-buffer-accepted time, NOT acoustic onset.
+                if (m_voiceTurnActive && m_voiceFirstPlaybackMs < 0 &&
+                    m_voiceTurnElapsed.isValid()) {
+                    m_voiceFirstPlaybackMs = m_voiceTurnElapsed.elapsed();
+                    m_voiceTurnActive = false;
+                    emit voiceTimingsChanged();
+                }
+            }
+        }
+    }
+    // Continue only after HTTP completion AND the queued samples are heard.
+    if (m_pcmHttpDone && m_pcmPending.isEmpty() && m_pcmStarted &&
+        m_pcmSink->state() == QAudio::IdleState) {
+        resetPcmPlayback();
+        setSpeaking(false);
+        setBusy(false);
+        m_ttsOutputSlot = -1;
+        playNextSpeechChunk();
+    }
 }
 void EmberBackend::synthesizeViaLocalServer(const QString &text) {
     constexpr qsizetype maxWavBytes = 8 * 1024 * 1024;
@@ -1226,6 +1390,7 @@ void EmberBackend::cancelWork() {
     m_speechSequence = false;
     m_voiceQueue.clear();
     m_readySpeechSlot = m_ttsOutputSlot = m_playingSpeechSlot = -1;
+    resetPcmPlayback();
     if (m_reply) {
         auto reply = m_reply;
         m_reply = nullptr;
