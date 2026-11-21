@@ -726,3 +726,40 @@ The UI now offers **Continue answer** on explicit local LLM
 own. The request follows the current chat context and keeps any
 unsent composer draft, but high-fidelity scene continuity and
 no-duplicate-sentence behavior still need real GGUF testing.
+
+## 22 November 2026 — microphone interruption and recoverable dictation
+
+Qt 6.8 documents `QMediaDevices::audioInputsChanged`, the runtime
+`QAudioSource::error()` / `state()` and `QAudioSource::stop()`
+(https://doc.qt.io/qt-6.8/qaudiosource.html). Windows may report capture
+device changes or input errors while Ember holds a potentially long, private,
+push-to-release RU/EN dictation. Previously, both unplug and a new input
+selection discarded the entire in-progress raw capture.
+
+New source policy: `EmberBackend::interruptCapture(reason, allowRecovery)`
+handles three cases. Device unplug/input-change or unexpected QtAudio source
+error *may recover a dictation only*, closing Qt capture before validating the
+already-written scratch file. Recovery requires a real, supported input format,
+no disk-write failure, exact observed-vs-file byte count, complete interleaved
+PCM frames and at least 100ms of captured data. Only then can the existing
+bounded ~25-second, privacy-preserving ASR path recover transcript segments.
+After successful recognition the captured prefix is inserted into the
+**editable composer**, marked potentially incomplete. It is never submitted
+as an AI user request. A late ASR failure continues the prior editable
+prefix recovery policy and carries the microphone-interruption warning.
+
+A voice conversation, unlike dictation, must **never** use a truncated
+microphone take for automatic chat submission. Disk-damaged capture and
+too-short recordings likewise remain fail-closed, with scratch cleanup.
+Changing the preferred device during a dictation saves the next microphone
+selection but does not invalidate already-recorded, intact bytes.
+The status from an interrupted recording is no longer overwritten by a
+generic “microphone selection saved” notice.
+
+Deterministic QtTest checks `canRecoverInterruptedDictation` on 16-kHz mono
+and 48-kHz stereo input, sub-100ms capture, disk failure, incomplete frames,
+size mismatch and voice-command denial. CI tests do **not** emulate real
+Windows USB/Bluetooth disconnect, power management, driver crashes or
+audio-device focus. Those scenarios still require hands-on Windows 10
+testing with the user's real microphones. Do not interpret an ASR partial
+prefix as complete speech, and do not retain raw WAV in local history.
