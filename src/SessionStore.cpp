@@ -1,5 +1,10 @@
 #include "SessionStore.h"
 #include <QDateTime>
+#include <QDataStream>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QDir>
 #include <QFileInfo>
 #include <QSaveFile>
@@ -271,6 +276,160 @@ bool SessionStore::exportMarkdown(const QString &session, const QString &path) c
     }
     return output.commit();
 }
+
+bool SessionStore::exportCompactBackup(const QString &path) const {
+    if (!m_ready || path.trimmed().isEmpty() ||
+        QFileInfo(path).absoluteFilePath() ==
+            QFileInfo(m_db.databaseName()).absoluteFilePath()) return false;
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    static const QByteArray magic = QByteArrayLiteral("EMBER-CHAT-BACKUP-1\n");
+    if (file.write(magic) != magic.size()) {
+        file.cancelWriting();
+        return false;
+    }
+    QDataStream stream(&file);
+    stream.setVersion(QDataStream::Qt_6_5);
+    const auto frame = [&](const QJsonObject &obj) -> bool {
+        const QByteArray raw = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+        if (raw.isEmpty() || raw.size() > 192 * 1024) return false;
+        const QByteArray packed = qCompress(raw, 9);
+        if (packed.size() < 5 || packed.size() > 256 * 1024) return false;
+        stream << quint32(packed.size());
+        return stream.status() == QDataStream::Ok &&
+            stream.writeRawData(packed.constData(), int(packed.size())) ==
+                packed.size() && stream.status() == QDataStream::Ok;
+    };
+    QSqlQuery sessionsQuery(m_db);
+    bool ok = sessionsQuery.exec(
+        "SELECT id,title,created_at,updated_at FROM sessions ORDER BY created_at,id");
+    int sessionCount = 0;
+    qint64 messageCount = 0;
+    while (ok && sessionsQuery.next()) {
+        if (++sessionCount > 10000) { ok = false; break; }
+        const QString id = sessionsQuery.value(0).toString();
+        ok = frame(QJsonObject{{"kind", "session"},
+              {"title", sessionsQuery.value(1).toString()},
+              {"created", double(sessionsQuery.value(2).toLongLong())},
+              {"updated", double(sessionsQuery.value(3).toLongLong())},
+              {"notes", notes(id)}, {"hints", asrHints(id)}});
+        if (!ok) break;
+        QSqlQuery messagesQuery(m_db);
+        messagesQuery.prepare(
+            "SELECT role,body,created_at FROM messages WHERE session_id=? ORDER BY id");
+        messagesQuery.addBindValue(id);
+        ok = messagesQuery.exec();
+        while (ok && messagesQuery.next()) {
+            if (++messageCount > 1000000) { ok = false; break; }
+            ok = frame(QJsonObject{{"kind", "message"},
+                  {"role", messagesQuery.value(0).toString()},
+                  {"body", messagesQuery.value(1).toString()},
+                  {"created", double(messagesQuery.value(2).toLongLong())}});
+        }
+    }
+    if (ok) {
+        stream << quint32(0); // mandatory final marker; detect truncation
+        ok = stream.status() == QDataStream::Ok;
+    }
+    if (!ok) {
+        file.cancelWriting();
+        return false;
+    }
+    return file.commit();
+}
+
+bool SessionStore::restoreCompactBackup(const QString &path) {
+    if (!m_ready || path.trimmed().isEmpty() ||
+        QFileInfo(path).absoluteFilePath() ==
+            QFileInfo(m_db.databaseName()).absoluteFilePath()) return false;
+    QFile file(path);
+    static const QByteArray magic = QByteArrayLiteral("EMBER-CHAT-BACKUP-1\n");
+    if (!file.open(QIODevice::ReadOnly) || file.read(magic.size()) != magic)
+        return false;
+    if (!m_db.transaction()) return false;
+    QDataStream stream(&file);
+    stream.setVersion(QDataStream::Qt_6_5);
+    const auto fail = [&]() -> bool {
+        m_db.rollback();
+        m_error = "Malformed, truncated or unsupported Ember backup; no chats restored.";
+        return false;
+    };
+    QString currentSession;
+    int sessionsRead = 0;
+    qint64 messagesRead = 0;
+    bool ended = false;
+    while (!file.atEnd()) {
+        quint32 length = 0;
+        stream >> length;
+        if (stream.status() != QDataStream::Ok) return fail();
+        if (length == 0) {
+            ended = file.atEnd();
+            break;
+        }
+        if (length < 5 || length > 256 * 1024) return fail();
+        QByteArray packed(int(length), char(0));
+        if (stream.readRawData(packed.data(), int(length)) != int(length))
+            return fail();
+        // qUncompress uses an untrusted four-byte decoded-size header.
+        // Check it before decompression to prevent oversized allocation.
+        const auto *p = reinterpret_cast<const uchar *>(packed.constData());
+        const quint32 expanded = (quint32(p[0]) << 24) |
+            (quint32(p[1]) << 16) | (quint32(p[2]) << 8) | quint32(p[3]);
+        if (expanded == 0 || expanded > 192 * 1024) return fail();
+        const QByteArray raw = qUncompress(packed);
+        if (raw.size() != expanded) return fail();
+        QJsonParseError parseError;
+        const QJsonDocument decoded = QJsonDocument::fromJson(raw, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !decoded.isObject())
+            return fail();
+        const QJsonObject obj = decoded.object();
+        const double epoch = obj.value("created").toDouble(-1);
+        if (epoch < 0 || epoch > 4102444800.0) return fail();
+        if (obj.value("kind") == QLatin1String("session")) {
+            if (++sessionsRead > 10000) return fail();
+            const QString title = obj.value("title").toString();
+            const QString notesText = obj.value("notes").toString();
+            const QString hintsText = obj.value("hints").toString();
+            const double updated = obj.value("updated").toDouble(-1);
+            if (title.isEmpty() || title.size() > 256 ||
+                notesText.size() > 1800 || hintsText.size() > 512 ||
+                updated < 0 || updated > 4102444800.0) return fail();
+            currentSession = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            QSqlQuery insert(m_db);
+            insert.prepare(
+                "INSERT INTO sessions(id,title,created_at,updated_at) VALUES(?,?,?,?)");
+            insert.addBindValue(currentSession);
+            insert.addBindValue(title);
+            insert.addBindValue(qint64(epoch));
+            insert.addBindValue(qint64(updated));
+            if (!insert.exec() ||
+                (!notesText.isEmpty() && !setNotes(currentSession, notesText)) ||
+                (!hintsText.isEmpty() && !setAsrHints(currentSession, hintsText)))
+                return fail();
+        } else if (obj.value("kind") == QLatin1String("message")) {
+            if (currentSession.isEmpty() || ++messagesRead > 1000000)
+                return fail();
+            const QString role = obj.value("role").toString();
+            const QString body = obj.value("body").toString();
+            if ((role != "you" && role != "ember") ||
+                body.isEmpty() || body.size() > 32768) return fail();
+            QSqlQuery insert(m_db);
+            insert.prepare(
+                "INSERT INTO messages(session_id,role,body,created_at) VALUES(?,?,?,?)");
+            insert.addBindValue(currentSession);
+            insert.addBindValue(role);
+            insert.addBindValue(body);
+            insert.addBindValue(qint64(epoch));
+            if (!insert.exec()) return fail();
+        } else {
+            return fail();
+        }
+    }
+    if (!ended) return fail(); // missing final frame or trailing data
+    if (!m_db.commit()) return fail();
+    return true;
+}
+
 bool SessionStore::exists(const QString &session) const {
     if (!m_ready || session.isEmpty()) return false;
     QSqlQuery query(m_db);
