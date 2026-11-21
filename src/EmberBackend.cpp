@@ -1059,6 +1059,23 @@ void EmberBackend::cancelWork() {
     setBusy(false);
     setStatus("Cancelled. No microphone capture or pending reply remains.");
 }
+QVariantList EmberBackend::searchHistory(const QString &text) const {
+    return m_store && m_store->ready() ? m_store->search(text) : QVariantList();
+}
+void EmberBackend::exportCurrentSession() {
+    if (!m_store || !m_store->ready() || m_sessionId.isEmpty()) {
+        setStatus("Local history is not available for export.");
+        return;
+    }
+    const QString output = QFileDialog::getSaveFileName(
+        nullptr, "Export this conversation",
+        QDir::home().filePath("Ember-conversation.md"),
+        "Markdown document (*.md)");
+    if (output.isEmpty()) return;
+    setStatus(m_store->exportMarkdown(m_sessionId, output)
+        ? "Complete text conversation exported locally. No audio was saved."
+        : "Could not export the selected conversation.");
+}
 void EmberBackend::refreshSessions() {
     m_sessions = m_store && m_store->ready() ? m_store->sessions() : QVariantList();
     emit sessionsChanged();
