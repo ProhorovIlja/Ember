@@ -95,6 +95,9 @@ bool attachLocalVisionData(QJsonObject &request, const QByteArray &dataUri);
 // User-supplied local GGUF model path, never a catalog download alias.
 QString offlineSpeechModelFile(const QString &applicationRoot, const QString &alias);
 bool validSpeechWav(const QByteArray &wav);
+// Suppress hallucinations only for *digitally near-silent* canonical 16kHz
+// mono PCM16 input; never gate ordinary quiet voices or unrecognized WAVs.
+bool nearSilentAsrWav(const QByteArray &wav);
 QStringList speechChunks(const QString &text, int maxCharacters = 620);
 QString speechFriendlyText(const QString &markdown);
 // Commit only stable complete sentences from an LLM stream. Reuses a
