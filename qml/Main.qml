@@ -355,6 +355,26 @@ ApplicationWindow {
                         enabled: ember.localHistoryReady && ember.currentSessionId.length > 0 && !ember.busy
                         onClicked: ember.exportCurrentSession()
                     }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        PillButton {
+                            Layout.fillWidth: true
+                            text: "Backup all"
+                            implicitHeight: 36
+                            enabled: ember.localHistoryReady && !ember.privateMode
+                                     && !ember.busy && !ember.listening && !ember.speaking
+                            onClicked: ember.exportCompactHistory()
+                        }
+                        PillButton {
+                            Layout.fillWidth: true
+                            text: "Restore"
+                            implicitHeight: 36
+                            enabled: ember.localHistoryReady && !ember.privateMode
+                                     && !ember.busy && !ember.listening && !ember.speaking
+                            onClicked: ember.restoreCompactHistory()
+                        }
+                    }
                     PillButton {
                         Layout.fillWidth: true
                         text: ember.privateMode ? "Private session · END" : "Start private session"
@@ -368,7 +388,7 @@ ApplicationWindow {
                     Text {
                         text: ember.privateMode
                               ? "Private text stays in RAM. Voice recognition still uses temporary local WAV files."
-                              : "Only chat text is archived in SQLite. No permanent audio recordings."
+                              : "Chats stay in SQLite. Backups are compressed, not encrypted; cloud upload is manual."
                         color: "#718CA5"
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
