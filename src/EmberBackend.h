@@ -32,6 +32,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(int voiceId READ voiceId WRITE setVoiceId NOTIFY configurationChanged)
     Q_PROPERTY(int voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY configurationChanged)
     Q_PROPERTY(QString localVoice READ localVoice WRITE setLocalVoice NOTIFY configurationChanged)
+    Q_PROPERTY(QString voiceSample READ voiceSample WRITE setVoiceSample NOTIFY configurationChanged)
     Q_PROPERTY(QString localModel READ localModel WRITE setLocalModel NOTIFY configurationChanged)
     Q_PROPERTY(int configurationRevision READ configurationRevision NOTIFY configurationChanged)
     Q_PROPERTY(QVariantList audioInputs READ audioInputs NOTIFY audioDevicesChanged)
@@ -54,6 +55,7 @@ public:
     int voiceId() const { return m_voiceId; }
     int voiceEngine() const { return m_voiceEngine; }
     QString localVoice() const { return m_localVoice; }
+    QString voiceSample() const { return m_voiceSample; }
     QString localModel() const { return m_localModel; }
     int configurationRevision() const { return m_configurationRevision; }
     QVariantList audioInputs() const;
@@ -66,6 +68,7 @@ public:
     Q_INVOKABLE void setVoiceId(int index);
     Q_INVOKABLE void setVoiceEngine(int index);
     Q_INVOKABLE void setLocalVoice(const QString &value);
+    Q_INVOKABLE void setVoiceSample(const QString &value);
     Q_INVOKABLE void setLocalModel(const QString &value);
     Q_INVOKABLE void setInputDeviceIndex(int index);
     Q_INVOKABLE void setOutputDeviceIndex(int index);
@@ -115,6 +118,7 @@ private:
     QString m_status = "Ready to configure local engines.";
     QString m_transcript, m_lastReply, m_pendingUser, m_persona;
     QString m_localVoice = "Vivian", m_localModel = "qwen3-tts";
+    QString m_voiceSample;
     QStringList m_voiceQueue;
     QVariantList m_messages;
     QList<EmberCore::Turn> m_history;
