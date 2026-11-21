@@ -156,16 +156,12 @@ EmberBackend::EmberBackend(QObject *parent)
             [this](int code, QProcess::ExitStatus how) {
                 if (!m_busy) return; // cancelled tasks never deliver stale text
                 if (how != QProcess::NormalExit || code != 0) {
-                    m_transcribingDictation = false;
-                    setBusy(false);
-                    setStatus("Speech recognition failed. Check whisper.cpp and the selected model.");
+                    failTranscription("Speech recognition failed. Check whisper.cpp and the selected model.");
                     return;
                 }
                 QFile file(workFile("recognition.txt"));
                 if (!file.open(QIODevice::ReadOnly) || file.size() > 65536) {
-                    m_transcribingDictation = false;
-                    setBusy(false);
-                    setStatus("Speech recognition produced no readable transcript.");
+                    failTranscription("Speech recognition produced no readable transcript.");
                     return;
                 }
                 const QString part = QString::fromUtf8(file.readAll()).trimmed();
@@ -179,9 +175,7 @@ EmberBackend::EmberBackend(QObject *parent)
     connect(&m_whisper, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) {
                 if (m_busy) {
-                    m_transcribingDictation = false;
-                    setBusy(false);
-                    setStatus("whisper-cli did not start. Check its executable and DLL files.");
+                    failTranscription("whisper-cli did not start. Check its executable and DLL files.");
                 }
             });
 
@@ -819,41 +813,41 @@ void EmberBackend::transcribeNextChunk() {
         completeTranscription();
         return;
     }
+    // Repeat half a second of preceding audio in a later dictation chunk.
+    // Without overlap, Whisper can miss words straddling the exact boundary.
+    const qint64 overlap = m_transcribingDictation && m_transcriptionOffset > 0
+        ? qint64(m_captureFormat.sampleRate()) * m_captureFormat.bytesPerFrame() / 2
+        : 0;
+    const qint64 start = m_transcriptionOffset - overlap;
+    const qint64 freshBytes = std::min(m_transcriptionChunkSize,
+                                      m_transcriptionSize - m_transcriptionOffset);
     QFile file(m_captureFile.fileName());
-    if (!file.open(QIODevice::ReadOnly) || !file.seek(m_transcriptionOffset)) {
-        m_transcribingDictation = false;
-        setBusy(false);
-        setStatus("Could not read the temporary local microphone recording.");
+    if (!file.open(QIODevice::ReadOnly) || !file.seek(start)) {
+        failTranscription("Could not read the temporary local microphone recording.");
         return;
     }
-    const qint64 size = std::min(m_transcriptionChunkSize,
-                                  m_transcriptionSize - m_transcriptionOffset);
+    const qint64 size = freshBytes + overlap;
     const QByteArray raw = file.read(size);
     file.close();
     if (size <= 0 || raw.size() != size) {
-        m_transcribingDictation = false;
-        setBusy(false);
-        setStatus("Microphone recording was truncated during transcription.");
+        failTranscription("Microphone recording was truncated during transcription.");
         return;
     }
     const QByteArray wav = EmberCore::whisperWav(raw, m_captureFormat);
     QFile output(workFile("microphone.wav"));
     if (wav.isEmpty() || !output.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
         output.write(wav) != wav.size()) {
-        m_transcribingDictation = false;
-        setBusy(false);
-        setStatus("Unable to resample a recorded voice segment into local PCM WAV.");
+        output.close();
+        failTranscription("Unable to resample a recorded voice segment into local PCM WAV.");
         return;
     }
     output.close();
-    m_transcriptionOffset += raw.size();
+    m_transcriptionOffset += freshBytes;
     transcribe();
 }
 void EmberBackend::transcribe() {
     if (!isRegularFile(configPath("asrExe")) || !isRegularFile(configPath("asrModel"))) {
-        m_transcribingDictation = false;
-        setBusy(false);
-        setStatus("Offline Whisper files are missing from this installation.");
+        failTranscription("Offline Whisper files are missing from this installation.");
         return;
     }
     QFile::remove(workFile("recognition.txt"));
@@ -874,10 +868,19 @@ void EmberBackend::transcribe() {
                   .arg(m_transcriptionOffset * 100 / m_transcriptionSize));
     m_whisper.start();
 }
+void EmberBackend::failTranscription(const QString &reason) {
+    m_transcribingDictation = false;
+    m_transcriptionSegments.clear();
+    m_transcriptionSize = m_transcriptionOffset = m_transcriptionChunkSize = 0;
+    for (const auto &name : {"microphone.raw", "microphone.wav", "recognition.txt"})
+        QFile::remove(workFile(name));
+    setBusy(false);
+    setStatus(reason);
+}
 void EmberBackend::completeTranscription() {
     const bool dictate = m_transcribingDictation;
     m_transcribingDictation = false;
-    const QString text = m_transcriptionSegments.join(" ").simplified();
+    const QString text = EmberCore::joinTranscriptionSegments(m_transcriptionSegments);
     m_transcriptionSegments.clear();
     m_transcriptionOffset = m_transcriptionSize = 0;
     QFile::remove(workFile("microphone.raw"));
