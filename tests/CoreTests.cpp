@@ -206,6 +206,24 @@ private slots:
         QVERIFY(!maySendCompletedDictation(true, false, false));
         QVERIFY(maySendCompletedDictation(true, false, true));
     }
+    void stoppingTextBrainNeverDiscardsIndependentLocalDictation() {
+        using EmberCore::brainStopKeepsDictation;
+        // Closing llama-server during a long microphone take must leave the
+        // native capture and user's unsent RU/EN words intact.
+        QVERIFY(brainStopKeepsDictation(true, true, false));
+        // Likewise when the mic has stopped but several 25s ASR jobs remain.
+        QVERIFY(brainStopKeepsDictation(false, false, true));
+        QVERIFY(brainStopKeepsDictation(true, true, true));
+        // A voice-to-LLM request is different: it cannot continue without
+        // the text brain, nor may a stale capture state claim to be dictation.
+        QVERIFY(!brainStopKeepsDictation(true, false, false));
+        QVERIFY(!brainStopKeepsDictation(false, true, false));
+        QVERIFY(!brainStopKeepsDictation(false, false, false));
+        // Stop brain invalidates prior send consent: a later restart does
+        // not turn an ongoing editable dictation into a surprise AI request.
+        QVERIFY(!EmberCore::maySendCompletedDictation(false, false, true));
+        QVERIFY(!EmberCore::maySendCompletedDictation(true, false, false));
+    }
     void interruptedDictationRecoversOnlyIntegrityCheckedAudio() {
         QAudioFormat mono;
         mono.setSampleRate(16000);
