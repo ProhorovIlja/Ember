@@ -715,6 +715,14 @@ private slots:
         QCOMPARE(chatOutputBudget(8192, -1, false), 2048);
         QCOMPARE(chatOutputBudget(8192, 32768, true), 512);
         QCOMPARE(chatOutputBudget(10, 8192, false), 64);
+        // The streaming UI must not reject a legitimate long text response
+        // solely because the legacy 16K-character ceiling was reached.
+        QCOMPARE(chatVisibleCharacterLimit(512, true), 16384);
+        QCOMPARE(chatVisibleCharacterLimit(2048, false), 16384);
+        QCOMPARE(chatVisibleCharacterLimit(4096, false), 32768);
+        QCOMPARE(chatVisibleCharacterLimit(8192, false), 65536);
+        QCOMPARE(chatVisibleCharacterLimit(999999, false), 65536);
+        QCOMPARE(chatVisibleCharacterLimit(-1, false), 16384);
         const auto longResponse = chatRequest(
             "Developer", {}, "Explain the repair", 8192, 0.25, {}, false, 8192);
         QCOMPARE(longResponse.value("max_tokens").toInt(), 8192);
