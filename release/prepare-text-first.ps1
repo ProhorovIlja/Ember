@@ -37,9 +37,9 @@ function Header-Check([string]$Path, [byte[]]$Magic, [string]$Description) {
     } finally { $stream.Dispose() }
     return $item
 }
-function Assert-PeX64([string]$Path, [string]$Description) {
+function Assert-PeX64([string]$Path, [string]$Description, [string]$Extension = '.exe') {
     $item = Header-Check $Path ([byte[]](77,90)) $Description
-    if ($item.Extension -ine '.exe' -or $item.Length -lt 256) { throw "$Description must be a Windows x64 .exe." }
+    if ($item.Extension -ine $Extension -or $item.Length -lt 256) { throw "$Description must be a Windows x64 $Extension file." }
     $fs = [System.IO.File]::OpenRead($item.FullName)
     try {
         $r = New-Object System.IO.BinaryReader($fs)
@@ -84,8 +84,39 @@ function Same-Hash([string]$First, [string]$Second) {
     return (Get-FileHash -LiteralPath $First -Algorithm SHA256).Hash -eq
            (Get-FileHash -LiteralPath $Second -Algorithm SHA256).Hash
 }
+# Reject directory junctions/symlinks at EVERY existing destination ancestor,
+# not only the chosen AppDirectory. Otherwise Move-Item can stage engine
+# executables/models outside the user's selected payload through a nested link.
+function Assert-SafeStageTarget([string]$Base, [string]$Destination) {
+    $basePath = [System.IO.Path]::GetFullPath($Base).TrimEnd([char[]]@('\','/'))
+    $targetPath = [System.IO.Path]::GetFullPath($Destination)
+    $prefix = $basePath + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $targetPath.StartsWith(
+            $prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Destination escapes the selected application: $Destination"
+    }
+    $parent = Split-Path -Parent $targetPath
+    while ($parent.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (Test-Path -LiteralPath $parent) {
+            $node = Get-Item -LiteralPath $parent -Force
+            if ((($node.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) -or
+                -not $node.PSIsContainer) {
+                throw "Destination parent is a link, junction or file: $parent"
+            }
+        }
+        $parent = Split-Path -Parent $parent
+    }
+}
+function Assert-X64CompanionDlls([string]$Directory) {
+    $dlls = @(Get-ChildItem -LiteralPath $Directory -File -Filter '*.dll')
+    if ($dlls.Count -gt 256) { throw "Too many runtime DLLs in $Directory." }
+    foreach ($dll in $dlls) {
+        [void](Assert-PeX64 $dll.FullName "Runtime DLL" '.dll')
+    }
+}
 function Stage-File([string]$Source, [string]$Destination,
                     [System.Collections.Generic.List[string]]$Created) {
+    Assert-SafeStageTarget $root $Destination
     $item = File-Check $Source 'Source file'
     if (Test-Path -LiteralPath $Destination) {
         [void](File-Check $Destination 'Existing target')
@@ -98,6 +129,7 @@ function Stage-File([string]$Source, [string]$Destination,
     if (-not (Test-Path -LiteralPath $folder)) {
         New-Item -ItemType Directory -Path $folder -Force | Out-Null
     }
+    Assert-SafeStageTarget $root $Destination
     $partial = "$Destination.partial-$([guid]::NewGuid().ToString('N'))"
     try {
         Copy-Item -LiteralPath $item.FullName -Destination $partial
@@ -128,12 +160,19 @@ $asrTarget = Join-Path $root 'engines\whisper\whisper-cli.exe'
 $asrModelTarget = Join-Path $root 'models\stt\ggml-base.bin'
 
 if ($CheckOnly) {
+    foreach ($target in @($exeTarget,$modelTarget)) {
+        Assert-SafeStageTarget $root $target
+    }
     [void](Assert-PeX64 $exeTarget 'Staged llama-server.exe')
     [void](Assert-Gguf $modelTarget 'Staged GGUF model')
+    Assert-X64CompanionDlls (Split-Path -Parent $exeTarget)
     if ($RequireAsr) {
+        foreach ($target in @($asrTarget,$asrModelTarget)) {
+            Assert-SafeStageTarget $root $target
+        }
         [void](Assert-PeX64 $asrTarget 'Staged whisper-cli.exe')
-        $asrItem = Assert-MultilingualWhisper $asrModelTarget 'Staged Whisper multilingual model'
-        
+        [void](Assert-MultilingualWhisper $asrModelTarget 'Staged Whisper multilingual model')
+        Assert-X64CompanionDlls (Split-Path -Parent $asrTarget)
     }
     Write-Host 'Offline text assets present; ASR was checked only if requested. No engine was executed.'
     Write-Host 'Check does not prove model format compatibility or actual inference.'
@@ -161,18 +200,14 @@ if ($WhisperCli) {
 $companions = @(Get-ChildItem -LiteralPath $engine.DirectoryName -File -Filter '*.dll')
 if ($companions.Count -gt 256) { throw 'Too many engine companion DLLs.' }
 foreach ($dll in $companions) {
-    if (($dll.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Symlinked engine DLL not accepted: $($dll.FullName)"
-    }
+    [void](Assert-PeX64 $dll.FullName 'LLM runtime DLL' '.dll')
 }
 $asrCompanions = @()
 if ($asrExe) {
     $asrCompanions = @(Get-ChildItem -LiteralPath $asrExe.DirectoryName -File -Filter '*.dll')
     if ($asrCompanions.Count -gt 256) { throw 'Too many ASR runtime DLLs.' }
     foreach ($dll in $asrCompanions) {
-        if (($dll.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw "Symlinked ASR DLL not accepted: $($dll.FullName)"
-        }
+        [void](Assert-PeX64 $dll.FullName 'ASR runtime DLL' '.dll')
     }
 }
 $created = New-Object 'System.Collections.Generic.List[string]'
