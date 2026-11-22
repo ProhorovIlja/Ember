@@ -29,6 +29,11 @@ jobs:
         run: |
           python tools/voice_benchmark.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Local voice benchmark self-test failed.' }
+      - name: Validate sanitized private native worker environment
+        shell: pwsh
+        run: |
+          python tools/private_worker_env.py
+          if ($LASTEXITCODE -ne 0) { throw 'Private local model environment tests failed.' }
       - name: Validate one-shot real native speech acceptance safety (no model)
         shell: pwsh
         run: |
