@@ -453,6 +453,37 @@ def self_test():
         assert verify(payload, approved, approved=True) == 7
         assert verify(payload, approved, approved=True, require_voice=True) == 7
 
+        # A malicious or mistaken operator could record the correct new
+        # SHA-256 for a *wrong* GGUF architecture under the supported TTS
+        # filename. The stable voice gate must inspect model metadata too,
+        # not rely solely on a human-approved path/hash/component label.
+        tts_name = "models/speech/qwen3-tts-0.6b.gguf"
+        tts_file = payload / tts_name
+        original_tts = tts_file.read_bytes()
+        forged_tts = original_tts.replace(b"qwen3-tts", b"qwen3-asr", 1)
+        assert len(forged_tts) == len(original_tts)
+        tts_file.write_bytes(forged_tts)
+        forged_voice_manifest = json.loads(json.dumps(content))
+        changed_tts = next(x for x in forged_voice_manifest["assets"]
+                           if x["path"] == tts_name)
+        changed_tts["sha256"] = hashlib.sha256(forged_tts).hexdigest()
+        forged_voice_path = root / "forged-qwen-voice.json"
+        forged_voice_path.write_text(json.dumps(forged_voice_manifest),
+                                     encoding="utf-8")
+        try:
+            # Ordinary approved model and SHA checks still accept this
+            # correctly rehashed change; only the stricter stable voice gate
+            # must reject it by architecture.
+            assert verify(payload, forged_voice_path, approved=True) == 7
+            try:
+                verify(payload, forged_voice_path, approved=True,
+                       require_voice=True)
+                raise AssertionError("Rehashed wrong TTS architecture accepted")
+            except ValueError:
+                pass
+        finally:
+            tts_file.write_bytes(original_tts)
+
         # Approval must reject a forged but correctly rehashed payload, not
         # merely catch different bytes against an old SHA-256 manifest.
         def reject_rehashed(relative, altered):
