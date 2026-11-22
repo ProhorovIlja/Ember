@@ -61,22 +61,43 @@ QString ImageLibrary::importImage(const QImage &image, QString *error) {
         return {};
     }
     // Normalize all input formats and strip EXIF, comments and source paths.
-    const QImage scaled = image.scaled(kMaxEdge, kMaxEdge,
-                                     Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    const bool transparent = scaled.hasAlphaChannel();
-    QImage clean(scaled.size(), transparent ? QImage::Format_ARGB32
-                                           : QImage::Format_RGB32);
-    clean.fill(transparent ? Qt::transparent : Qt::white);
-    {
-        QPainter painter(&clean);
-        painter.drawImage(0, 0, scaled);
-    }
+    // Incompressible screenshots with alpha can exceed 5 MiB even at 1536px.
+    // Keep the true PNG alpha channel and adapt the dimension instead of
+    // rejecting an otherwise valid clipboard/file image or flattening it.
+    const bool transparent = image.hasAlphaChannel();
+    QSize size = image.size().scaled(kMaxEdge, kMaxEdge, Qt::KeepAspectRatio);
     QByteArray bytes;
-    QBuffer buffer(&bytes);
-    if (!buffer.open(QIODevice::WriteOnly) ||
-        !clean.save(&buffer, transparent ? "PNG" : "JPG", transparent ? -1 : 85) ||
-        bytes.isEmpty() || bytes.size() > kMaxStoredBytes) {
-        setError(error, "The normalized image exceeds 5 MiB or cannot be encoded.");
+    for (int attempt = 0; attempt < 7; ++attempt) {
+        const QImage scaled = image.scaled(size, Qt::IgnoreAspectRatio,
+                                          Qt::SmoothTransformation);
+        if (scaled.isNull()) break;
+        QImage clean(scaled.size(), transparent ? QImage::Format_ARGB32
+                                               : QImage::Format_RGB32);
+        if (clean.isNull()) break;
+        clean.fill(transparent ? Qt::transparent : Qt::white);
+        {
+            QPainter painter(&clean);
+            painter.drawImage(0, 0, scaled);
+        }
+        QByteArray candidate;
+        QBuffer buffer(&candidate);
+        if (!buffer.open(QIODevice::WriteOnly) ||
+            !clean.save(&buffer, transparent ? "PNG" : "JPG",
+                        transparent ? -1 : 85) || candidate.isEmpty())
+            break;
+        if (candidate.size() <= kMaxStoredBytes) {
+            bytes = std::move(candidate);
+            break;
+        }
+        // Strictly bounded attempts/memory. Keep the aspect ratio and both
+        // dimensions at least one pixel; never upload or re-encode elsewhere.
+        const QSize nextSize(std::max(1, size.width() * 3 / 4),
+                             std::max(1, size.height() * 3 / 4));
+        if (nextSize == size) break;
+        size = nextSize;
+    }
+    if (bytes.isEmpty()) {
+        setError(error, "The local image cannot fit the 5 MiB safety limit.");
         return {};
     }
     const QString digest = QString::fromLatin1(
