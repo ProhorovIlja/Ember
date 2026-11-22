@@ -110,3 +110,11 @@ volume cannot change after selection. Confirm offline behavior on actual
 Windows hardware. The Settings native speech card now sizes from its Qt
 ColumnLayout content, rather than relying on a hard-coded height that could
 clip the two model pickers at different display scales.
+
+The existing Settings **Check offline setup** now includes a read-only native
+speech.cpp summary whenever Qwen3-TTS or Qwen3-ASR is selected. It distinguishes
+a bundled GGUF, a manually selected valid-header GGUF, a missing or invalid
+manual override (which always blocks), and catalog-only operation that would
+require explicit opt-in/network access. It also identifies a missing
+speech.exe. This inspection does not start a model, download anything, save
+private prompts or assert successful real inference.

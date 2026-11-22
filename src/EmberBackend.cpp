@@ -1035,7 +1035,44 @@ QString EmberBackend::inspectOfflineSetup() const {
         !activeInput().isNull()
     };
     const auto report = EmberLocalSetup::inspect(input);
-    return report.text;
+    // Manual, read-only preflight. Include the selected native speech stack,
+    // not just Whisper and llama-server, so a moved external model cannot
+    // masquerade as an offline-ready assistant. Never start or fetch models.
+    if (m_voiceEngine != 1 && m_recognitionEngine == 0)
+        return report.text;
+    QStringList lines{report.text,
+                      QStringLiteral("Native speech.cpp (read-only checks):")};
+    lines.append(isRegularFile(configPath("speechExe"))
+        ? QStringLiteral("  speech.exe: file present; binary still requires trusted provenance")
+        : QStringLiteral("  speech.exe: missing or unreadable"));
+    auto addModel = [this, &lines](const QString &label,
+                                  const QString &alias, bool recognition) {
+        if (alias.isEmpty()) return;
+        const QString pinned = nativeSpeechModelPath(recognition);
+        const QString checked = pinned.isEmpty()
+            ? EmberCore::offlineSpeechModelFile(appFolder(), alias)
+            : EmberCore::localSpeechGgufFile(pinned);
+        if (!checked.isEmpty()) {
+            lines.append(QString("  %1 (%2): %3 GGUF header OK, real inference NOT tested")
+                .arg(label, alias, pinned.isEmpty() ? "bundled" : "manually selected"));
+        } else if (!pinned.isEmpty()) {
+            lines.append(QString("  %1 (%2): selected file MISSING/INVALID; "
+                                 "startup blocks even if downloads are enabled")
+                .arg(label, alias));
+        } else {
+            lines.append(QString("  %1 (%2): no valid local GGUF; catalog %3")
+                .arg(label, alias,
+                     m_allowSpeechDownloads ? "explicitly allowed (needs network)"
+                                            : "blocked (offline default)"));
+        }
+    };
+    if (m_voiceEngine == 1)
+        addModel("TTS", m_localModel, false);
+    if (m_recognitionEngine > 0)
+        addModel("ASR", EmberCore::nativeAsrModel(m_recognitionEngine), true);
+    lines.append("Read-only checks cannot establish correct model family, "
+                 "language quality, GPU compatibility or license.");
+    return lines.join('\n');
 }
 void EmberBackend::startBrain() {
     if (m_brain.state() != QProcess::NotRunning) {
