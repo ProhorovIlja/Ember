@@ -377,6 +377,45 @@ private slots:
         QVERIFY(gallery.list().isEmpty());
         QVERIFY(gallery.dataUri(first).isEmpty());
     }
+    void nativeImageLibraryResizesHighEntropyPngWithoutLosingTransparency() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        ImageLibrary gallery(dir.filePath("library"));
+        QImage noisy(1450, 1450, QImage::Format_ARGB32);
+        QVERIFY(!noisy.isNull());
+        // Deterministic, incompressible RGBA content reproduces screenshots,
+        // pasted art and transparent assets that exceed a 5 MiB PNG quota.
+        quint32 state = 0x4A59B13Fu;
+        for (int y = 0; y < noisy.height(); ++y) {
+            auto *row = reinterpret_cast<QRgb *>(noisy.scanLine(y));
+            for (int x = 0; x < noisy.width(); ++x) {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                row[x] = qRgba(int(state & 255u),
+                                int((state >> 8) & 255u),
+                                int((state >> 16) & 255u),
+                                32 + int((state >> 24) % 160u));
+            }
+        }
+        QString error;
+        const QString id = gallery.importImage(noisy, &error);
+        QVERIFY2(!id.isEmpty(), qPrintable(error));
+        QCOMPARE(gallery.importImage(noisy), id); // deterministic deduplication
+        QCOMPARE(gallery.imageCount(), 1);
+        const QByteArray packed = gallery.verifiedBytes(id);
+        QVERIFY(!packed.isEmpty());
+        QVERIFY(packed.size() <= 5 * 1024 * 1024);
+        QVERIFY(packed.startsWith("\\x89PNG\\r\\n\\x1a\\n"));
+        const QImage stored(gallery.filePath(id));
+        QVERIFY(!stored.isNull());
+        QVERIFY(stored.hasAlphaChannel());
+        QVERIFY(stored.width() < noisy.width());
+        QVERIFY(stored.height() < noisy.height());
+        QVERIFY(qAlpha(stored.pixel(stored.width() / 2,
+                                     stored.height() / 2)) < 255);
+        QVERIFY(gallery.dataUri(id).startsWith("data:image/png;base64,"));
+    }
     void nativeImageLibraryRejectsHugePixelsAndCorruptedFile() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
