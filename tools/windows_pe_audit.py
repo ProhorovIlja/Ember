@@ -26,19 +26,19 @@ class InvalidPE(ValueError):
 # Explicit Windows 10 platform DLLs only; compiler/Qt/CUDA/ggml runtimes
 # must be shipped in the payload even if the CI runner happens to have them.
 WINDOWS_DLLS = frozenset("""
-advapi32.dll apphelp.dll avrt.dll bcrypt.dll bcryptprimitives.dll cabinet.dll
+advapi32.dll apphelp.dll authz.dll avrt.dll bcrypt.dll bcryptprimitives.dll cabinet.dll
 cfgmgr32.dll clbcatq.dll comctl32.dll comdlg32.dll combase.dll crypt32.dll
 cryptbase.dll cryptnet.dll cryptsp.dll d2d1.dll d3d9.dll d3d11.dll d3d12.dll
-d3dcompiler_47.dll dcomp.dll dbghelp.dll dnsapi.dll dsound.dll dwrite.dll
+d3dcompiler_47.dll dcomp.dll dbghelp.dll dnsapi.dll dsound.dll dwrite.dll evr.dll
 dwmapi.dll dxgi.dll dxva2.dll gdi32.dll gdi32full.dll gdiplus.dll hid.dll
-imm32.dll iphlpapi.dll kernel32.dll kernelbase.dll ksuser.dll mf.dll
+imagehlp.dll imm32.dll iphlpapi.dll kernel32.dll kernelbase.dll ksuser.dll mf.dll
 mfcore.dll mfplat.dll mfreadwrite.dll mmdevapi.dll mpr.dll msvcrt.dll
-mswsock.dll ncrypt.dll netapi32.dll normaliz.dll ntdll.dll ole32.dll
+mswsock.dll ncrypt.dll netapi32.dll normaliz.dll ntdll.dll odbc32.dll ole32.dll
 oleaut32.dll opengl32.dll powrprof.dll propsys.dll psapi.dll
-rasapi32.dll rpcrt4.dll secur32.dll setupapi.dll shcore.dll shell32.dll
+rasapi32.dll rpcrt4.dll secur32.dll setupapi.dll shcore.dll shell32.dll uiautomationcore.dll
 shlwapi.dll tdh.dll ucrtbase.dll urlmon.dll user32.dll userenv.dll
 usp10.dll uxtheme.dll version.dll winhttp.dll wininet.dll winmm.dll
-windowscodecs.dll winspool.drv wlanapi.dll ws2_32.dll wsock32.dll
+windowscodecs.dll winspool.drv wlanapi.dll ws2_32.dll wsock32.dll wtsapi32.dll
 """.split())
 DLL_RE = re.compile(r"^[a-z0-9_.+-]{2,128}\.(?:dll|drv|exe)$")
 MAX_BINARY = 4 * 1024 * 1024 * 1024
