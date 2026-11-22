@@ -21,9 +21,9 @@ Qt6Core.dll. With Windows PowerShell 5.1 or later, run from the repository:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\release\prepare-text-first.ps1 `
   -AppDirectory 'D:\Games\Ember' `
   -LlamaServer 'C:\Downloaded\llama\llama-server.exe' `
-  -ModelGguf 'C:\Downloaded\models\licensed.gguf' \
-  -WhisperCli 'C:\Downloaded\whisper\whisper-cli.exe' \
-  -WhisperModel 'C:\Downloaded\models\ggml-base.bin' \
+  -ModelGguf 'C:\Downloaded\models\licensed.gguf' `
+  -WhisperCli 'C:\Downloaded\whisper\whisper-cli.exe' `
+  -WhisperModel 'C:\Downloaded\models\ggml-base.bin' `
   -RequireAsr
 ```
 
