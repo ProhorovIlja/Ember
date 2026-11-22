@@ -316,6 +316,16 @@ def verify(root, manifest_path, approved=False, require_voice=False):
             for name in available:
                 alias = Path(name).stem
                 model_identity(local_file(root, name), alias)
+            # Qwen3-ASR is optional alongside the mandatory multilingual
+            # Whisper fallback. If bundled, reject a renamed or wrong-family
+            # ASR GGUF rather than approving its path and checksum alone.
+            for alias in ("qwen3-asr-0.6b", "qwen3-asr-1.7b"):
+                name = f"models/speech/{alias}.gguf"
+                if name not in items:
+                    continue
+                if items[name]["component"] != "asr":
+                    raise ValueError(f"Native ASR GGUF has wrong component: {name}")
+                model_identity(local_file(root, name), alias)
     return len(entries)
 
 
