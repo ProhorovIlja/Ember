@@ -168,7 +168,7 @@ Audio remains English-only. EN/RU recognition and typed chat are unchanged. Code
 
 ## LOCAL VOICE BENCHMARK 2026-11-21
 
-After starting the native speech.cpp model locally on 127.0.0.1:43822, run `python tools/voice_benchmark.py --self-test` (protocol test only, no GGUF needed) or `python tools/voice_benchmark.py --speech-pid <PID-of-your-speech.exe> --voice vivian --samples 8` (actual locally running TTS). Optionally add `--output timing.json` to store **numeric timing metadata only**. No generated audio or microphone input is recorded, and prompts are fixed harmless English text, not chat history. Compare `vivian` with `serena` and any other license-approved voice using the same local environment.
+After starting the native speech.cpp model locally on 127.0.0.1:43822, run `python tools/voice_benchmark.py --self-test` (protocol test only, no GGUF needed) or `python tools/voice_benchmark.py --speech-pid <PID-of-your-speech.exe> --omit-model-id --voice vivian --samples 8` (actual locally running TTS). Optionally add `--output timing.json` to store **numeric timing metadata only**. No generated audio or microphone input is recorded, and prompts are fixed harmless English text, not chat history. Compare `vivian` with `serena` and any other license-approved voice using the same local environment.
 
 The native Settings **Early Sentence Speech** control defaults to enabled and persists in `data/ember.ini`. Disable it if the local 12 GB GPU experiences contention from running LLM and resident TTS simultaneously; managed PCM streaming remains in use after the full answer. The default remains the fastest available source-level flow, but there are no unmeasured claims about actual acoustic latency or voice quality.
 
@@ -196,7 +196,7 @@ The managed speech.cpp PCM request explicitly sets `language=en` for the English
 
 ### Local-only speech recognition accuracy probe
 
-When a user-selected 25-second English or Russian WAV and its **locally provided** UTF-8 reference text are available, start the matching native speech.cpp ASR model, then compare `python tools/asr_benchmark.py --speech-pid <PID-of-your-speech.exe> --file .\\example.wav --reference-file .\\example.txt --model qwen3-asr-0.6b --language auto --output .\\asr-metrics.json`. The benchmark uses only loopback `127.0.0.1:43822`, no redirect/proxy or remote host; JSON reports **numeric WER/CER and wall time only**, not the original audio or either transcript. Test the 1.7B model separately with identical clips and VRAM conditions. `--self-test` runs against an in-process mock server with synthetic silent PCM and verifies request shape without downloading weights; Windows CI runs this mock test on each development branch push. This is not real-model recognition or any proof of English/Russian superiority.
+When a user-selected 25-second English or Russian WAV and its **locally provided** UTF-8 reference text are available, start the matching native speech.cpp ASR model, then compare `python tools/asr_benchmark.py --speech-pid <PID-of-your-speech.exe> --omit-model-id --file .\\example.wav --reference-file .\\example.txt --model qwen3-asr-0.6b --language auto --output .\\asr-metrics.json`. The benchmark uses only loopback `127.0.0.1:43822`, no redirect/proxy or remote host; JSON reports **numeric WER/CER and wall time only**, not the original audio or either transcript. Test the 1.7B model separately with identical clips and VRAM conditions. `--self-test` runs against an in-process mock server with synthetic silent PCM and verifies request shape without downloading weights; Windows CI runs this mock test on each development branch push. This is not real-model recognition or any proof of English/Russian superiority.
 
 Starting a new microphone turn after a previous answer's text generation has completed now cancels any still-playing native PCM/TTS audio (not just the legacy WAV player). This limits echo/feedback and avoids mixing a previous speech stream with the new recorded turn. It is **not yet** a continuous, full-duplex barge-in system: if an LLM/TTS request is still marked busy, users must cancel it first.
 
@@ -212,7 +212,7 @@ Grounded upstream source: https://github.com/nyosegawa/speech.cpp/blob/main/docs
 
 The standard-library-only `tools/voice_benchmark.py` now additionally records the *length of initially low-level PCM16 audio* until the first sample with magnitude at least 256/32768 (roughly -42 dBFS peak). This diagnostic is distinct from first HTTP PCM byte and from **physical first audible sound** on the selected Windows headphone. The streaming parser tracks 16-bit sample boundaries even when HTTP chunks end on odd bytes, and saves no waveforms. Completely silent test clips return null rather than a fabricated onset; mock CI exercises a 50-ms synthetic silence followed by a synthetic tone. The benchmark also supports `--model qwen3-tts-1.7b --delivery warm|soft|bright|story` and rejects style instructions for 0.6B. Repeated trials with the exact same test phrases and voice are still required before any quality claims.
 
-Example: `python tools/voice_benchmark.py --speech-pid <PID-of-your-speech.exe> --model qwen3-tts-1.7b --voice serena --delivery warm --samples 12 --output native-serena-warm.json`. The JSON contains numeric timing, seed-independent model/voice/style names and text-free metadata only, not PCM, recognition or user conversation.
+Example: `python tools/voice_benchmark.py --speech-pid <PID-of-your-speech.exe> --omit-model-id --model qwen3-tts-1.7b --voice serena --delivery warm --samples 12 --output native-serena-warm.json`. The JSON contains numeric timing, seed-independent model/voice/style names and text-free metadata only, not PCM, recognition or user conversation.
 
 ### Per-conversation RU/EN recognition vocabulary (21 November 2026)
 
@@ -271,3 +271,7 @@ Windows health checks now require bounded `application/json` with
 managed-process PID. External model and benchmark subprocesses receive a
 credential-scrubbed environment. These are source-level reliability and
 privacy safeguards, not proof of actual model fidelity or a network sandbox.
+
+For these examples, `--omit-model-id` matches `speech.exe serve` launched
+with a verified GGUF **file path** rather than a catalog alias. Omit that flag
+only when a catalog-backed model ID is genuinely registered with the server.
