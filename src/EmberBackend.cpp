@@ -1111,6 +1111,8 @@ void EmberBackend::startBrain() {
     ++m_brainSession; // invalidate late HTTP health checks from earlier runs
     m_brain.setWorkingDirectory(QFileInfo(binary).absolutePath());
     m_brain.setProgram(binary);
+    m_brain.setProcessEnvironment(EmberCore::sanitizedChildProcessEnvironment(
+        QProcessEnvironment::systemEnvironment()));
     QStringList launch = EmberCore::llamaLocalLaunchArguments(
         model, m_brainContextTokens, m_brainGpuLayers);
     if (launch.isEmpty()) {
@@ -2016,18 +2018,11 @@ void EmberBackend::runApprovedProjectTests() {
     m_projectTestProcess.setProgram(plan.program);
     m_projectTestProcess.setArguments(plan.arguments);
     m_projectTestProcess.setProcessChannelMode(QProcess::SeparateChannels);
-    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-    // This reduces accidental credential inheritance; it is NOT isolation.
-    for (const QString &key : environment.keys()) {
-        const QString upper = key.toUpper();
-        if (upper.contains("TOKEN") || upper.contains("SECRET") ||
-            upper.contains("PASSWORD") || upper.contains("CREDENTIAL") ||
-            upper.contains("API_KEY") || upper.startsWith("AWS_") ||
-            upper.startsWith("GITHUB_") || upper.startsWith("OPENAI_") ||
-            upper.startsWith("GOOGLE_") || upper.startsWith("AZURE_"))
-            environment.remove(key);
-    }
-    m_projectTestProcess.setProcessEnvironment(environment);
+    // Reuse the same no-credential child environment as model executables.
+    // This reduces accidental leakage; it is NOT OS process isolation.
+    m_projectTestProcess.setProcessEnvironment(
+        EmberCore::sanitizedChildProcessEnvironment(
+            QProcessEnvironment::systemEnvironment()));
     connect(&m_projectTestProcess, &QProcess::readyReadStandardOutput,
             this, &EmberBackend::collectProjectTestOutput);
     connect(&m_projectTestProcess, &QProcess::readyReadStandardError,
@@ -3427,6 +3422,8 @@ void EmberBackend::transcribe() {
     }
     m_whisper.setWorkingDirectory(QFileInfo(configPath("asrExe")).absolutePath());
     m_whisper.setProgram(configPath("asrExe"));
+    m_whisper.setProcessEnvironment(EmberCore::sanitizedChildProcessEnvironment(
+        QProcessEnvironment::systemEnvironment()));
     // Keep model paths as QProcess arguments, not shell text. User-entered
     // terminology improves proper-noun recognition in both native Qwen-ASR
     // and Whisper; each remains optional and strictly bounded.
@@ -3724,6 +3721,8 @@ void EmberBackend::synthesize(const QString &text) {
     QFile::remove(speechFile(m_ttsOutputSlot));
     m_tts.setWorkingDirectory(QFileInfo(configPath("ttsExe")).absolutePath());
     m_tts.setProgram(configPath("ttsExe"));
+    m_tts.setProcessEnvironment(EmberCore::sanitizedChildProcessEnvironment(
+        QProcessEnvironment::systemEnvironment()));
     m_tts.setArguments({"--kokoro-model=" + model,
                         "--kokoro-voices=" + voices,
                         "--kokoro-tokens=" + tokens,
