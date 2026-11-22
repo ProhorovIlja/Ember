@@ -1775,11 +1775,12 @@ void EmberBackend::endLocalAgent(const QString &error, const QString &result) {
     // The original user question stays in the composer. Only a human
     // approves adding the agent's answer to the private conversation.
     emit localAgentResultReady(
-        "\n\n---\nLocal project agent result (read-only, review before send):\n" +
-        "Tool calls executed:" +
+        QStringLiteral("\n\n---\nLocal project agent result "
+                       "(read-only, review before send):\n"
+                       "Tool calls executed:") +
         (inspected.isEmpty() ? QStringLiteral(" none\n") : inspected) +
-        "\n" + result.left(5200) +
-        "\n--- End local project agent result ---");
+        QStringLiteral("\n") + result.left(5200) +
+        QStringLiteral("\n--- End local project agent result ---"));
     setStatus("Local project investigation finished. "
               "Review source evidence before inserting into your chat.");
 }
