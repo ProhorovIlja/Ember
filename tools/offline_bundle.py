@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import tempfile
+from native_gguf_metadata import model_identity, _fixture_gguf, self_test as speech_metadata_self_test
 from urllib.parse import urlsplit
 
 SCHEMA = "ember-offline-assets-v1"
@@ -309,6 +310,12 @@ def verify(root, manifest_path, approved=False, require_voice=False):
             if not available:
                 raise ValueError("Stable Ember voice needs at least one supported "
                                  "bundled local Qwen3-TTS GGUF with approved license")
+            # Filename, SHA256 and GGUF magic cannot prove a correctly
+            # named file is a speech.cpp CustomVoice model. Read the bounded
+            # GGUF metadata actually written by the upstream converters.
+            for name in available:
+                alias = Path(name).stem
+                model_identity(local_file(root, name), alias)
     return len(entries)
 
 
@@ -394,6 +401,7 @@ def fake_whisper():
 
 
 def self_test():
+    speech_metadata_self_test()
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         payload = root / "source"
@@ -403,7 +411,8 @@ def self_test():
             "engines/whisper/whisper-cli.exe": fake_pe64(),
             "models/stt/ggml-base.bin": fake_whisper(),
             "engines/speech/speech.exe": fake_pe64(),
-            "models/speech/qwen3-tts-0.6b.gguf": fake_gguf(),
+            "models/speech/qwen3-tts-0.6b.gguf":
+                _fixture_gguf("qwen3-tts", "0.6B", "synthesis"),
             "licenses/demo.txt": b"Synthetic test license; NOT a real grant",
         }.items():
             file = payload / path
