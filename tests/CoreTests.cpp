@@ -4,6 +4,7 @@
 #include "EmberBundle.h"
 #include "LocalTextImport.h"
 #include "LocalRepoSearch.h"
+#include "LocalCodeEdit.h"
 #include "PublicGitHub.h"
 #include "GitHubCredential.h"
 #include "WikipediaSearch.h"
@@ -660,6 +661,79 @@ private slots:
         QVERIFY(absent.ok());
         QCOMPARE(absent.matches, 0);
         QVERIFY(absent.draft.contains("No matching lines found"));
+    }
+    void localSourceEditRequiresExactMatchApprovalAndKeepsBackup() {
+        using namespace EmberLocalEdit;
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        QDir root(temporary.path());
+        QVERIFY(root.mkpath("project"));
+        const QString filePath = root.filePath("project/main.cpp");
+        QFile file(filePath);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        const QByteArray before = QString::fromUtf8(
+            "// Привет\r\nint answer = 41;\r\n").toUtf8();
+        QCOMPARE(file.write(before), qint64(before.size()));
+        file.close();
+        const auto plan = planExactReplace(
+            filePath, "answer = 41", "answer = 42");
+        QVERIFY2(plan.ok(), qPrintable(plan.error));
+        QVERIFY(plan.displayPreview.contains("answer = 41"));
+        QVERIFY(plan.displayPreview.contains("answer = 42"));
+        QFile untouched(filePath);
+        QVERIFY(untouched.open(QIODevice::ReadOnly));
+        QCOMPARE(untouched.readAll(), before);
+        untouched.close();
+        const QString backups = root.filePath("private-backups");
+        const auto changed = applyApprovedEdit(plan, backups);
+        QVERIFY2(changed.ok(), qPrintable(changed.error));
+        QVERIFY(QFileInfo::exists(changed.backupPath));
+        QFile afterFile(filePath), backup(changed.backupPath);
+        QVERIFY(afterFile.open(QIODevice::ReadOnly));
+        QVERIFY(backup.open(QIODevice::ReadOnly));
+        QCOMPARE(backup.readAll(), before);
+        QCOMPARE(afterFile.readAll(),
+                 QString::fromUtf8("// Привет\r\nint answer = 42;\r\n").toUtf8());
+        afterFile.close();
+        backup.close();
+        QVERIFY(!applyApprovedEdit(plan, backups).ok()); // stale snapshot
+        QVERIFY(!planExactReplace(filePath, "not present", "anything").ok());
+        QVERIFY(!planExactReplace(filePath, "answer = 42", "answer = 42").ok());
+        QFile secret(root.filePath(".env"));
+        QVERIFY(secret.open(QIODevice::WriteOnly));
+        QVERIFY(secret.write("SECRET=topsecret") > 0);
+        secret.close();
+        QVERIFY(!planExactReplace(secret.fileName(), "SECRET", "PUBLIC").ok());
+        QVERIFY(!planExactReplace(filePath, "", "new text").ok());
+        QFile duplicate(root.filePath("project/repeat.cpp"));
+        QVERIFY(duplicate.open(QIODevice::WriteOnly));
+        QVERIFY(duplicate.write("const x=1; const x=1;") > 0);
+        duplicate.close();
+        QVERIFY(!planExactReplace(duplicate.fileName(), "x=1", "x=2").ok());
+    }
+    void localSourceEditRejectsChangedFileAfterPreview() {
+        using namespace EmberLocalEdit;
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString source = directory.filePath("logic.py");
+        QFile file(source);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write("bug = 1\n"), qint64(8));
+        file.close();
+        auto plan = planExactReplace(source, "bug = 1", "bug = 2");
+        QVERIFY(plan.ok());
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QCOMPARE(file.write("user changed it\n"), qint64(16));
+        file.close();
+        const QString backupDir = directory.filePath("backups");
+        auto result = applyApprovedEdit(plan, backupDir);
+        QVERIFY(!result.ok());
+        QVERIFY(!QDir(backupDir).exists());
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), QByteArray("user changed it\n"));
+        file.close();
+        plan.proposedBytes.append('\0');
+        QVERIFY(!applyApprovedEdit(plan, backupDir).ok());
     }
     void localProjectMapIncludesSourcesButNeverReadsSecretsOrDependencies() {
         QTemporaryDir temporary;

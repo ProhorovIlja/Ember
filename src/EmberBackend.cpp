@@ -30,6 +30,7 @@
 #include <QNetworkRequest>
 #include <QNetworkProxy>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QSaveFile>
 #include <QUrl>
 #include <QVariantMap>
@@ -1436,6 +1437,60 @@ void EmberBackend::inspectPublicGitHub() {
         emit publicGitHubExcerptReady(preview.text);
         setStatus("GitHub read-only preview ready. Review before inserting into chat.");
     });
+}
+QString EmberBackend::stageLocalCodeEdit() {
+    m_stagedCodeEdit.reset();
+    if (m_busy || m_listening) {
+        setStatus("Finish current work before editing local source.");
+        return {};
+    }
+    const QString filePath = QFileDialog::getOpenFileName(
+        nullptr, "Select one local source file to edit", QDir::homePath(),
+        "Source and text (*.cpp *.cc *.c *.h *.hpp *.rs *.py *.js *.ts *.qml "
+        "*.json *.yaml *.yml *.xml *.md *.txt *.ini *.toml *.cs *.go "
+        "*.java *.kt *.swift *.sh *.ps1 *.bat *.sql *.css *.html "
+        "*.cmake *.diff *.patch);;All files (*)");
+    if (filePath.isEmpty()) return {};
+    bool accepted = false;
+    const QString oldText = QInputDialog::getMultiLineText(
+        nullptr, "Find exact source", "Exact existing text to replace:",
+        {}, &accepted);
+    if (!accepted) return {};
+    const QString newText = QInputDialog::getMultiLineText(
+        nullptr, "Proposed replacement", "Replacement text (may be empty):",
+        {}, &accepted);
+    if (!accepted) return {};
+    auto plan = EmberLocalEdit::planExactReplace(filePath, oldText, newText);
+    if (!plan.ok()) {
+        setStatus(plan.error);
+        return {};
+    }
+    const QString preview = plan.displayPreview;
+    m_stagedCodeEdit =
+        std::make_unique<EmberLocalEdit::EditPlan>(std::move(plan));
+    setStatus("Proposed one-file edit ready. Review before explicitly applying.");
+    return preview;
+}
+bool EmberBackend::applyStagedLocalCodeEdit() {
+    if (!m_stagedCodeEdit || m_busy || m_listening) {
+        setStatus("No approved local code edit is ready.");
+        return false;
+    }
+    auto plan = std::move(m_stagedCodeEdit);
+    const QString privateBackups = QDir(
+        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
+        .filePath("edit-backups");
+    const auto result = EmberLocalEdit::applyApprovedEdit(*plan, privateBackups);
+    if (!result.ok()) {
+        setStatus(result.error);
+        return false;
+    }
+    setStatus("One source file updated atomically. Original backup: " +
+              result.backupPath + ". Review the diff and run tests manually.");
+    return true;
+}
+void EmberBackend::discardStagedLocalCodeEdit() {
+    m_stagedCodeEdit.reset();
 }
 QString EmberBackend::searchLocalCodeFolder(const QString &existingDraft) {
     if (m_busy || m_listening) {

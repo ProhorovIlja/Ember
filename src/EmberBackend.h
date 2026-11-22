@@ -4,6 +4,7 @@
 #include "ImageLibrary.h"
 #include "EmberBundle.h"
 #include "DriveRead.h"
+#include "LocalCodeEdit.h"
 #include <QFile>
 #include <QLockFile>
 #include <QAudioDevice>
@@ -148,6 +149,9 @@ public:
     Q_INVOKABLE bool submitText(const QString &text);
     Q_INVOKABLE QString chooseLocalTextFile(const QString &existingDraft);
     Q_INVOKABLE QString searchLocalCodeFolder(const QString &existingDraft);
+    Q_INVOKABLE QString stageLocalCodeEdit();
+    Q_INVOKABLE bool applyStagedLocalCodeEdit();
+    Q_INVOKABLE void discardStagedLocalCodeEdit();
     Q_INVOKABLE void inspectPublicGitHub();
     Q_INVOKABLE void searchWikipedia();
     Q_INVOKABLE void driveAction();
@@ -322,6 +326,7 @@ private:
     QByteArray m_publicGitHubBuffer;
     bool m_publicGitHubOversize = false;
     EmberDrive::Client m_driveClient;
+    std::unique_ptr<EmberLocalEdit::EditPlan> m_stagedCodeEdit;
     QNetworkAccessManager m_wikipediaNetwork;
     QPointer<QNetworkReply> m_wikipediaReply;
     QByteArray m_wikipediaBuffer;

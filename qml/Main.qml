@@ -21,6 +21,54 @@ ApplicationWindow {
     property string imageToDelete: ""
     property string externalReferencePreview: ""
     property string externalReferenceSource: "GitHub"
+    property string localEditPreview: ""
+    Dialog {
+        id: localCodeEditDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(window.width - 70, 790)
+        height: Math.min(window.height - 70, 570)
+        modal: true
+        title: "Local source edit · review and apply"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            ember.applyStagedLocalCodeEdit()
+            window.localEditPreview = ""
+        }
+        onRejected: {
+            ember.discardStagedLocalCodeEdit()
+            window.localEditPreview = ""
+        }
+        background: Rectangle {
+            color: "#091522"
+            radius: 16
+            border.color: "#2A6292"
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: "#B2D6F1"
+                font.pixelSize: 12
+                text: "Apply changes to the selected local source file? This writes a private backup first. No shell commands, network requests or other files are modified."
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                TextArea {
+                    readOnly: true
+                    text: window.localEditPreview
+                    font.family: "Consolas"
+                    font.pixelSize: 12
+                    color: "#E4EDF9"
+                    selectByMouse: true
+                    wrapMode: TextEdit.NoWrap
+                    background: Rectangle { color: "#0B192A"; radius: 8 }
+                }
+            }
+        }
+    }
     Dialog {
         id: externalReferenceDialog
         parent: Overlay.overlay
@@ -1159,6 +1207,22 @@ ApplicationWindow {
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
                                             ToolTip.text: "Choose a local folder, then map source filenames or search literal text. Review the editable result; no code is executed."
+                                        }
+                                        PillButton {
+                                            text: "Edit source"
+                                            implicitWidth: 116
+                                            implicitHeight: 31
+                                            enabled: !ember.busy && !ember.listening
+                                            onClicked: {
+                                                var editPreview = ember.stageLocalCodeEdit()
+                                                if (editPreview.length > 0) {
+                                                    window.localEditPreview = editPreview
+                                                    localCodeEditDialog.open()
+                                                }
+                                            }
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Stage one exact UTF-8 file replacement. Review, approve and keep a private backup. No model actions or shell commands."
                                         }
                                         PillButton {
                                             text: "GitHub · Read"
