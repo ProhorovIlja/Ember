@@ -2859,6 +2859,7 @@ void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
     const bool shouldSpeak = EmberCore::canSpeakStreamedReply(
         m_voicePending, interrupted, verifiedTokenLimit);
     m_voicePending = false;
+    bool replyArchived = false;
     if (!response.isEmpty()) {
         m_chatStreamText = EmberCore::archivedStreamedReply(
             spokenDraft, interrupted, verifiedTokenLimit);
@@ -2869,9 +2870,8 @@ void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
         if (m_store && m_store->ready() &&
             EmberCore::shouldPersistConversation(m_privateMode, m_sessionId) &&
             m_chatStreamSession == m_sessionId) {
-            if (!m_store->append(m_sessionId, "ember", m_chatStreamText))
-                setStatus("Failed to save a streamed answer to local SQLite.");
-            refreshSessions();
+            replyArchived = m_store->append(m_sessionId, "ember", m_chatStreamText);
+            if (replyArchived) refreshSessions();
         }
         rebuildConversationHistory();
     }
@@ -2901,7 +2901,14 @@ void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
             beginSpeech(response);
         }
     } else {
-        setStatus(m_privateMode
+        // A failed append used to show a brief warning and then immediately
+        // overwrite it with "archived". Never claim durable storage after
+        // SQLite refused a full reply, the DB became unavailable, or the
+        // session changed during streaming.
+        if (!m_privateMode && !replyArchived) {
+            setStatus("Chat archive write failed or session changed; reply is "
+                      "in memory only. Copy it before closing Ember.");
+        } else setStatus(m_privateMode
             ? (tokenLimit ? "Local model reached its token budget; incomplete answer stays in RAM."
                 : interrupted ? "Private reply stopped; text kept in RAM only."
                               : "Private reply complete; no chat text archived.")
