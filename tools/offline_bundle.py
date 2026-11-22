@@ -305,7 +305,7 @@ def assemble(staged_root, manifest, application, output):
         if not (app / required).is_file():
             raise ValueError(f"Missing clean native app dependency: {required}")
     forbidden = {"data", "cache", "engines", "models", "licenses",
-                 "offline-assets.json"}
+                 "offline-assets.json", "qml-smoke-report.txt", ".env", ".git"}
     for candidate in app.rglob("*"):
         if candidate.is_symlink():
             raise ValueError(f"Application symlink rejected: {candidate}")

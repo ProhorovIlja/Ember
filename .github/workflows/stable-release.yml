@@ -63,9 +63,20 @@ jobs:
           $env:QT_QUICK_BACKEND = 'software'
           $env:QT_OPENGL = 'software'
           $exe = (Resolve-Path 'build/Release/Ember.exe').Path
-          $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru -Wait
-          Get-Content 'build/Release/qml-smoke-report.txt' -ErrorAction SilentlyContinue
+          $diagnostic = Join-Path $env:RUNNER_TEMP ('ember-release-smoke-' + [guid]::NewGuid().ToString('N') + '.txt')
+          $env:EMBER_SMOKE_REPORT_PATH = $diagnostic
+          try {
+            $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru -Wait
+          } finally {
+            Remove-Item Env:\EMBER_SMOKE_REPORT_PATH -ErrorAction SilentlyContinue
+          }
+          Get-Content $diagnostic -ErrorAction SilentlyContinue
           if ($process.ExitCode -ne 0) { throw 'Native QML startup failed.' }
+          foreach ($private in @('data', 'cache', 'qml-smoke-report.txt')) {
+            if (Test-Path (Join-Path 'build/Release' $private)) {
+              throw "Stable package contains private smoke state: $private"
+            }
+          }
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           # Python zipfile uses ZIP64 for multi-gigabyte GGUF/ONNX weight files.
           # PowerShell Compress-Archive has per-file limitations for large models.

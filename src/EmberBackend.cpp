@@ -50,8 +50,21 @@ constexpr int kWikipediaResearchCalls = 3;
 QString appFolder() {
     return QCoreApplication::applicationDirPath();
 }
+QString privateStorageFolder() {
+    // Only the special, explicit --smoke-test entrypoint may redirect private
+    // data to main.cpp's temporary profile; ordinary installed/portable
+    // sessions preserve the existing data/ and cache/ paths unchanged.
+    if (QCoreApplication::arguments().contains("--smoke-test")) {
+        const QString isolated = qEnvironmentVariable("EMBER_INTERNAL_SMOKE_ROOT");
+        const QFileInfo root(isolated);
+        if (!isolated.isEmpty() && root.isDir() && !root.isSymLink() &&
+            !root.isJunction())
+            return root.canonicalFilePath();
+    }
+    return appFolder();
+}
 void cleanupOldVoiceScratch() {
-    const QDir cache(QDir(appFolder()).filePath("cache"));
+    const QDir cache(QDir(privateStorageFolder()).filePath("cache"));
     if (!cache.exists()) return;
     const QDateTime now = QDateTime::currentDateTime();
     for (const QFileInfo &folder : cache.entryInfoList(
@@ -170,13 +183,13 @@ private:
 
 EmberBackend::EmberBackend(QObject *parent)
     : QObject(parent),
-      m_settings(QDir(appFolder()).filePath("data/ember.ini"), QSettings::IniFormat) {
+      m_settings(QDir(privateStorageFolder()).filePath("data/ember.ini"), QSettings::IniFormat) {
     m_captureTap = std::make_unique<CaptureTap>(&m_captureFile);
-    QDir().mkpath(QDir(appFolder()).filePath("data"));
-    QDir().mkpath(QDir(appFolder()).filePath("cache"));
+    QDir().mkpath(QDir(privateStorageFolder()).filePath("data"));
+    QDir().mkpath(QDir(privateStorageFolder()).filePath("cache"));
     cleanupOldVoiceScratch();
     m_work = std::make_unique<QTemporaryDir>(
-        QDir(appFolder()).filePath("cache/session-XXXXXX"));
+        QDir(privateStorageFolder()).filePath("cache/session-XXXXXX"));
     if (m_work && m_work->isValid()) {
         m_workLock = std::make_unique<QLockFile>(m_work->filePath(".ember.lock"));
         m_workLock->setStaleLockTime(60 * 1000);
@@ -187,9 +200,9 @@ EmberBackend::EmberBackend(QObject *parent)
         }
     }
     m_store = std::make_unique<SessionStore>(
-        QDir(appFolder()).filePath("data/ember-chats.sqlite"));
+        QDir(privateStorageFolder()).filePath("data/ember-chats.sqlite"));
     m_images = std::make_unique<ImageLibrary>(
-        QDir(appFolder()).filePath("data/library"));
+        QDir(privateStorageFolder()).filePath("data/library"));
     m_imageItems = m_images->list();
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_chatMode = qBound(0, m_settings.value("chat/mode", 0).toInt(), 3);

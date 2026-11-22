@@ -29,6 +29,14 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 if (!(Test-Path (Join-Path $payload 'Ember.exe'))) { throw 'Native EXE missing.' }
 if (!(Test-Path (Join-Path $payload 'Qt6Core.dll'))) { throw 'Qt runtime missing.' }
 if (!(Test-Path (Join-Path $payload 'LICENSE'))) { throw 'License file missing.' }
+# Inno's recursive [Files] section copies the entire payload. Refuse a
+# previously executed app directory rather than accidentally publish chats,
+# model prompts, microphones or session backups in a release installer.
+foreach ($private in @('data', 'cache', 'qml-smoke-report.txt', '.env', '.git')) {
+    if (Test-Path -LiteralPath (Join-Path $payload $private)) {
+        throw "Installer input contains private or smoke-test data: $private"
+    }
+}
 if ($RequireOfflineBundle) {
     $manifest = Join-Path $payload 'offline-assets.json'
     if (!(Test-Path $manifest)) { throw 'Complete offline asset manifest is missing.' }
@@ -76,10 +84,21 @@ if ($VerifyInstall) {
     $env:QT_QPA_PLATFORM = 'offscreen'
     $env:QT_QUICK_BACKEND = 'software'
     $env:QT_OPENGL = 'software'
-    $smoke = Start-Process -FilePath $installedExe -ArgumentList '--smoke-test' -PassThru -Wait
-    $diagnostic = Join-Path $install 'qml-smoke-report.txt'
-    if (Test-Path $diagnostic) { Get-Content $diagnostic }
+    $diagnostic = Join-Path $scratch ('Ember-Install-Smoke-' + [guid]::NewGuid().ToString('N') + '.txt')
+    $env:EMBER_SMOKE_REPORT_PATH = $diagnostic
+    try {
+        $smoke = Start-Process -FilePath $installedExe -ArgumentList '--smoke-test' -PassThru -Wait
+    } finally {
+        Remove-Item Env:\EMBER_SMOKE_REPORT_PATH -ErrorAction SilentlyContinue
+    }
+    if (Test-Path $diagnostic) {
+        Get-Content -LiteralPath $diagnostic
+        Remove-Item -LiteralPath $diagnostic -Force
+    }
     if ($smoke.ExitCode -ne 0) { throw "Installed app could not open: $($smoke.ExitCode)" }
+    if (Test-Path (Join-Path $install 'data')) { throw 'Smoke launch wrote private SQLite/data to the installed application.' }
+    if (Test-Path (Join-Path $install 'cache')) { throw 'Smoke launch wrote temporary microphone files into the installed application.' }
+    if (Test-Path (Join-Path $install 'qml-smoke-report.txt')) { throw 'Smoke report leaked into installed folder.' }
     $uninstaller = Get-ChildItem -LiteralPath $install -Filter 'unins*.exe' | Select-Object -First 1
     if (!$uninstaller) { throw 'Uninstaller not found.' }
     $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait

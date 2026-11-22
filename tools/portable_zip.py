@@ -28,8 +28,15 @@ def archive(root, output):
         if not p.is_file():
             raise ValueError("Non-regular portable asset")
         relative = p.relative_to(folder).as_posix()
-        if relative.split("/")[0].casefold() in ("data", "cache"):
-            raise ValueError("Private conversations/audio must never enter portable ZIP")
+        # Reject diagnostic output and sensitive single files regardless of
+        # placement: model bundles can otherwise ship CI credentials/logs.
+        parts = tuple(part.casefold() for part in p.relative_to(folder).parts)
+        if (parts[0] in ("data", "cache", ".git", ".ssh", ".env") or
+                any(part in ("qml-smoke-report.txt", ".env", "id_rsa",
+                             "id_ed25519", "credentials.json") or
+                    part.endswith((".sqlite", ".sqlite3", ".pem", ".key",
+                                   ".p12", ".pfx")) for part in parts)):
+            raise ValueError("Sensitive data or smoke diagnostic in portable ZIP")
         files.append((relative, p))
     files.sort(key=lambda pair: pair[0].casefold())
     dest = Path(output)
@@ -115,7 +122,19 @@ def self_test():
             raise AssertionError("Overwriting a ZIP was allowed")
         except ValueError:
             pass
-    print("portable_zip ZIP64 packaging self-test passed (synthetic PE/GGUF/GGML headers; not real weights)")
+        for name in ("data/ember-chats.sqlite", "qml-smoke-report.txt",
+                     "settings/credentials.json", "logs/session.pem"):
+            candidate = complete / name
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            candidate.write_bytes(b"private information")
+            try:
+                archive(complete, base / "must-reject-" +
+                        name.replace("/", "-") + ".zip")
+                raise AssertionError("Private file was accepted in a ZIP: " + name)
+            except ValueError:
+                pass
+            candidate.unlink()
+    print("portable_zip ZIP64 packaging self-test passed (synthetic headers and private-file exclusions)")
 
 
 def main():

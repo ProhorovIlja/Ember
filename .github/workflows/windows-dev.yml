@@ -107,6 +107,8 @@ jobs:
           $exe = (Resolve-Path 'build/Release/Ember.exe').Path
           $log = Join-Path $env:RUNNER_TEMP 'ember-qml-stderr.txt'
           $stdout = Join-Path $env:RUNNER_TEMP 'ember-qml-stdout.txt'
+          $diagnostic = Join-Path $env:RUNNER_TEMP ('ember-qml-smoke-' + [guid]::NewGuid().ToString('N') + '.txt')
+          $env:EMBER_SMOKE_REPORT_PATH = $diagnostic
           $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru -RedirectStandardError $log -RedirectStandardOutput $stdout
           if (-not $process.WaitForExit(20000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
@@ -115,8 +117,12 @@ jobs:
           }
           Get-Content $log -ErrorAction SilentlyContinue
           Get-Content $stdout -ErrorAction SilentlyContinue
-          Get-Content 'build/Release/qml-smoke-report.txt' -ErrorAction SilentlyContinue
+          Get-Content $diagnostic -ErrorAction SilentlyContinue
+          Remove-Item Env:\EMBER_SMOKE_REPORT_PATH -ErrorAction SilentlyContinue
           if ($process.ExitCode -ne 0) { throw "Native QML smoke test failed with exit code $($process.ExitCode)" }
+          if (Test-Path 'build/Release/data') { throw 'QML smoke seeded private data into the deployable Qt folder.' }
+          if (Test-Path 'build/Release/cache') { throw 'QML smoke seeded audio scratch into the deployable Qt folder.' }
+          if (Test-Path 'build/Release/qml-smoke-report.txt') { throw 'QML smoke seeded report into deployable Qt folder.' }
       - name: Package unsigned development build
         shell: pwsh
         run: |

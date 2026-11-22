@@ -2,14 +2,18 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QResource>
 #include <QQuickStyle>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QTimer>
+#include <memory>
 
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
@@ -21,6 +25,19 @@ int main(int argc, char *argv[]) {
     // Basic preserves the original Ember design without a web-renderer.
     QQuickStyle::setStyle("Basic");
     const bool smokeTest = app.arguments().contains("--smoke-test");
+    // CI and installer smoke runs must NEVER seed a portable/installed app's
+    // data/, cache/, SQLite or image Library before wildcard packaging.
+    // A private temporary root exists only for this foreground smoke run.
+    std::unique_ptr<QTemporaryDir> smokeStorage;
+    if (smokeTest) {
+        smokeStorage = std::make_unique<QTemporaryDir>(
+            QDir(QDir::tempPath()).filePath("ember-smoke-profile-XXXXXX"));
+        if (!smokeStorage->isValid()) {
+            qCritical("Failed to create isolated QML smoke-test profile.");
+            return 5;
+        }
+        qputenv("EMBER_INTERNAL_SMOKE_ROOT", smokeStorage->path().toUtf8());
+    }
     QQmlApplicationEngine engine;
     QStringList qmlDiagnostics;
     if (smokeTest) {
@@ -36,14 +53,18 @@ int main(int argc, char *argv[]) {
     engine.loadFromModule("Ember", "Main");
     auto writeDiagnostics = [&](const QString &phase) {
         if (!smokeTest) return;
-        QFile log(QCoreApplication::applicationDirPath() + "/qml-smoke-report.txt");
-        if (log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-            const QString report = phase + "\nRoot objects: " +
-                QString::number(engine.rootObjects().size()) + "\n" +
-                qmlDiagnostics.join("\n") + "\n";
-            log.write(report.toUtf8());
-            log.close();
+        const QString report = phase + "\nRoot objects: " +
+            QString::number(engine.rootObjects().size()) + "\n" +
+            qmlDiagnostics.join("\n") + "\n";
+        // A report path is provided by the explicit foreground CI smoke test.
+        // Do not write diagnostic files anywhere under the deployed app.
+        const QString reportFile = qEnvironmentVariable("EMBER_SMOKE_REPORT_PATH");
+        if (!reportFile.isEmpty()) {
+            QFile log(reportFile);
+            if (log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+                log.write(report.toUtf8());
         }
+        qInfo().noquote() << report;
     };
     if (engine.rootObjects().isEmpty() || !qmlDiagnostics.isEmpty()) {
         writeDiagnostics("QML initialization failed");
