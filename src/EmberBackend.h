@@ -63,6 +63,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(bool listening READ listening NOTIFY listeningChanged)
     Q_PROPERTY(bool speaking READ speaking NOTIFY speakingChanged)
     Q_PROPERTY(bool speechServerReady READ speechServerReady NOTIFY speechServerChanged)
+    // Exposes verified native English female speakers only.
     Q_PROPERTY(QStringList nativeEnglishVoices READ nativeEnglishVoices NOTIFY speechServerChanged)
     Q_PROPERTY(bool speechServerRunning READ speechServerRunning NOTIFY speechServerChanged)
     Q_PROPERTY(QString persona READ persona WRITE setPersona NOTIFY configurationChanged)
