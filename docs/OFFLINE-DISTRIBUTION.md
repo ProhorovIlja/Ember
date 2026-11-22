@@ -336,3 +336,41 @@ until its real LLM/ASR/TTS binaries and their dependent DLLs are staged,
 hash-verified, license-reviewed, and tested on an independent disconnected
 Windows 10 machine. Do not assume that passing on GitHub's Windows Server
 2022 runner proves compatibility with every Windows 10 installation.
+
+### Native speech model identity — GGUF metadata preflight (22 November 2026)
+
+A checksum and a filename ending in `.gguf` are insufficient to
+establish that a model can provide speech. Before a human-approved
+**full stable voice** bundle passes `tools/offline_bundle.py verify
+--redistribution-required --require-voice`, Ember now inspects the
+metadata written by the pinned upstream `speech.cpp v0.11.2`
+Qwen3 converters. The stdlib-only `tools/native_gguf_metadata.py`
+reads bounded GGUF headers and typed key/value metadata without loading
+tensor weights or starting any executable. For the allowed Qwen3-TTS
+0.6B/1.7B aliases, it requires the matching
+`general.architecture`, `general.size_label`, task
+`speech.task=synthesis`, layout 1, compatible `speech.requires`,
+English in `general.languages`, paired `speech.voices` and
+`speech.voice_languages`, and at least one English speaker. When the
+user selects a specific speaker in the manual native TTS acceptance
+utility, its identity must already appear as English in the GGUF.
+
+Optional bundled Qwen3-ASR 0.6B/1.7B files must advertise
+`speech.task=recognition`, the correct architecture/size/layout and
+both RU and EN language tags. Their inclusion is optional because
+the release still requires the multilingual local Whisper baseline.
+This check is independent of, and complementary to, the later
+process-owned `/health` and `/v1/models` readiness checks.
+
+Run `python tools/native_gguf_metadata.py --self-test` to test the
+bounded parser with synthetic files. To inspect an owned local
+weight, run `python tools/native_gguf_metadata.py --model
+models/speech/qwen3-tts-0.6b.gguf --alias qwen3-tts-0.6b --voice vivian`.
+Neither command downloads data or executes a model. The structural
+test **does not prove** model weights exist in full, license
+authenticity, signature trust, GPU support, network isolation,
+acoustic quality or actual inference; those remain explicit release
+gates.
+
+Converter reference: https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-tts
+and https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-asr
