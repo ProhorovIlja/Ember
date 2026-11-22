@@ -227,3 +227,16 @@ Development CI now runs native builds, installer round-trip checks and quality-g
   full GUI trust-toggle behavior, Qt listener owner API under non-admin
   accounts, genuine multi-process speech.cpp deployment. PID checks
   do not replace future authenticated IPC/loopback bearer tokens.
+
+
+### 22 November 2026 — transactional composer acceptance
+
+- [x] Native C++ `submitText` now reports whether local network sending was
+  accepted; QML clears the draft only on `true`. A rejected text or image
+  request, active microphone, invalid image payload, or replaced localhost
+  listener leaves the unsent composer intact.
+- [x] Source changes compile through Windows native QML/Qt pipeline once
+  exact-head CI is green; this is not yet a hardware acceptance test.
+- [ ] On real Windows 10, verify Ctrl+Enter and button paths, invalid mmproj,
+  deleted Library image, disconnected brain service, simultaneous dictation,
+  legitimate accepted send and touch/keyboard focus behavior at 100–200% DPI.

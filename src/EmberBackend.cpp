@@ -1152,8 +1152,8 @@ QString EmberBackend::messageImageUrl(const QString &body) const {
 QString EmberBackend::messageText(const QString &body) const {
     return EmberCore::stripAttachedImageMarker(body);
 }
-void EmberBackend::submitText(const QString &text) {
-    submit(text, false);
+bool EmberBackend::submitText(const QString &text) {
+    return submit(text, false);
 }
 void EmberBackend::continueIncompleteReply() {
     // User-triggered continuation only: never launch another LLM response
@@ -1169,30 +1169,33 @@ void EmberBackend::continueIncompleteReply() {
            "characters, narrative continuity, language and formatting. "
            "Continue with the next sentence.", false);
 }
-void EmberBackend::submit(const QString &raw, bool voice) {
+bool EmberBackend::submit(const QString &raw, bool voice) {
     const QString selected = !voice && !m_privateMode ? m_pendingImageId : QString();
     QByteArray imageData;
     if (!selected.isEmpty()) {
         if (!visionReady()) {
             setStatus("This local brain has no active vision projector. "
                       "Choose an mmproj GGUF, then restart the brain.");
-            return;
+            return false;
         }
         imageData = m_images->dataUri(selected);
         if (imageData.isEmpty()) {
             setStatus("Attached image failed local SHA-256 integrity verification.");
-            return;
+            return false;
         }
     }
     const QString text = raw.trimmed().isEmpty() && !selected.isEmpty()
         ? QStringLiteral("Describe the attached image.") : raw.trimmed();
     if (!m_brainReady) {
         setStatus("Start the local brain before sending a message.");
-        return;
+        return false;
     }
     if (m_busy || m_listening || text.isEmpty() || text.size() > 4096) {
-        if (text.size() > 4096) setStatus("Message exceeds the 4,096-character input limit.");
-        return;
+        if (text.size() > 4096)
+            setStatus("Message exceeds the 4,096-character input limit.");
+        else if (m_listening)
+            setStatus("Finish recording before sending the text draft.");
+        return false;
     }
     // No prompt, image, or conversation text leaves Ember unless the kernel
     // says the listener is the exact managed llama-server PID on 127.0.0.1.
@@ -1201,7 +1204,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
             43821, quint64(m_brain.processId()))) {
         setBrainReady(false);
         setStatus("Local brain endpoint identity changed. Your prompt was not sent.");
-        return;
+        return false;
     }
     // Writing profiles are provider-independent and completely local.
     // These select behavior; the user can still override m_persona.
@@ -1242,13 +1245,13 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         !EmberCore::attachLocalVisionData(payload, imageData)) {
         // Leave the composer attachment and both SQLite/UI histories intact.
         setStatus("Could not construct a private local multimodal request.");
-        return;
+        return false;
     }
     payload.insert("stream", true);
     const QString url = "http://127.0.0.1:43821/v1/chat/completions";
     if (!EmberCore::allowedLocalEndpoint(url)) {
         setStatus("Invalid local text-engine address.");
-        return;
+        return false;
     }
     // All synchronous preflight checks have passed. Only NOW commit this
     // user turn to SQLite and the UI: an invalid multimodal request must not
@@ -1350,6 +1353,7 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         // abort, malformed SSE or missing [DONE] for a valid token budget.
         finishChatStream(!complete, verifiedTokenLimit);
     });
+    return true; // HTTP request accepted for local streaming; not a success verdict
 }
 void EmberBackend::renderChatStream() {
     if (m_chatStreamText.isEmpty()) return;

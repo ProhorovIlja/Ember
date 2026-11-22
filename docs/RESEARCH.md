@@ -51,3 +51,35 @@ Official mobile listings document Incognito/privacy choices, continuous voice/te
 
 All vendors' speed/quality figures are hardware- and protocol-specific
 and cannot substitute for Ember's RTX4070 real Windows benchmark.
+
+
+## 22 November 2026 — new voice inference candidates, not integrated
+
+The native Qwen3-TTS speech.cpp PCM pathway remains the reference implementation
+because its loopback API, Windows footprint and validation hooks are already
+represented in Ember. Adjacent open research candidates should be evaluated
+against identical recorded English female narration samples, **not** merged
+blindly into the shipping binary:
+
+- https://github.com/andimarafioti/faster-qwen3-tts — streaming Qwen3
+  alternative with a documented native Windows setup. Source is MIT
+  (inspect pinned dependency and model licenses separately), but different
+  server streaming protocols / decoder paths need adapter and GPU profiling.
+- https://github.com/KoljaB/RealtimeTTS — native Qwen streaming server and
+  Windows/CUDA inference variants. May reduce first audio latency, but
+  brings extra Python and audio/runtime dependencies versus Ember's C++ host.
+- https://github.com/OpenMOSS/MOSS-TTS — realtime context-aware conversation
+  speech variant, plus larger local speech models. Speaker realism, licensing,
+  memory coexistence with the local GGUF brain, Windows CPU/GPU support, and
+  per-chunk buffering remain unmeasured in Ember.
+- https://huggingface.co/marcosremar2/kokoro-82m-streaming-onnx —
+  exploratory smaller streaming ONNX architecture with separate frontend
+  and generator; not yet demonstrated as a drop-in compatible sherpa-onnx
+  production component. A fixed-voice fallback may improve cold starts
+  but could sacrifice naturalness and rhythm.
+
+Comparisons must log exact upstream commit, model/weight hash, language,
+speaker/style settings, audio sample rate, real first audible sample, RTF,
+VRAM, concurrent llama.cpp load, blind English female voice rating and
+license provenance. NONE are integrated or shipped by this research note.
+Do not enable runtime model registry downloads by default.

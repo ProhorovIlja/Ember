@@ -168,12 +168,12 @@ ApplicationWindow {
         const value = composer.text.trim()
         if ((value.length === 0 && ember.pendingImageUrl.length === 0)
             || !ember.brainReady || ember.busy) return
-        if (ember.pendingImageUrl.length > 0 && !ember.visionReady) {
-            ember.submitText(value) // report missing vision model; keep draft
-            return
-        }
-        ember.submitText(value)
-        composer.text = ""
+        // The C++ backend returns true ONLY after validating the trusted
+        // endpoint and image payload and initiating the local HTTP stream.
+        // Keep the user's draft on every rejected send (including recording,
+        // corrupt Library input or a replaced loopback service).
+        if (ember.submitText(value))
+            composer.text = ""
     }
 
     component NavButton: Rectangle {

@@ -141,7 +141,7 @@ public:
     Q_INVOKABLE void stopBrain();
     Q_INVOKABLE void startSpeechServer();
     Q_INVOKABLE void stopSpeechServer();
-    Q_INVOKABLE void submitText(const QString &text);
+    Q_INVOKABLE bool submitText(const QString &text);
     Q_INVOKABLE void continueIncompleteReply();
     Q_INVOKABLE void chooseImage();
     Q_INVOKABLE void pasteImage();
@@ -200,7 +200,7 @@ private:
     void setSpeaking(bool value);
     void setBrainReady(bool value);
     void appendMessage(const QString &role, const QString &text);
-    void submit(const QString &text, bool asVoice);
+    bool submit(const QString &text, bool asVoice);
     void transcribe();
     void transcribeViaNativeServer();
     void startCapture(bool dictation);
