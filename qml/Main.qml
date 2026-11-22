@@ -1145,7 +1145,7 @@ ApplicationWindow {
                                             ToolTip.text: "Read one selected local UTF-8 text/code file into your editable draft. Nothing is sent until you press Send."
                                         }
                                         PillButton {
-                                            text: "Find in folder"
+                                            text: "Project tools"
                                             implicitWidth: 119
                                             implicitHeight: 31
                                             enabled: !ember.busy && !ember.listening
@@ -1158,7 +1158,7 @@ ApplicationWindow {
                                             }
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
-                                            ToolTip.text: "Search one chosen local folder without executing code. Results appear in your editable draft."
+                                            ToolTip.text: "Choose a local folder, then map source filenames or search literal text. Review the editable result; no code is executed."
                                         }
                                         PillButton {
                                             text: "GitHub · Read"

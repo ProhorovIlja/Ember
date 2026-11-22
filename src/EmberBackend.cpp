@@ -1447,6 +1447,22 @@ QString EmberBackend::searchLocalCodeFolder(const QString &existingDraft) {
         QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
     if (folder.isEmpty()) return {};
     bool accepted = false;
+    const QStringList actions{"Find literal text", "Map project files"};
+    const QString action = QInputDialog::getItem(
+        nullptr, "Local project tools", "Action:", actions, 0, false, &accepted);
+    if (!accepted) return {};
+    if (action == actions.at(1)) {
+        const auto map = EmberLocalSearch::outlineDirectory(folder, existingDraft);
+        if (!map.ok()) {
+            setStatus(map.error);
+            return {};
+        }
+        setStatus(QString("Local project map listed %1 source file(s)%2. "
+                          "Review paths before sending.")
+                  .arg(map.matches)
+                  .arg(map.limited ? " (safety limits reached)" : ""));
+        return map.draft;
+    }
     const QString query = QInputDialog::getText(
         nullptr, "Local source search", "Literal text to find:",
         QLineEdit::Normal, {}, &accepted);

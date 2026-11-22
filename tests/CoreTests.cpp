@@ -661,6 +661,45 @@ private slots:
         QCOMPARE(absent.matches, 0);
         QVERIFY(absent.draft.contains("No matching lines found"));
     }
+    void localProjectMapIncludesSourcesButNeverReadsSecretsOrDependencies() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        QDir root(temporary.path());
+        QVERIFY(root.mkpath("src/subdir"));
+        QVERIFY(root.mkpath("node_modules"));
+        QVERIFY(root.mkpath(".git"));
+        auto touch = [&](const QString &path) {
+            QFile file(root.filePath(path));
+            if (!file.open(QIODevice::WriteOnly)) return false;
+            return file.write("not sent as content") > 0;
+        };
+        QVERIFY(touch("CMakeLists.txt"));
+        QVERIFY(touch("src/engine.cpp"));
+        QVERIFY(touch("src/subdir/types.hpp"));
+        QVERIFY(touch("node_modules/secret.js"));
+        QVERIFY(touch(".git/config"));
+        QVERIFY(touch(".env"));
+        QVERIFY(touch("id_rsa"));
+        const auto map = EmberLocalSearch::outlineDirectory(root.path(), "Review:");
+        QVERIFY2(map.ok(), qPrintable(map.error));
+        QVERIFY(!map.limited);
+        QCOMPARE(map.matches, 3);
+        QVERIFY(map.draft.startsWith("Review:"));
+        QVERIFY(map.draft.contains("[dir] src/"));
+        QVERIFY(map.draft.contains("[file] src/engine.cpp"));
+        QVERIFY(map.draft.contains("[file] src/subdir/types.hpp"));
+        QVERIFY(map.draft.contains("[file] CMakeLists.txt"));
+        QVERIFY(!map.draft.contains("node_modules"));
+        QVERIFY(!map.draft.contains("secret"));
+        QVERIFY(!map.draft.contains(".env"));
+        QVERIFY(!map.draft.contains("id_rsa"));
+        QVERIFY(!map.draft.contains("not sent as content"));
+        QVERIFY(map.draft.size() <= 8192);
+        QVERIFY(!EmberLocalSearch::outlineDirectory(
+            root.path(), QString(8100, 'x')).ok());
+        QVERIFY(!EmberLocalSearch::outlineDirectory(
+            root.filePath("missing"), {}).ok());
+    }
     void optionalDeepReasoningIsOnlyAddedWhenUserOptsIn() {
         const auto standard = EmberCore::chatGenerationProfile(3, false, false);
         const auto deep = EmberCore::chatGenerationProfile(3, false, true);

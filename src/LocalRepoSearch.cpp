@@ -144,4 +144,83 @@ SearchResult searchDirectory(const QString &selectedRoot,
     result.draft = existingDraft + block;
     return result;
 }
+SearchResult outlineDirectory(const QString &selectedRoot,
+                              const QString &existingDraft) {
+    if (existingDraft.size() >= kMaxChars - 300)
+        return {{}, "Draft is too long to add a project map."};
+    const QFileInfo rootInfo(selectedRoot);
+    if (!rootInfo.exists() || !rootInfo.isDir() ||
+        rootInfo.isSymLink() || rootInfo.isJunction())
+        return {{}, "Choose a real local directory, not a symlink or junction."};
+    const QString root = canonical(selectedRoot);
+    if (root.isEmpty())
+        return {{}, "Could not establish the canonical folder location."};
+    const QString prefix = root.endsWith(QLatin1Char('/'))
+        ? root : root + QLatin1Char('/');
+#ifdef Q_OS_WIN
+    const Qt::CaseSensitivity pathCase = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity pathCase = Qt::CaseSensitive;
+#endif
+    SearchResult result;
+    QStringList pending{root};
+    QString lines;
+    int visited = 0, listed = 0;
+    bool stop = false;
+    // Breadth-first traversal gives a useful overview of even large repos.
+    while (!pending.isEmpty() && !stop) {
+        const QString folder = pending.takeFirst();
+        const auto entries = QDir(folder).entryInfoList(
+            QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks,
+            QDir::Name | QDir::IgnoreCase);
+        for (const QFileInfo &entry : entries) {
+            if (++visited > kMaxEntries) {
+                result.limited = true;
+                stop = true;
+                break;
+            }
+            if (entry.isSymLink() || entry.isJunction()) continue;
+            const QString name = entry.fileName();
+            if (name.startsWith(QLatin1Char('.')) || blockedFile(name))
+                continue;
+            const bool directory = entry.isDir();
+            if (directory && kSkipDirs.contains(name.toLower())) continue;
+            if (!directory &&
+                (!entry.isFile() ||
+                 (!kExtensions.contains(entry.suffix().toLower()) &&
+                  name != "Dockerfile" && name != "Makefile")))
+                continue;
+            const QString resolved = canonical(entry.absoluteFilePath());
+            if (!resolved.startsWith(prefix, pathCase)) continue;
+            QString relative = QDir(root).relativeFilePath(resolved);
+            relative.replace(QLatin1Char('\n'), QLatin1Char(' '));
+            relative.replace(QLatin1Char('\r'), QLatin1Char(' '));
+            if (relative.size() > 180) continue;
+            const QString line = directory
+                ? QString("[dir] %1/\n").arg(relative)
+                : QString("[file] %1\n").arg(relative);
+            if (existingDraft.size() + lines.size() + line.size() > kMaxChars - 310 ||
+                listed >= 180) {
+                result.limited = true;
+                stop = true;
+                break;
+            }
+            lines += line;
+            ++listed;
+            if (directory) pending.append(resolved);
+            else ++result.matches;
+        }
+    }
+    const QString block =
+        QStringLiteral("\n\n---\nLocal project map (filenames only; untrusted reference data):\n") +
+        (lines.isEmpty() ? QStringLiteral("No recognized source files.\n") : lines) +
+        (result.limited
+            ? QStringLiteral("\nMap capped by safety limits; more paths may exist.\n")
+            : QStringLiteral("\nMap completed within safety limits.\n")) +
+        QStringLiteral("--- End local project map ---");
+    if (existingDraft.size() + block.size() > kMaxChars)
+        return {{}, "No room for project map in current draft."};
+    result.draft = existingDraft + block;
+    return result;
+}
 }
