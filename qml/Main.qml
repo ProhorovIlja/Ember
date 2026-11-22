@@ -2548,7 +2548,9 @@ ApplicationWindow {
                                 Rectangle {
                                     visible: ember.voiceEngine === 1 || ember.recognitionEngine > 0
                                     Layout.fillWidth: true
-                                    implicitHeight: ember.voiceEngine === 1 ? 337 : 278
+                                    implicitHeight: (ember.voiceEngine === 1 ? 337 : 278) +
+                                                    (ember.voiceEngine === 1 ? 85 : 0) +
+                                                    (ember.recognitionEngine > 0 ? 85 : 0)
                                     radius: 14
                                     color: window.cardColor
                                     border.color: window.borderColor
@@ -2581,10 +2583,94 @@ ApplicationWindow {
                                         }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: "Offline-first speech.cpp: put GGUF files in models/speech/<alias>.gguf. External model downloads are blocked unless enabled below."
+                                            text: "Offline-first speech.cpp: choose existing GGUF files from any local drive, or put them in models/speech/<alias>.gguf. No copies or downloads are needed."
                                             wrapMode: Text.WordWrap
                                             color: "#8EABC5"
                                             font.pixelSize: 12
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            visible: ember.voiceEngine === 1
+                                            spacing: 8
+                                            Text {
+                                                text: "LOCAL TTS GGUF"
+                                                Layout.fillWidth: true
+                                                color: "#BDDDF4"
+                                                font.pixelSize: 11
+                                            }
+                                            PillButton {
+                                                text: "Choose file"
+                                                implicitWidth: 114
+                                                implicitHeight: 31
+                                                enabled: !ember.busy && !ember.listening &&
+                                                         !ember.speaking && !ember.speechServerRunning
+                                                onClicked: ember.chooseNativeSpeechModel(false)
+                                            }
+                                            PillButton {
+                                                text: "Clear"
+                                                implicitWidth: 68
+                                                implicitHeight: 31
+                                                enabled: !ember.busy && !ember.listening &&
+                                                         !ember.speaking && !ember.speechServerRunning &&
+                                                         ember.nativeSpeechModelPath(false).length > 0
+                                                onClicked: ember.clearNativeSpeechModel(false)
+                                            }
+                                        }
+                                        Text {
+                                            visible: ember.voiceEngine === 1
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideMiddle
+                                            color: "#86A5BE"
+                                            font.pixelSize: 10
+                                            text: ember.configurationRevision >= 0 &&
+                                                  ember.nativeSpeechModelPath(false).length > 0 ?
+                                                  "Selected TTS: " + ember.nativeSpeechModelPath(false) :
+                                                  "TTS: no external file selected; bundled path is fallback"
+                                            ToolTip.visible: mouseHover.containsMouse
+                                            ToolTip.text: text
+                                            MouseArea { id: mouseHover; anchors.fill: parent; hoverEnabled: true }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            visible: ember.recognitionEngine > 0
+                                            spacing: 8
+                                            Text {
+                                                text: "LOCAL ASR GGUF"
+                                                Layout.fillWidth: true
+                                                color: "#BDDDF4"
+                                                font.pixelSize: 11
+                                            }
+                                            PillButton {
+                                                text: "Choose file"
+                                                implicitWidth: 114
+                                                implicitHeight: 31
+                                                enabled: !ember.busy && !ember.listening &&
+                                                         !ember.speaking && !ember.speechServerRunning
+                                                onClicked: ember.chooseNativeSpeechModel(true)
+                                            }
+                                            PillButton {
+                                                text: "Clear"
+                                                implicitWidth: 68
+                                                implicitHeight: 31
+                                                enabled: !ember.busy && !ember.listening &&
+                                                         !ember.speaking && !ember.speechServerRunning &&
+                                                         ember.nativeSpeechModelPath(true).length > 0
+                                                onClicked: ember.clearNativeSpeechModel(true)
+                                            }
+                                        }
+                                        Text {
+                                            visible: ember.recognitionEngine > 0
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideMiddle
+                                            color: "#86A5BE"
+                                            font.pixelSize: 10
+                                            text: ember.configurationRevision >= 0 &&
+                                                  ember.nativeSpeechModelPath(true).length > 0 ?
+                                                  "Selected ASR: " + ember.nativeSpeechModelPath(true) :
+                                                  "ASR: no external file selected; bundled path is fallback"
+                                            ToolTip.visible: asrPathHover.containsMouse
+                                            ToolTip.text: text
+                                            MouseArea { id: asrPathHover; anchors.fill: parent; hoverEnabled: true }
                                         }
                                         RowLayout {
                                             Layout.fillWidth: true

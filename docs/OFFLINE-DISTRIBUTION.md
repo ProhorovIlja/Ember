@@ -76,3 +76,27 @@ The uninstaller is expected to leave any user-created private data untouched.
 **Recursive packaging safety:** Both manual installer and ZIP64 assembly now examine all candidate files, not only top-level folders. Secret-like files (SQLite, .env, credentials.json, private keys, diagnostic output), links and Windows junctions cause refusal rather than inclusion. The Inno wrapper no longer invokes Chocolatey to fetch a missing compiler; a trusted preinstalled Inno Setup 6 is required for offline builds. These guards do not independently prove that an arbitrary file has no private text within it; review the payload inventory before distribution.
 
 **2026-11-22 real local model token inspection:** The explicitly invoked Windows `python tools/offline_acceptance.py --root ... --run` now checks fixed EN/RU diagnostic prompts against the *actual local GGUF's* `/apply-template` and `/tokenize` APIs after its ordinary streamed instruction check. It records model-specific prompt token counts, active context and reserved reply tokens without retaining generated text or real conversation history. All requests go to PID-verified `127.0.0.1:43821` with redirects/proxies disabled; malformed token IDs, missing JSON, unexpectedly large responses, changed socket owners and a sample context overrun fail explicitly. The default invocation remains read-only with no model launch, and the CI self-test uses only local response-shape fixtures. This helps measure the new heuristic context guard but cannot guarantee all arbitrary user prompts fit. Upstream documentation: https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md .\n
+
+## Manual local GGUF selection without duplicate files or VPN
+
+Native Settings now offer separate **Choose file** / **Clear** controls for the
+current Qwen3-TTS 0.6B or 1.7B voice and the current Qwen3-ASR 0.6B or 1.7B
+recognizer. A user who already obtained an approved compatible speech.cpp GGUF
+can point Ember directly at an existing local drive file. It saves only the
+absolute file path under the corresponding model alias in local QSettings:
+there is **no upload, network request or multi-gigabyte second copy**. Users
+can select a different GGUF for every supported TTS/ASR alias and switch back
+without moving the weights. Clear removes the manual override and returns to
+the original bundled `models/speech/<alias>.gguf` fallback.
+
+Startup checks the pinned file **again**, rejecting moved, missing, linked,
+network-share, tiny and invalid-version GGUF files. An invalid pinned file
+fails closed rather than silently invoking catalog downloads, even if that
+setting had been explicitly enabled. The launch uses the file path as a
+QProcess argument, not shell text. Default catalog downloading remains blocked.
+Structural GGUF checking **does not** verify actual model family, tensor
+completeness, license, or that a Qwen3 model runs with the installed exact
+speech.cpp release. Genuine offline launch/listening tests on Windows 10,
+including RTX 4070 with Vulkan and English speech/RU-EN recognition, remain
+required before a release claim. See upstream:
+https://github.com/nyosegawa/speech.cpp/blob/main/docs/models.md

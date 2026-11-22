@@ -156,6 +156,9 @@ QString stripAttachedImageMarker(const QString &text);
 bool attachLocalVisionData(QJsonObject &request, const QByteArray &dataUri);
 // User-supplied local GGUF model path, never a catalog download alias.
 QString offlineSpeechModelFile(const QString &applicationRoot, const QString &alias);
+// Explicit user-picked file on any local drive. Only a structural GGUF
+// preflight; compatible model family, provenance and license need real QA.
+QString localSpeechGgufFile(const QString &absoluteFilePath);
 bool validSpeechWav(const QByteArray &wav);
 // Suppress hallucinations only for *digitally near-silent* canonical 16kHz
 // mono PCM16 input; never gate ordinary quiet voices or unrecognized WAVs.

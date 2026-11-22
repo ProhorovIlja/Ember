@@ -459,6 +459,43 @@ private slots:
         bytes.close();
         QVERIFY(gallery.dataUri(id).isEmpty()); // integrity fails closed
     }
+    void manuallySelectedNativeGgufDoesNotCopyAndRejectsBadLocalFiles() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString local = temporary.filePath("my-renamed-qwen3-model.gguf");
+        QVERIFY(EmberCore::localSpeechGgufFile(local).isEmpty());
+        QFile model(local);
+        QVERIFY(model.open(QIODevice::WriteOnly));
+        QCOMPARE(model.write(QByteArray("GGUF") +
+                             QByteArray::fromHex("03000000")), qint64(8));
+        model.close();
+        // A magic-only stub must not be shown as installed.
+        QVERIFY(EmberCore::localSpeechGgufFile(local).isEmpty());
+        QVERIFY(model.open(QIODevice::ReadWrite));
+        QVERIFY(model.resize(1024 * 1024 + 128));
+        model.close();
+        QCOMPARE(EmberCore::localSpeechGgufFile(local),
+                 QFileInfo(local).canonicalFilePath());
+        QCOMPARE(EmberCore::localSpeechGgufFile(local).size(),
+                 QFileInfo(local).canonicalFilePath().size());
+        // Changing metadata never copies or modifies multi-gigabyte weights.
+        QCOMPARE(QFileInfo(local).size(), qint64(1024 * 1024 + 128));
+        QVERIFY(EmberCore::localSpeechGgufFile(
+            temporary.filePath("model.bin")).isEmpty());
+        QVERIFY(model.open(QIODevice::ReadWrite));
+        QVERIFY(model.seek(4));
+        QCOMPARE(model.write(QByteArray::fromHex("63000000")), qint64(4));
+        model.close();
+        QVERIFY(EmberCore::localSpeechGgufFile(local).isEmpty());
+        QVERIFY(model.open(QIODevice::ReadWrite));
+        QVERIFY(model.seek(4));
+        QCOMPARE(model.write(QByteArray::fromHex("02000000")), qint64(4));
+        model.close();
+        QVERIFY(!EmberCore::localSpeechGgufFile(local).isEmpty());
+        const QString linked = temporary.filePath("model-link.gguf");
+        if (QFile::link(local, linked))
+            QVERIFY(EmberCore::localSpeechGgufFile(linked).isEmpty());
+    }
     void offlineSpeechRejectsUnknownAliasesAndInvalidGGUF() {
         QTemporaryDir temp;
         QVERIFY(temp.isValid());

@@ -582,6 +582,62 @@ void EmberBackend::choosePath(const QString &key) {
     emit configurationChanged();
     setStatus("Local path updated. Restart the brain if you changed its model.");
 }
+QString EmberBackend::nativeSpeechModelPath(bool forRecognition) const {
+    const QString alias = forRecognition
+        ? EmberCore::nativeAsrModel(m_recognitionEngine) : m_localModel;
+    if (alias.isEmpty()) return {};
+    return m_settings.value("voice/localSpeechModels/" + alias).toString();
+}
+void EmberBackend::chooseNativeSpeechModel(bool forRecognition) {
+    if (m_busy || m_speaking || m_listening || m_transcribingDictation ||
+        m_speechServer.state() != QProcess::NotRunning) {
+        setStatus("Stop voice, dictation and native speech engine before changing GGUF files.");
+        return;
+    }
+    const QString alias = forRecognition
+        ? EmberCore::nativeAsrModel(m_recognitionEngine) : m_localModel;
+    const QStringList allowed = forRecognition
+        ? QStringList{"qwen3-asr-0.6b", "qwen3-asr-1.7b"}
+        : QStringList{"qwen3-tts-0.6b", "qwen3-tts-1.7b"};
+    if (!allowed.contains(alias)) {
+        setStatus("Choose a supported Qwen3 native speech model first.");
+        return;
+    }
+    const QString current = nativeSpeechModelPath(forRecognition);
+    const QString picked = QFileDialog::getOpenFileName(
+        nullptr, forRecognition ? "Select existing local Qwen3-ASR GGUF"
+                                : "Select existing local Qwen3-TTS GGUF",
+        current.isEmpty() ? QDir::homePath() : current,
+        "GGUF model file (*.gguf)");
+    if (picked.isEmpty()) return;
+    const QString verified = EmberCore::localSpeechGgufFile(picked);
+    if (verified.isEmpty()) {
+        setStatus("Selected GGUF is missing, linked, on a network share, "
+                  "too small or has an invalid header. No model was copied.");
+        return;
+    }
+    m_settings.setValue("voice/localSpeechModels/" + alias, verified);
+    m_settings.sync();
+    ++m_configurationRevision;
+    emit configurationChanged();
+    setStatus("Manual offline " + alias + " file selected. No copying or "
+              "network request. Native inference compatibility is checked on start.");
+}
+void EmberBackend::clearNativeSpeechModel(bool forRecognition) {
+    if (m_busy || m_speaking || m_listening || m_transcribingDictation ||
+        m_speechServer.state() != QProcess::NotRunning) {
+        setStatus("Stop native speech before clearing a manually selected GGUF.");
+        return;
+    }
+    const QString alias = forRecognition
+        ? EmberCore::nativeAsrModel(m_recognitionEngine) : m_localModel;
+    if (alias.isEmpty()) return;
+    m_settings.remove("voice/localSpeechModels/" + alias);
+    m_settings.sync();
+    ++m_configurationRevision;
+    emit configurationChanged();
+    setStatus("Manual " + alias + " override cleared. Bundled GGUF path is used next.");
+}
 bool EmberBackend::isRegularFile(const QString &path) const {
     const QFileInfo info(path);
     return info.exists() && info.isFile() && info.isReadable();
@@ -1113,6 +1169,15 @@ void EmberBackend::startSpeechServer() {
     QStringList models{"serve"};
     bool ttsPath = false, asrPath = false;
     auto modelArg = [this](const QString &name, bool &fileUsed) -> QString {
+        // An explicitly pinned offline file has priority and fails CLOSED if
+        // it was moved or corrupted. Even opt-in catalog downloads must not
+        // silently replace the user's chosen model with another checkpoint.
+        const QString pinned = m_settings.value(
+            "voice/localSpeechModels/" + name).toString();
+        if (!pinned.isEmpty()) {
+            fileUsed = true;
+            return EmberCore::localSpeechGgufFile(pinned);
+        }
         const QString path = EmberCore::offlineSpeechModelFile(appFolder(), name);
         fileUsed = !path.isEmpty();
         return fileUsed ? path : (m_allowSpeechDownloads ? name : QString());
@@ -1120,8 +1185,9 @@ void EmberBackend::startSpeechServer() {
     if (m_voiceEngine == 1) {
         const QString arg = modelArg(m_localModel, ttsPath);
         if (arg.isEmpty()) {
-            setStatus("Offline TTS GGUF missing at models/speech/<alias>.gguf. "
-                      "Import a model or explicitly enable catalog downloads.");
+            setStatus("Offline TTS GGUF missing or invalid at the selected local "
+                      "file or models/speech/<alias>.gguf. Choose a valid GGUF, "
+                      "clear the manual override, or explicitly enable catalog downloads.");
             return;
         }
         models.append(arg);
@@ -1130,8 +1196,9 @@ void EmberBackend::startSpeechServer() {
         const QString arg = modelArg(
             EmberCore::nativeAsrModel(m_recognitionEngine), asrPath);
         if (arg.isEmpty()) {
-            setStatus("Offline ASR GGUF missing at models/speech/<alias>.gguf. "
-                      "Import a model or explicitly enable catalog downloads.");
+            setStatus("Offline ASR GGUF missing or invalid at the selected local "
+                      "file or models/speech/<alias>.gguf. Choose a valid GGUF, "
+                      "clear the manual override, or explicitly enable catalog downloads.");
             return;
         }
         models.append(arg);

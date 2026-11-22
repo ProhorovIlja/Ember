@@ -48,6 +48,41 @@ bool discardPrivateVoiceScratch(QFile &microphone, const QString &folder) {
     }
     return success;
 }
+QString localSpeechGgufFile(const QString &absoluteFilePath) {
+    const QFileInfo candidate(absoluteFilePath);
+    if (!candidate.isAbsolute() || !candidate.isFile() ||
+        !candidate.isReadable() || candidate.isSymLink() ||
+        candidate.isJunction() ||
+        candidate.suffix().compare(QStringLiteral("gguf"), Qt::CaseInsensitive) != 0 ||
+        candidate.size() < 1024 * 1024 ||
+        candidate.size() > 100LL * 1024 * 1024 * 1024) return {};
+    // This feature is for already-downloaded *local* weights, not UNC
+    // shares that might send a private model read over the network.
+    const QString absolute = QDir::fromNativeSeparators(candidate.absoluteFilePath());
+    if (absolute.startsWith("//")) return {};
+    // A user-chosen filename may reside behind a Windows junction in a
+    // parent directory. Reject links across the entire path, not just the
+    // final file, before handing it to the native speech model process.
+    QDir parent(candidate.absolutePath());
+    for (;;) {
+        const QFileInfo directory(parent.absolutePath());
+        if (!directory.isDir() || directory.isSymLink() ||
+            directory.isJunction()) return {};
+        if (parent.isRoot()) break;
+        if (!parent.cdUp()) return {};
+    }
+    QFile file(candidate.absoluteFilePath());
+    if (!file.open(QIODevice::ReadOnly)) return {};
+    const QByteArray header = file.read(8);
+    if (header.size() != 8 || header.left(4) != "GGUF") return {};
+    const quint32 version =
+        quint32(quint8(header[4])) | (quint32(quint8(header[5])) << 8) |
+        (quint32(quint8(header[6])) << 16) |
+        (quint32(quint8(header[7])) << 24);
+    if (version != 2 && version != 3) return {};
+    // The actual model tensor layout is validated by speech.cpp at launch.
+    return candidate.canonicalFilePath();
+}
 QString offlineSpeechModelFile(const QString &applicationRoot, const QString &alias) {
     static const QStringList allowed{
         "qwen3-tts-0.6b", "qwen3-tts-1.7b",

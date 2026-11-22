@@ -149,6 +149,10 @@ public:
     int selectedOutputIndex() const;
     Q_INVOKABLE QString pathFor(const QString &key) const;
     Q_INVOKABLE void choosePath(const QString &key);
+    // Manual local GGUF selection does not copy model weights or access a CDN.
+    Q_INVOKABLE QString nativeSpeechModelPath(bool forRecognition) const;
+    Q_INVOKABLE void chooseNativeSpeechModel(bool forRecognition);
+    Q_INVOKABLE void clearNativeSpeechModel(bool forRecognition);
     Q_INVOKABLE void setPersona(const QString &persona);
     Q_INVOKABLE void setChatMode(int mode);
     Q_INVOKABLE void setDeepReasoning(bool enabled);
