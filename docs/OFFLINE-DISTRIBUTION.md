@@ -2,9 +2,9 @@
 
 ## Acceptance contract
 
-The final edition should be installable and usable for ordinary text, English speech and Russian/English press/release dictation on a Windows computer that has **no VPN, no zapret, no network, no preexisting model cache and no foreign service login**. Web research, Google Drive sync and online collaboration will necessarily require network access when the user opts into those features. Neither a verified Qt EXE nor a partial launcher is an accepted complete offline installation. All menus remain English.
+The first complete edition should be installable and usable for ordinary text chat, local development and Russian/English record/stop dictation on a Windows computer that has **no VPN, no zapret, no network, no preexisting model cache and no foreign service login**. Web research, Google Drive sync and online collaboration will necessarily require network access when the user opts into those features. Neither a verified Qt EXE nor a partial launcher is an accepted complete offline installation. All menus remain English.
 
-The release requires a complete, versioned **source/provenance, license and SHA-256 inventory** of the native llama.cpp, whisper.cpp, speech.cpp or sherpa-onnx engines, required DLLs/codec/phonemization resources, all selected GGUF/ONNX weights, and fonts/assets. Some weights may not legally permit redistribution; check each upstream license and usage terms individually before adding the item to the public package. Asset source URLs in a manifest are evidence references and never download instructions.
+The text-first release requires a complete, versioned **source/provenance, license and SHA-256 inventory** of its native llama.cpp and multilingual ASR engines, runtime DLLs, selected model weights, and fonts/assets. Optional future voice bundles must independently inventory their speech.cpp/sherpa-onnx engines, phonemization resources, models and licenses. Some weights may not legally permit redistribution; check each upstream license and usage terms individually before adding the item to the public package. Asset source URLs in a manifest are evidence references and never download instructions.
 
 ## Source-first asset assembly (development tooling, no model weights shipped)
 
@@ -16,7 +16,7 @@ python tools/offline_bundle.py inventory --root D:\EmberInputs --manifest D:\off
 python tools/offline_bundle.py verify --root D:\EmberInputs --manifest D:\offline-review.json
 ```
 
-Inventory output includes SHA-256 and sizes but deliberately marks **every item unapproved** with blank source/license evidence. A maintainer must investigate its upstream license, fill `source_url` (HTTPS), `license_path` (a matching manifest-listed `licenses/` file), its `component` and explicitly set `redistribution_approved=true` only where allowed. Approval flags are a human attestation, **not a license detector**. A verified approved package must contain at least one LLM, ASR and TTS model plus corresponding native engine components (a shared engine may serve more than one task). This is a structural minimum only; speech quality, working codecs, CUDA/Vulkan DLLs and all licenses still require separate acceptance.
+Inventory output includes SHA-256 and sizes but deliberately marks **every item unapproved** with blank source/license evidence. A maintainer must investigate its upstream license, fill `source_url` (HTTPS), `license_path` (a matching manifest-listed `licenses/` file), its `component` and explicitly set `redistribution_approved=true` only where allowed. Approval flags are a human attestation, **not a license detector**. A verified approved **text-first** package must contain at least one LLM and multilingual ASR model plus corresponding native engine components (a shared engine may serve more than one task). TTS weights are optional for this milestone, but including them requires a compatible approved TTS engine. The final spoken-conversation milestone retains separate voice-quality acceptance. This is a structural minimum only; speech quality, working codecs, CUDA/Vulkan DLLs and all licenses still require separate acceptance.
 
 Only after that explicit review:
 
@@ -45,7 +45,7 @@ For components that cannot be redistributed, provide exact expected folder names
 
 ## Still missing before final release
 
-Real Windows 10 / RTX 4070 test with airplane/network disconnect, clean installer, full ASR/TTS/LLM and warm/cold voice benches; human-graded English female voices, RU/EN WER, GPU coexistence, asset code-signing/provenance, full offline weights with legal approval, usable import UI, alternate distribution endpoint and final installer size review. Optional Internet tools and Drive backups must stay independent from the offline core.
+Real Windows 10 / RTX 4070 test with network disconnected, clean installer, complete LLM and RU/EN dictation, cancellation/draft/send fidelity, local coding tools and long-session stability; RU/EN WER, VRAM and latency, legal model/engine inventories, complete offline weights, local import UI, suitable distribution channels and installer size review. English TTS naturalness, spoken latency and full-duplex barge-in belong to a **later voice milestone**, not a text-first release blocker. Optional Internet tools and Drive backups must stay independent from the offline core.
 
 The installer builder accepts either repository-relative CI paths or absolute
 `-PayloadDirectory` / `-OutputDirectory` paths, so a large offline payload can

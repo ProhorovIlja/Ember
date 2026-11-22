@@ -1,5 +1,19 @@
 # Ember release policy
 
+## Required first release: text, RU/EN dictation and development
+
+The text-first release is complete only after **all** release/verify_release.py
+checks have independent, reviewable real-machine evidence. Spoken output,
+English natural-voice benchmarking and full-duplex voice conversation are
+intentionally deferred; their code remains but does not gate the first
+text/ASR release. Mandatory: real Windows 10 RTX4070 multilingual long capture,
+Cancel / To draft / Transcribe & send behavior, local LLM and coding tools,
+GitHub tool calls and manual Google Drive access, offline/no-VPN install with
+approved licensing, stable chat archive, clean uninstall and privacy audit.
+The twelve checked fields in the release gate match this narrowed scope.
+No benchmark-only, simulated HTTP, developer installer or CI test can waive
+target-hardware acceptance. No public previews.
+
 ## Native Image Library and multimodal release checks
 
 - [x] Source-level local image file/clipboard normalization, content-addressed
@@ -18,17 +32,18 @@
 
 ## No-VPN / no-first-run-network deployment — mandatory for final publication
 
-- [ ] Assemble a signed-off inventory of ALL offline LLM, RU/EN ASR, English TTS,
-  voice codecs, executable DLL dependencies and license/NOTICE texts. Verify
+- [ ] Assemble a signed-off inventory of ALL offline LLM and RU/EN ASR,
+  executable DLL dependencies and license/NOTICE texts. Optional future TTS
+  has separate inventory and acceptance. Verify
   exact SHA-256 and source provenance, and manually approve redistribution.
 - [ ] Final complete installer and/or portable package ships every lawfully
-  redistributable asset needed to run selected chat, dictation and voices on
+  redistributable asset needed to run selected chat and dictation on
   fresh Windows without model-registry/GitHub/Hugging Face downloads.
 - [ ] Any non-redistributable weights stay outside the public package, with
   locally importable files and a clear setup requirement; never pretend those
   assets were bundled or suggest license circumvention.
 - [ ] Test clean Windows 10 offline installation, model loading, RU/EN dictation,
-  English voice, first-run no-background-fetch, GPU memory and real sounds.
+  cancel/draft/send choices, first-run no-background-fetch and GPU memory.
 - [ ] Preserve settings, SQLite chats, user's manually imported weights on
   upgrade/uninstall unless explicitly asked otherwise.
 - [ ] Review legal availability of at least one distribution channel for users

@@ -183,19 +183,23 @@ def verify(root, manifest_path, approved=False):
         for name, entry in items.items():
             if not name.startswith("licenses/") and entry["license_path"] not in license_files:
                 raise ValueError(f"No bundled license text: {name}")
-        # This is a structural minimum, not a substitute for a human QA run.
-        # Avoid calling a model-only / single-feature payload a complete release.
-        components = {"llm", "asr", "tts"}
+        # Text-first milestone requires both a local LLM and RU/EN ASR;
+        # natural TTS is optional and must NOT block that release profile.
+        # Voice-capable bundles may include TTS with independently approved
+        # executable/model/license evidence, but cannot omit its runtime.
+        components = {"llm", "asr"}
         available_models = {
             entry["component"] for name, entry in items.items()
             if name.startswith("models/")
         }
         if not components.issubset(available_models):
-            raise ValueError("Full offline package requires LLM, ASR and TTS model weights")
+            raise ValueError("Text-first offline package requires LLM and ASR model weights")
         engine_components = {
             entry["component"] for name, entry in items.items()
             if name.startswith("engines/")
         }
+        if "tts" in available_models:
+            components.add("tts")
         for component in components:
             if component not in engine_components and "shared" not in engine_components:
                 raise ValueError(f"Required {component} engine executable missing")
@@ -301,6 +305,43 @@ def self_test():
         approved = root / "approved.json"
         approved.write_text(json.dumps(content), encoding="utf-8")
         assert verify(payload, approved, approved=True) == 7
+        # Text-first approval must succeed without any TTS weights or engine;
+        # otherwise an optional voice milestone silently blocks delivery.
+        text_payload = root / "text-only-source"
+        for item in content["assets"]:
+            if item["component"] == "tts":
+                continue
+            src = payload / item["path"]
+            dest = text_payload / item["path"]
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(src.read_bytes())
+        text_doc = {"schema": content["schema"], "assets": [
+            item for item in content["assets"] if item["component"] != "tts"
+        ]}
+        text_manifest = root / "text-only-approved.json"
+        text_manifest.write_text(json.dumps(text_doc), encoding="utf-8")
+        assert verify(text_payload, text_manifest, approved=True) == 5
+        stage(text_payload, text_manifest, root / "text-only-stage")
+        assert verify(root / "text-only-stage",
+                      root / "text-only-stage" / "offline-assets.json",
+                      approved=True) == 5
+        # A TTS model without its runtime is not an accepted voice bundle.
+        no_tts_engine = root / "tts-without-engine"
+        partial = [item for item in content["assets"]
+                   if item["path"] != "engines/speech/speech.exe"]
+        for item in partial:
+            src = payload / item["path"]
+            dest = no_tts_engine / item["path"]
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(src.read_bytes())
+        bad_manifest = root / "tts-without-engine.json"
+        bad_manifest.write_text(json.dumps({"schema": content["schema"],
+                                            "assets": partial}), encoding="utf-8")
+        try:
+            verify(no_tts_engine, bad_manifest, approved=True)
+            raise AssertionError("TTS model without approved runtime passed")
+        except ValueError:
+            pass
         stage(payload, approved, root / "stage")
         assert verify(root / "stage", root / "stage" / "offline-assets.json",
                       approved=True) == 7

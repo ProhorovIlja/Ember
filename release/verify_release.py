@@ -2,7 +2,7 @@
 """Fail-closed gate for future stable Ember GitHub Releases.
 
 No acceptance file ships on the development branch. A release is deliberately
-blocked until evidence from real Windows/NVIDIA/voice tests has been reviewed
+blocked until evidence from real Windows/NVIDIA/text/ASR tests is reviewed
 and committed. Never claim that a passing native CI compile proves these gates.
 """
 from __future__ import annotations
@@ -19,13 +19,13 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED = (
     "clean_windows_10_install",
-    "clean_windows_11_install",
-    "nvidia_rtx_4070_model_test",
-    "english_russian_asr",
-    "female_voice_blind_ab",
-    "end_to_end_voice_latency",
+    "nvidia_rtx_4070_text_model_test",
+    "english_russian_long_asr",
+    "dictation_cancel_draft_send",
+    "local_code_read_edit_test",
+    "github_agent_real_tool_calls",
+    "google_drive_consent_read",
     "long_multiturn_and_cancellation",
-    "audio_devices_and_hotplug",
     "privacy_and_localhost_audit",
     "ui_accessibility_and_dpi",
     "model_and_qt_license_review",
@@ -125,15 +125,19 @@ def self_test() -> None:
         "checks": {name: {"passed": True, "evidence_url": "https://example.org/report/1"}
                    for name in REQUIRED},
     }
-    notes = ("# Ember release\n## Changes\nModular offline voice and text with verified "
+    notes = ("# Ember release\n## Changes\nOffline text and dictation with verified "
              "quality and hardware testing.\n## Models\nTested weights and license inventory.\n"
              "## Limitations\nPublished transparent residual limitations.\n") * 5
     cmake = "project(Ember VERSION 1.2.3 LANGUAGES CXX)"
     assert not validate_manifest(tag, manifest, notes, cmake)
-    manifest["checks"]["female_voice_blind_ab"]["passed"] = False
-    assert any("female_voice_blind_ab" in error
+    manifest["checks"]["dictation_cancel_draft_send"]["passed"] = False
+    assert any("dictation_cancel_draft_send" in error
                for error in validate_manifest(tag, manifest, notes, cmake))
-    manifest["checks"]["female_voice_blind_ab"]["passed"] = True
+    manifest["checks"]["dictation_cancel_draft_send"]["passed"] = True
+    manifest["checks"]["local_code_read_edit_test"]["passed"] = False
+    assert any("local_code_read_edit_test" in error
+               for error in validate_manifest(tag, manifest, notes, cmake))
+    manifest["checks"]["local_code_read_edit_test"]["passed"] = True
     assert validate_manifest("v1.2.3-rc1", manifest, notes, cmake)
     assert validate_manifest(tag, manifest, "# only a placeholder", cmake)
     assert not valid_evidence_url("http://127.0.0.1:43822/private")

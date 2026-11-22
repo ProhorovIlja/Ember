@@ -1,13 +1,15 @@
 # Offline text-first setup (Windows 10)
 
-**Purpose:** get a local typed chat for software development, troubleshooting,
+**Purpose:** get a local text chat **plus RU/EN dictation** for software development, troubleshooting,
 story writing and ordinary conversation working before the separate premium
 voice/visual features are finished. This is NOT a public preview or release.
 
 The current C++/Qt app builds and has a local llama.cpp HTTP client, but does
 not ship a third-party server executable or licensed GGUF weights. No
 cloud model, login, VPN, network fetch or speech model is required for typed
-chat. A suitable already-downloaded llama-server and GGUF must still be
+chat. Dictation adds one offline multilingual ASR engine/model but no TTS or
+spoken conversation runtime. Recordings have explicit Cancel / To draft /
+Transcribe & send completion actions; speech models for TTS are not required. A suitable already-downloaded llama-server and GGUF must still be
 supplied by the user or bundled later with redistribution rights.
 
 ## Prepare a deployed Qt app
