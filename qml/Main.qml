@@ -1942,7 +1942,7 @@ ApplicationWindow {
                                 Rectangle {
                                     visible: ember.voiceEngine === 1 || ember.recognitionEngine > 0
                                     Layout.fillWidth: true
-                                    implicitHeight: 278
+                                    implicitHeight: ember.voiceEngine === 1 ? 337 : 278
                                     radius: 14
                                     color: window.cardColor
                                     border.color: window.borderColor
@@ -2022,6 +2022,37 @@ ApplicationWindow {
                                                 onClicked: ember.allowSpeechDownloads = !ember.allowSpeechDownloads
                                                 ToolTip.visible: hovered
                                                 ToolTip.text: "Blocked by default; opt-in may need access to a foreign model host."
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            visible: ember.voiceEngine === 1
+                                            spacing: 10
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 2
+                                                Text {
+                                                    text: "TRUST EXTERNAL LOCAL TTS"
+                                                    font.pixelSize: 11
+                                                    color: "#BDDDF4"
+                                                }
+                                                Text {
+                                                    text: "Advanced · a separate local app may receive spoken text."
+                                                    color: "#8EABC5"
+                                                    font.pixelSize: 10
+                                                    wrapMode: Text.WordWrap
+                                                    Layout.fillWidth: true
+                                                }
+                                            }
+                                            PillButton {
+                                                text: ember.allowExternalSpeechProvider ? "Trusted" : "Blocked"
+                                                implicitWidth: 106
+                                                implicitHeight: 32
+                                                enabled: !ember.busy && !ember.listening && !ember.speaking
+                                                onClicked: ember.allowExternalSpeechProvider = !ember.allowExternalSpeechProvider
+                                                ToolTip.visible: hovered
+                                                ToolTip.delay: 700
+                                                ToolTip.text: "Blocked by default. Only use with a separate TTS server you explicitly started yourself on 127.0.0.1:43822. Managed speech.cpp always requires PID verification."
                                             }
                                         }
                                         RowLayout {
