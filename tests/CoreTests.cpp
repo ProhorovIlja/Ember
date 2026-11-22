@@ -461,6 +461,15 @@ private slots:
         QVERIFY(html.contains(QStringLiteral("https://example.com/tracker.png")));
         QCOMPARE(EmberCore::safeMarkdownHtml(QStringLiteral("plain & <script>")),
                  QStringLiteral("<div style=\"color:#EEF3F9\">plain &amp; &lt;script&gt;<br/></div>"));
+        // An underscore inside a C++ variable or file basename is plain
+        // text, while explicitly delimited emphasis still works.
+        const QString identifiers = EmberCore::safeMarkdownHtml(
+            QStringLiteral("FINAL_LINE_64K_ and some_variable_name. "
+                           "Then _emphasis_ and __strong__."));
+        QVERIFY(identifiers.contains(QStringLiteral("FINAL_LINE_64K_")));
+        QVERIFY(identifiers.contains(QStringLiteral("some_variable_name")));
+        QVERIFY(identifiers.contains(QStringLiteral("<i>emphasis</i>")));
+        QVERIFY(identifiers.contains(QStringLiteral("<b>strong</b>")));
     }
     void longMultilingualCodeRepliesRenderPersistAndRestoreWithoutLoss() {
         // 8192 output tokens can stream as much as 65,536 visible UTF-16
