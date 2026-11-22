@@ -50,3 +50,48 @@ The chat request uses llama.cpp's OpenAI-compatible server-sent events with boun
 Dictation is intentionally independent of starting the LLM. QAudioSource writes to a temporary disk file rather than accumulating the whole recording in RAM. Stop/release transcribes consecutive bounded 25-second WAV windows using offline multilingual Whisper; the native UI inserts the final RU/EN text without submitting it. A 1 GiB raw capture safety limit bounds disk use. There is not yet VAD-aware segmentation, cross-window speaker diarization, or guaranteed transcription quality. A separate speech conversation path remains 30-second turn-based, with English-only TTS.
 
 AMOLED visual system is rendered by Qt Quick (no WebView2), using pure black/dark navy surfaces and blue accents, a custom native SVG emblem and restrained conditional motion. Final visual review across Windows 10/11, scaling, real NVIDIA drivers and font availability is outstanding.
+
+### 22 November — authenticated local inference endpoints (Windows)
+
+Ember's default 127.0.0.1 endpoints are not inherently trustworthy: a
+separate local program could bind the well-known TCP ports before llama-server
+or speech.cpp starts and return a fake 200 response to /health.
+The native `EmberCore::ownedLoopbackTcpListener` checks the kernel's IPv4
+TCP listener owner using Win32 IP Helper `GetExtendedTcpTable` with
+`TCP_TABLE_OWNER_PID_LISTENER`. Only a socket bound to **127.0.0.1**
+(not a wildcard/public 0.0.0.0 binding) and owned by the specific managed
+QProcess PID can qualify. Queries fail closed if the PID cannot be found,
+the API fails or the binding changes.
+
+The Windows check happens before the managed brain/speech health probe,
+after a successful health response and immediately before each private
+LLM/ASR/managed-TTS network request. It does not trust the historical
+`brainReady`/`speechServerReady` boolean by itself. When the brain
+listener no longer matches its expected PID, Ember refuses to send the
+user's new prompt and resets the ready state. Native TTS and ASR refuse
+the same unexpected listener change, preserving partial editable ASR text
+according to the existing local recovery rules. The port-owner query adds
+only built-in Windows `iphlpapi` (no new runtime download or third-party
+daemon); a Windows-based QtTest uses real `QTcpServer` listeners to check
+expected PID, wrong PID, 0.0.0.0 wildcard and closed ports. On unsupported
+platforms this check fails closed because native Windows is the target.
+
+A separately launched *unmanaged* compatible WAV TTS provider is still
+possible, but is now **blocked by default** unless the user independently
+enables **Trust external local TTS** under Voice settings. That opt-in
+applies only when the managed speech server is not running; the managed
+instance always requires PID ownership. The setting is explicitly
+persistent and must never silently enable catalog downloads.
+Allowing an external local service is a trust decision: that service may
+receive text that Ember wants spoken, and PID ownership cannot be
+established without having launched it. Do not call this mode private
+by default.
+
+This is defense-in-depth, not cryptographic server authentication.
+Another local program with administrator/debug privileges, source DLL
+injection or a precisely timed process/port-rebind race could defeat
+a PID-only preflight. Release testing must exercise port squatting and
+managed-process crash/restart during inference, plus check that no
+content is delivered to an unrelated listener. Separate origin-bound
+auth tokens or OS-level process-handle/socket pinning remain a possible
+additional hardening gate.
