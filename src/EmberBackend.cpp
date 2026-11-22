@@ -2493,13 +2493,14 @@ void EmberBackend::completeTranscription() {
         m_dictationAutoSend = false;
         m_dictatedText = text;
         emit dictationChanged();
-        emit dictationReady(text);
-        // Interrupted/partially recovered dictation NEVER sends automatically.
-        if (sendOnCompletion) emit dictationAutoSendReady();
         setStatus(captureInterrupted
             ? "Microphone was interrupted. Recovered recorded text into the "
               "editable composer; check the potentially missing ending."
             : "Dictation ready for editing. English/Russian text remains local.");
+        emit dictationReady(text);
+        // A submitted local LLM request now owns the status after this signal.
+        // Interrupted/partially recovered dictation NEVER sends automatically.
+        if (sendOnCompletion) emit dictationAutoSendReady();
     } else {
         submit(text, true);
     }
