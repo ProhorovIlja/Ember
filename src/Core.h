@@ -7,6 +7,10 @@
 #include <QStringList>
 class QFile;
 namespace EmberCore {
+// Maximum streamed model text and the slightly larger on-screen/SQLite
+// message including a verified token-budget or interruption annotation.
+inline constexpr int kMaxVisibleChatCharacters = 65536;
+inline constexpr int kMaxArchivedChatCharacters = kMaxVisibleChatCharacters + 128;
 struct Turn { QString user; QString assistant; };
 // Non-persisted capture-energy inspection, not speech classification.
 struct AudioLevel { double rms = 0.0; double peak = 0.0; int durationMs = 0; };
