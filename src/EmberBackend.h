@@ -356,6 +356,8 @@ private:
     bool m_speechTtsPathMode = false, m_speechAsrPathMode = false;
     qsizetype m_liveSpeechCursor = 0;
     bool m_speechServerReady = false;
+    bool m_speechInventoryPending = false;
+    bool m_speechInventoryInvalid = false;
     // One WAV plays while the opposite private slot is synthesized ahead.
     int m_playingSpeechSlot = -1, m_readySpeechSlot = -1, m_ttsOutputSlot = -1;
     QSettings m_settings;
