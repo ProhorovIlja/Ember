@@ -54,3 +54,15 @@ a session. Only then call the private text-first milestone usable.
 Do not publish third-party executables or model weights as a public installer
 until their exact version, sources and licenses permit redistribution.
 No public Release is authorized by this milestone.
+
+
+## Manually verify the real local GGUF tool-calling handshake
+
+After installing a trusted CUDA-capable `llama-server.exe` and a compatible instruct GGUF, start the local brain in Ember. The managed `llama-server` is launched with `--jinja` to expose OpenAI-compatible tool calls. The local model's precise chat template can still affect whether tool calling works; compilation/Qt tests cannot establish this. From the repository, with Python available to the **developer only** (not required by the Ember user interface), run:
+
+```powershell
+python tools/text_benchmark.py --self-test
+python tools/text_benchmark.py --tool-verify
+```
+
+The second command deliberately calls **only** `http://127.0.0.1:43821/v1/chat/completions` on the already-running local engine. It performs a fully synthetic four-step function-calling handshake (`project_map` → `search_text` → `read_source` → `propose_patch`) and then a final answer. Each tool result is a fixture string; **no function is executed, no source file changed, no filesystem browsing, no GitHub or Drive API called and no model contents or prompts saved**. The tool reports only correctness/latency per step. A failure indicates incompatible tool call formatting or inadequate instruction following with this GGUF/template; a pass proves only the structured protocol, not reliable autonomous programming. The script is an explicit user-invoked test, not an automatic background monitor. `--output D:\\EmberBench\\tools.json` optionally saves these metrics.

@@ -126,6 +126,239 @@ def measure(endpoint, scenario, prompt):
     }
 
 
+
+# Fixture-only live tool-calling acceptance: no local files are read or edited.
+# This is deliberately NOT a coding-quality evaluation.
+PROBE_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "project_map",
+            "description": "List source files in a chosen repository.",
+            "parameters": {
+                "type": "object", "properties": {},
+                "required": [], "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_text",
+            "description": "Find one literal source string.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"], "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_source",
+            "description": "Read numbered source lines within a project.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "start_line": {"type": "integer", "minimum": 1},
+                },
+                "required": ["path"], "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "propose_patch",
+            "description": "Stage one exact text replacement without writing.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "old_text": {"type": "string"},
+                    "new_text": {"type": "string"},
+                },
+                "required": ["path", "old_text", "new_text"],
+                "additionalProperties": False,
+            },
+        },
+    },
+]
+PROBE_STEPS = (
+    ("project_map", {}, "src/example.cpp"),
+    ("search_text", {"query": "answer"},
+     "src/example.cpp:1: int answer(){ return 41; }"),
+    ("read_source", {"path": "src/example.cpp", "start_line": 1},
+     "src/example.cpp\n1: int answer(){ return 41; }"),
+    ("propose_patch", {
+        "path": "src/example.cpp",
+        "old_text": "return 41;",
+        "new_text": "return 42;",
+    }, "One exact proposal staged for review, not applied. Tests not run."),
+)
+
+
+def inspect_function_call(response, expected_name, expected_args):
+    """Validate the llama-server response shape as Ember's C++ parser does."""
+    if not isinstance(response, dict):
+        raise ValueError("Model output is not a JSON object")
+    choices = response.get("choices")
+    if not isinstance(choices, list) or len(choices) != 1:
+        raise ValueError("Expected exactly one choice")
+    choice = choices[0]
+    if not isinstance(choice, dict) or choice.get("finish_reason") == "length":
+        raise ValueError("Incomplete or invalid model answer")
+    message = choice.get("message")
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        raise ValueError("Expected assistant message")
+    calls = message.get("tool_calls")
+    if not isinstance(calls, list) or len(calls) != 1:
+        raise ValueError("Expected one structured tool call, got final text or parallel calls")
+    call = calls[0]
+    if not isinstance(call, dict) or call.get("type") != "function":
+        raise ValueError("Invalid function call type")
+    call_id = call.get("id")
+    if not isinstance(call_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", call_id):
+        raise ValueError("Invalid tool call identifier")
+    func = call.get("function")
+    if not isinstance(func, dict) or func.get("name") != expected_name:
+        raise ValueError("Model selected a different tool than the required probe step")
+    raw = func.get("arguments")
+    if not isinstance(raw, str) or not 0 < len(raw) <= 4096:
+        raise ValueError("Malformed or oversized tool arguments")
+    args = json.loads(raw)
+    if not isinstance(args, dict) or args != expected_args:
+        raise ValueError("Model did not produce exact structured fixture arguments")
+    return {"id": call_id, "type": "function",
+            "function": {"name": expected_name, "arguments": raw}}
+
+
+def post_probe(endpoint, messages, allow_tools=True):
+    validate_local(endpoint)
+    payload = {
+        "model": "ember",
+        "messages": messages,
+        "temperature": 0.0,
+        "max_tokens": 2000 if allow_tools else 256,
+        "stream": False,
+        "parallel_tool_calls": False,
+        "tool_choice": "auto" if allow_tools else "none",
+    }
+    if allow_tools:
+        payload["tools"] = PROBE_TOOLS
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = Request(endpoint, data=data, method="POST",
+                      headers={"Content-Type": "application/json",
+                               "Accept": "application/json"})
+    started = time.perf_counter()
+    with LOCAL_OPENER.open(request, timeout=120) as response:
+        if response.status != 200 or not response.headers.get(
+                "Content-Type", "").lower().startswith("application/json"):
+            raise ValueError("Local model did not return JSON 200")
+        raw = response.read(65537)
+        if not raw or len(raw) > 65536:
+            raise ValueError("Local model JSON output was empty or oversized")
+    elapsed = round((time.perf_counter() - started) * 1000, 2)
+    doc = json.loads(raw.decode("utf-8", errors="strict"))
+    return doc, elapsed
+
+
+def verify_tool_sequence(endpoint=ENDPOINT):
+    """Live GGUF/Jinja handshake test; NO tool effects, filesystem or Internet."""
+    validate_local(endpoint)
+    history = [
+        {"role": "system", "content": (
+            "You are checking exact tool-call serialization, not solving a "
+            "real user task. Never access real files or the Internet. "
+            "Follow the current user instruction and emit exactly one "
+            "function call per turn, with the requested argument values. "
+            "Never output code patches as prose."
+        )},
+        {"role": "user", "content": (
+            "Perform this SYNTHETIC fixture-only sequence, one tool each turn: "
+            "first project_map(), then search_text(query='answer'), then "
+            "read_source(path='src/example.cpp',start_line=1), then "
+            "propose_patch(path='src/example.cpp',old_text='return 41;',"
+            "new_text='return 42;'). All tool results are simulated; "
+            "do not execute anything."
+        )},
+    ]
+    steps = []
+    for name, arguments, result in PROBE_STEPS:
+        obj, elapsed = post_probe(endpoint, history)
+        call = inspect_function_call(obj, name, arguments)
+        history.append({"role": "assistant", "content": None,
+                        "tool_calls": [call]})
+        history.append({"role": "tool", "tool_call_id": call["id"],
+                        "content": result})
+        steps.append({"tool": name, "protocol_valid": True,
+                      "latency_ms": elapsed})
+    obj, final_ms = post_probe(endpoint, history, allow_tools=False)
+    choices = obj.get("choices") if isinstance(obj, dict) else None
+    if not isinstance(choices, list) or len(choices) != 1 or not isinstance(
+            choices[0], dict):
+        raise ValueError("Missing final assistant response")
+    msg = choices[0].get("message")
+    if (not isinstance(msg, dict) or
+            msg.get("role") != "assistant" or msg.get("tool_calls") or
+            not isinstance(msg.get("content"), str) or
+            not msg["content"].strip()):
+        raise ValueError("Local model did not produce a final text answer")
+    # Do not save or log the model's response, prompt, weights or local data.
+    return {
+        "fixture_only": True,
+        "model_calls": 5,
+        "valid_tool_calls": len(steps),
+        "final_text_nonempty": True,
+        "total_latency_ms": round(sum(step["latency_ms"] for step in steps)
+                                  + final_ms, 2),
+        "steps": steps,
+        "note": "All simulated, no filesystem edits, shell, Git, Drive, "
+                "downloads, external hosts or schedules. A pass verifies "
+                "function-calling format only, not coding competence.",
+    }
+
+
+def tool_probe_self_test():
+    expected = PROBE_STEPS[-1]
+    call = {
+        "id": "call_fixture_1", "type": "function",
+        "function": {
+            "name": expected[0],
+            "arguments": json.dumps(expected[1], ensure_ascii=False),
+        },
+    }
+    valid = {
+        "choices": [{"finish_reason": "tool_calls",
+                     "message": {"role": "assistant", "content": None,
+                                 "tool_calls": [call]}}],
+    }
+    assert inspect_function_call(valid, expected[0], expected[1])["id"] == "call_fixture_1"
+    for malformed in [
+        {"choices": []},
+        {"choices": [{"finish_reason": "length", "message": valid["choices"][0]["message"]}]},
+        {"choices": [{"finish_reason": "stop",
+                      "message": {"role": "assistant", "content": "I edited it."}}]},
+        {"choices": [{"finish_reason": "tool_calls",
+                      "message": {"role": "assistant",
+                                  "tool_calls": [call, call]}}]},
+    ]:
+        try:
+            inspect_function_call(malformed, expected[0], expected[1])
+            raise AssertionError("Rejected malformed model tool call was accepted")
+        except ValueError:
+            pass
+    for remote in ["https://example.com/v1/chat/completions",
+                   "http://127.0.0.1:8080/v1/chat/completions?leak=1",
+                   "http://localhost:43821/v1/chat/completions"]:
+        try:
+            validate_local(remote)
+            raise AssertionError("Unapproved network destination accepted")
+        except ValueError:
+            pass
+
 def p95(values):
     ordered = sorted(values)
     return ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)]
@@ -194,18 +427,34 @@ def self_test():
         server.shutdown()
         server.server_close()
         thread.join(timeout=3)
-    print("text_benchmark local-only SSE metrics self-test passed")
+    tool_probe_self_test()
+    print("text_benchmark local-only SSE and tool-call parser self-test passed")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--tool-verify", action="store_true",
+                        help="Explicit on-demand 4-tool + final-answer test "
+                             "against an already running local GGUF; no tools executed")
     parser.add_argument("--samples", type=int, default=8)
     parser.add_argument("--output", type=Path,
                         help="Optional JSON metrics file; no model output text")
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        return
+    if args.tool_verify:
+        try:
+            report = verify_tool_sequence()
+        except (OSError, HTTPError, URLError, ValueError,
+                json.JSONDecodeError) as exc:
+            parser.error("Local tool-call handshake failed: " +
+                         type(exc).__name__ + ": " + str(exc))
+        content = json.dumps(report, indent=2, ensure_ascii=False)
+        if args.output:
+            args.output.write_text(content + "\n", encoding="utf-8")
+        print(content)
         return
     if not 1 <= args.samples <= 40:
         parser.error("--samples must be between 1 and 40")
