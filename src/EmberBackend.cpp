@@ -1,5 +1,7 @@
 #include "EmberBackend.h"
 #include "LocalTextImport.h"
+#include "LocalRepoSearch.h"
+#include <QInputDialog>
 
 #include <QAudioDevice>
 #include <QAudioFormat>
@@ -1155,6 +1157,32 @@ QString EmberBackend::messageText(const QString &body) const {
 }
 bool EmberBackend::submitText(const QString &text) {
     return submit(text, false);
+}
+QString EmberBackend::searchLocalCodeFolder(const QString &existingDraft) {
+    if (m_busy || m_listening) {
+        setStatus("Finish the current task before searching local code.");
+        return {};
+    }
+    const QString folder = QFileDialog::getExistingDirectory(
+        nullptr, "Choose a local code folder to search", QDir::homePath(),
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    if (folder.isEmpty()) return {};
+    bool accepted = false;
+    const QString query = QInputDialog::getText(
+        nullptr, "Local source search", "Literal text to find:",
+        QLineEdit::Normal, {}, &accepted);
+    if (!accepted) return {};
+    const auto result = EmberLocalSearch::searchDirectory(folder, query,
+                                                           existingDraft);
+    if (!result.ok()) {
+        setStatus(result.error);
+        return {};
+    }
+    setStatus(QString("Read-only folder search found %1 line(s)%2. "
+                      "Review excerpts before sending.")
+              .arg(result.matches)
+              .arg(result.limited ? " (safety limits reached)" : ""));
+    return result.draft;
 }
 QString EmberBackend::chooseLocalTextFile(const QString &existingDraft) {
     if (m_busy || m_listening) {

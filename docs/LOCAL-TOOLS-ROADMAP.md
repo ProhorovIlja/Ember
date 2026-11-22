@@ -22,13 +22,24 @@ writing or cloud sync. The local SQLite chat archive is currently plaintext:
 do not import sensitive files without redacting them. This is not yet a
 reliable large-codebase retrieval or a real tool-calling agent.
 
+## Implemented second step: explicit bounded source-folder search
+
+The Chat toolbar now also offers **Find in folder**. It asks the user for a
+root folder and a literal string, performs one bounded read-only search, and
+puts matching `relative-file:line: text` excerpts into the editable draft.
+It excludes symlinks, common build/dependency folders and credentials,
+enforces canonical-path containment, scans no more than 600 small UTF-8 source
+files / 4 MiB / 3,000 entries, and returns up to 20 matching lines or a
+clearly marked capped result. There is no directory watcher, persistent
+index, global drive search, autonomous tool call or Git execution. Larger
+projects need a separate authorized retrieval/indexing design.
+
 ## Next integrations — NOT YET IMPLEMENTED
 
-1. **Local codebase read-only search:** user picks one approved repository
-   root; canonical-path containment rejects symlinks and traversal; bounded
-   file listings/searches; gitignore and sensitive-file exclusions; no
-   arbitrary working-directory discovery. Always surface source paths and
-   lines in model context, with confirmation before adding contents.
+1. **Local codebase retrieval/indexing:** expand the implemented one-shot
+   bounded literal search to explicit approval scopes, gitignore rules,
+   token-aware context selection, repository maps and semantic indexing
+   without persistent scans or automatic activity.
 2. **Cited Internet/Wikipedia research:** explicit user request, isolated
    HTTP client, content-length / MIME / timeout limits, direct URL citations,
    injected page text treated as untrusted data; network off means clear

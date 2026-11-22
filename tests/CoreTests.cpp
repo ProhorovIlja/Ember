@@ -3,6 +3,7 @@
 #include "ImageLibrary.h"
 #include "EmberBundle.h"
 #include "LocalTextImport.h"
+#include "LocalRepoSearch.h"
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
@@ -615,6 +616,45 @@ private slots:
         QVERIFY2(bomResult.ok(), qPrintable(bomResult.error));
         QVERIFY(bomResult.draft.contains("hello"));
         QVERIFY(!bomResult.draft.contains(QChar(0xFEFF)));
+    }
+    void localCodeSearchDoesNotWalkIgnoredDirectoriesOrLeakSecrets() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QDir root(directory.path());
+        QVERIFY(root.mkpath("src"));
+        QVERIFY(root.mkpath("node_modules"));
+        auto write = [&](const QString &relative, const QByteArray &body) {
+            QFile file(root.filePath(relative));
+            if (!file.open(QIODevice::WriteOnly)) return false;
+            const bool ok = file.write(body) == body.size();
+            file.close();
+            return ok;
+        };
+        QVERIFY(write("src/logic.cpp",
+                      "int alpha = 1;\n// special BUGHERE at line two\n"));
+        QVERIFY(write("node_modules/ignored.js",
+                      "BUGHERE hidden dependency\n"));
+        QVERIFY(write(".env", "BUGHERE password=secret\n"));
+        QVERIFY(write("src/binary.cpp", QByteArray("BUGHERE\0SECRET", 14)));
+        const auto found = EmberLocalSearch::searchDirectory(
+            root.path(), "BUGHERE", "Inspect this:");
+        QVERIFY2(found.ok(), qPrintable(found.error));
+        QCOMPARE(found.matches, 1);
+        QVERIFY(!found.limited);
+        QVERIFY(found.draft.contains("src/logic.cpp:2"));
+        QVERIFY(!found.draft.contains("hidden dependency"));
+        QVERIFY(!found.draft.contains("password=secret"));
+        QVERIFY(!found.draft.contains("SECRET"));
+        QVERIFY(found.draft.startsWith("Inspect this:"));
+        QVERIFY(found.draft.size() <= 8192);
+        QVERIFY(!EmberLocalSearch::searchDirectory(root.path(), "", {}).ok());
+        QVERIFY(!EmberLocalSearch::searchDirectory(
+            root.path(), "BUGHERE", QString(8100, 'X')).ok());
+        const auto absent = EmberLocalSearch::searchDirectory(
+            root.path(), "NOTINREPOSITORY", {});
+        QVERIFY(absent.ok());
+        QCOMPARE(absent.matches, 0);
+        QVERIFY(absent.draft.contains("No matching lines found"));
     }
     void historicalReferencesNeverBecomeSystemCommands() {
         const QString previous =

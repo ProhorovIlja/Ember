@@ -1065,6 +1065,22 @@ ApplicationWindow {
                                             ToolTip.text: "Read one selected local UTF-8 text/code file into your editable draft. Nothing is sent until you press Send."
                                         }
                                         PillButton {
+                                            text: "Find in folder"
+                                            implicitWidth: 119
+                                            implicitHeight: 31
+                                            enabled: !ember.busy && !ember.listening
+                                            onClicked: {
+                                                var updated = ember.searchLocalCodeFolder(composer.text)
+                                                if (updated.length > 0) {
+                                                    composer.text = updated
+                                                    composer.cursorPosition = composer.length
+                                                }
+                                            }
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Search one chosen local folder without executing code. Results appear in your editable draft."
+                                        }
+                                        PillButton {
                                             text: "Add image"
                                             implicitWidth: 97
                                             implicitHeight: 31

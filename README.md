@@ -85,3 +85,9 @@ is no automatic sending or local file execution. See
 [local tools roadmap](docs/LOCAL-TOOLS-ROADMAP.md) for the security and
 confirmation boundaries for planned repository search, GitHub, Google Drive
 and Internet research. These connected actions are **not yet integrated**.
+
+
+Chat now also supports **Find in folder**: one user-approved local
+directory, literal read-only search, bounded paths/bytes/results and
+source line numbers placed into the visible composer. No autonomous
+repository scanning or hidden code execution is performed.
