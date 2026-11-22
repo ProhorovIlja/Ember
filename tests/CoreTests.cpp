@@ -116,6 +116,16 @@ private slots:
                 body, "application/json; charset=utf-8",
                 ttsAlias, asrAlias, voice);
         };
+        QStringList advertised;
+        QVERIFY(validNativeSpeechInventory(
+            both, "application/json", "qwen3-tts-0.6b",
+            "qwen3-asr-1.7b", "vivian", &advertised));
+        QCOMPARE(advertised, QStringList({"vivian", "serena"}));
+        advertised = {"untrusted"};
+        QVERIFY(!validNativeSpeechInventory(
+            both, "application/json", "qwen3-tts-0.6b",
+            "qwen3-asr-0.6b", "vivian", &advertised));
+        QVERIFY(advertised.isEmpty());
         QVERIFY(valid(both, "qwen3-tts-0.6b", "qwen3-asr-1.7b"));
         QVERIFY(valid(ttsOnly, "qwen3-tts-0.6b", ""));
         QVERIFY(valid(asrOnly, "", "qwen3-asr-1.7b"));
