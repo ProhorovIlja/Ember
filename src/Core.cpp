@@ -254,7 +254,21 @@ static QString escapedInlineMarkdown(const QString &source) {
                                       QStringLiteral("*"),
                                       QStringLiteral("_")}) {
             if (source.mid(i, marker.size()) != marker) continue;
-            const qsizetype end = source.indexOf(marker, i + marker.size());
+            const bool underscore = marker.at(0) == QLatin1Char('_');
+            // CommonMark does not treat underscores *inside* identifiers
+            // (some_variable_name, FINAL_LINE_64K_) as italics. The old
+            // one-shot indexOf hid exact code/filename text in the rich view.
+            if (underscore && i > 0 && i + marker.size() < source.size() &&
+                source.at(i - 1).isLetterOrNumber() &&
+                source.at(i + marker.size()).isLetterOrNumber())
+                continue;
+            qsizetype end = source.indexOf(marker, i + marker.size());
+            while (underscore && end > 0 &&
+                   end + marker.size() < source.size() &&
+                   source.at(end - 1).isLetterOrNumber() &&
+                   source.at(end + marker.size()).isLetterOrNumber()) {
+                end = source.indexOf(marker, end + marker.size());
+            }
             if (end <= i + marker.size()) continue;
             const QString tag = marker.size() == 2
                 ? QStringLiteral("b") : QStringLiteral("i");
