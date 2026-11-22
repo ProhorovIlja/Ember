@@ -584,7 +584,8 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
     }
     messages.append(QJsonObject{{"role", "user"}, {"content", currentUser}});
     QJsonObject request{{"model", "ember"}, {"messages", messages},
-                        {"max_tokens", std::clamp(maxTokens, 64, 4096)},
+                        {"max_tokens", std::clamp(maxTokens, 64,
+                                                     enableThinking ? 4096 : 2048)},
                         {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
                         {"stream", false}};
     if (enableThinking) {
