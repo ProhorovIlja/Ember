@@ -357,7 +357,7 @@ QString safeMarkdownHtml(const QString &markdown) {
     // The local LLM stream can legitimately produce up to 65,536 UTF-16
     // characters for longer coding/story replies. A smaller renderer cap
     // silently concealed the tail of otherwise completed messages.
-    const QStringList lines = markdown.left(65536).split(QLatin1Char('\n'));
+    const QStringList lines = markdown.left(kMaxArchivedChatCharacters).split(QLatin1Char('\n'));
     QString html = QStringLiteral("<div style=\"color:#EEF3F9\">");
     bool fenced = false;
     QChar fenceMarker;
@@ -548,7 +548,8 @@ int chatVisibleCharacterLimit(int outputTokens, bool voice) {
     // Text outputs up to 8192 tokens may legitimately exceed 16K UTF-16
     // characters (especially code). Keep voice playback comparatively small.
     if (voice) return 16384;
-    return std::clamp(std::clamp(outputTokens, 64, 8192) * 8, 16384, 65536);
+    return std::clamp(std::clamp(outputTokens, 64, 8192) * 8,
+                      16384, kMaxVisibleChatCharacters);
 }
 
 int chatOutputBudget(int requestedTokens, int contextTokens, bool voice) {
