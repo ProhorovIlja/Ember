@@ -85,10 +85,11 @@ int main(int argc, char *argv[]) {
         // Existing CI calls --smoke-test explicitly; no new background task.
         const QList<int> pages{0, 1, 2, 3};
         for (int i = 0; i < pages.size(); ++i) {
-            QTimer::singleShot(100 + 170 * i, &app, [&, i] {
+            // Capture the integer by VALUE; pages goes out of scope before
+            // the event loop executes these foreground smoke callbacks.
+            QTimer::singleShot(100 + 170 * i, &app, [&, page = pages.at(i)] {
                 QObject *root = engine.rootObjects().first();
                 QObject *stack = root->findChild<QObject *>("emberViews");
-                const int page = pages.at(i);
                 if (!stack || !root->setProperty("page", page) ||
                     stack->property("currentIndex").toInt() != page) {
                     qmlDiagnostics.append(
