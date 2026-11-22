@@ -137,7 +137,7 @@ ApplicationWindow {
             externalReferenceDialog.open()
         }
         function onLocalAgentResultReady(excerpt) {
-            window.externalReferenceSource = "Local project agent"
+            window.externalReferenceSource = "Ember research agent"
             window.externalReferencePreview = excerpt
             externalReferenceDialog.open()
         }
