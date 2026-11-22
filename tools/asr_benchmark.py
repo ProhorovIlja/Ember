@@ -10,6 +10,7 @@ import time
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from localhost_owner import listening_owner_pids, require_owned_speech_listener
 
 MODELS = ("qwen3-asr-0.6b", "qwen3-asr-1.7b")
 LANGUAGES = ("auto", "en", "ru")
@@ -18,7 +19,14 @@ MAX_TEXT = 65536
 BOUNDARY = "----EmberASRBoundary562f"
 
 
-def transcribe(wav_data, model, language, port=43822, omit_model_id=False):
+def transcribe(wav_data, model, language, port=43822, omit_model_id=False,
+               *, expected_pid=None, _fixture=False):
+    if not _fixture:
+        # Before constructing a multipart containing the user's private WAV,
+        # require the *explicitly selected* speech.exe process to own the port.
+        require_owned_speech_listener(expected_pid, port)
+    elif port == 43822:
+        raise ValueError("Fixture-only PID bypass is forbidden on the live port")
     if model not in MODELS or language not in LANGUAGES:
         raise ValueError("Unsupported model or language")
     if len(wav_data) > MAX_WAV or wav_data[:4] != b"RIFF" or wav_data[8:12] != b"WAVE":
@@ -55,6 +63,11 @@ def transcribe(wav_data, model, language, port=43822, omit_model_id=False):
                 response.getheader("X-Speech-Stop", "").lower() == "model_limit" or
                 len(transcript) > MAX_TEXT):
             raise ValueError("Local ASR returned invalid, truncated or oversized text")
+        if not _fixture:
+            # A service exiting/rebinding during ASR must not be reported as
+            # a trustworthy model result. This cannot eliminate all TOCTOU
+            # races, but rejects ordinary stale/hijacked localhost replies.
+            require_owned_speech_listener(expected_pid, port)
         return transcript.decode("utf-8", errors="strict").strip(), round(elapsed_ms, 2)
     finally:
         connection.close()
@@ -126,15 +139,31 @@ def self_test():
         def log_message(self, *_args):
             pass
 
+    fixture = """Active Connections
+      TCP    127.0.0.1:43822       0.0.0.0:0             LISTENING       1234
+      TCP    127.0.0.1:43822       127.0.0.1:6000        ESTABLISHED    1234
+      TCP    0.0.0.0:43822         0.0.0.0:0             LISTENING       5555
+      TCP    127.0.0.1:43821       0.0.0.0:0             LISTENING       8888
+    """
+    assert listening_owner_pids(fixture, 43822) == {1234}
+    assert listening_owner_pids(fixture, 43821) == {8888}
+    assert listening_owner_pids("", 43822) == set()
     server = ThreadingHTTPServer(("127.0.0.1", 0), Mock)
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
     try:
-        result, elapsed = transcribe(silent_wav(), MODELS[0], "en", server.server_port)
+        try:
+            transcribe(silent_wav(), MODELS[0], "en", server.server_port)
+            raise AssertionError("Private audio probe accepted an unowned PID")
+        except ValueError:
+            pass
+        result, elapsed = transcribe(silent_wav(), MODELS[0], "en",
+                                     server.server_port, _fixture=True)
         assert result == "The bell tower." and elapsed >= 0
         Mock.omit_model_id = True
         omitted, latency = transcribe(silent_wav(), MODELS[0], "ru",
-                                      server.server_port, omit_model_id=True)
+                                      server.server_port, omit_model_id=True,
+                                      _fixture=True)
         assert omitted == result and latency >= 0
         Mock.omit_model_id = False
         assert metrics("The bell tower.", result)["wer"] == 0
@@ -142,7 +171,8 @@ def self_test():
         assert metrics("Привет мир", "Привет мир")["cer"] == 0
         for bad in (b"BAD" * 16, b""):
             try:
-                transcribe(bad, MODELS[0], "en", server.server_port)
+                transcribe(bad, MODELS[0], "en", server.server_port,
+                           _fixture=True)
                 raise AssertionError("Invalid WAV accepted")
             except ValueError:
                 pass
@@ -159,6 +189,9 @@ def main():
     p.add_argument("--file", type=Path, help="Existing, user-selected WAV file")
     p.add_argument("--reference-file", type=Path, help="Existing local UTF-8 reference transcript")
     p.add_argument("--model", choices=MODELS, default=MODELS[0])
+    p.add_argument("--speech-pid", type=int,
+                   help="Required: actual Windows PID of the trusted speech.exe "
+                        "listener on 127.0.0.1:43822")
     p.add_argument("--language", choices=LANGUAGES, default="auto")
     p.add_argument("--omit-model-id", action="store_true",
                    help="Use locally started speech.cpp GGUF without catalog name")
@@ -170,12 +203,19 @@ def main():
         return
     if args.file is None or args.reference_file is None:
         p.error("Both --file and --reference-file are required")
+    if not args.speech_pid or args.speech_pid <= 0:
+        p.error("--speech-pid is mandatory for private live ASR")
+    try:
+        require_owned_speech_listener(args.speech_pid)
+    except (ValueError, OSError, __import__("subprocess").TimeoutExpired) as exc:
+        p.error("Trusted local ASR process check failed: " + str(exc))
     if args.file.stat().st_size > MAX_WAV:
         p.error("WAV is larger than the 25 MiB service limit")
     data = args.file.read_bytes()
     expected = args.reference_file.read_text(encoding="utf-8")
     recognized, elapsed = transcribe(data, args.model, args.language,
-                                     omit_model_id=args.omit_model_id)
+                                     omit_model_id=args.omit_model_id,
+                                     expected_pid=args.speech_pid)
     result = metrics(expected, recognized)
     result.update({
         "model": args.model,
