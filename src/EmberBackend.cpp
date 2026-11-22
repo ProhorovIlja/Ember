@@ -40,6 +40,12 @@
 #include <QVariantMap>
 
 namespace {
+// A finite, explicitly authorized on-demand budget. Larger than the
+// original three reads for nontrivial codebases, never a scheduled loop.
+constexpr int kProjectInvestigationCalls = 6;
+constexpr int kProjectFixCalls = 7; // at most six reads and one staged patch
+constexpr int kGitHubInvestigationCalls = 6;
+constexpr int kWikipediaResearchCalls = 3;
 QString appFolder() {
     return QCoreApplication::applicationDirPath();
 }
@@ -1840,7 +1846,7 @@ bool EmberBackend::researchGitHubRepository(const QString &goal) {
     }
     if (QMessageBox::question(
             nullptr, "Authorize one on-demand GitHub investigation?",
-            "Ember may make up to three HTTPS GET requests to api.github.com "
+            "Ember may make up to six HTTPS GET requests to api.github.com "
             "for repository " + repository +
             ". The requested views and bounded excerpts go only to the "
             "managed local model. No Issues, PRs, Actions or files are "
@@ -1862,7 +1868,7 @@ bool EmberBackend::researchGitHubRepository(const QString &goal) {
             "The user has approved exactly ONE repository. "
             "Call github_read(view,path) for lists and source files, or "
             "github_detail(kind,number) for a numbered Issue, PR or "
-            "workflow run's job/failure summary. Use at most three calls "
+            "workflow run's job/failure summary. Use at most six calls "
             "total. Discover issue numbers from list results when needed. "
             "You cannot choose another repository, host, token, branch, "
             "workflow or API URL. Never claim tests ran or code changed. "
@@ -1873,7 +1879,7 @@ bool EmberBackend::researchGitHubRepository(const QString &goal) {
     };
     setBusy(true);
     setStatus("Local model investigating approved GitHub repository, "
-              "at most three on-demand GET reads...");
+              "at most six on-demand GET reads...");
     requestLocalAgentStep();
     return true;
 }
@@ -1979,8 +1985,8 @@ bool EmberBackend::beginLocalProjectAgent(const QString &goal,
             "You are Ember's local read-only source investigator. "
             "You may call project_map(), search_text(query) and "
             "read_source(path, start_line) tools. In Investigate mode "
-            "at most three calls are allowed. In Propose fix mode up to "
-            "three inspection calls and ONE final patch proposal are allowed. "
+            "up to six calls are allowed. In Propose fix mode up to "
+            "six inspection calls and ONE final patch proposal are allowed. "
             "If the user enabled Propose fix, you may also call "
             "propose_patch(path,old_text,new_text) ONCE for a precise "
             "one-file change, only after reading the existing source. "
@@ -2001,7 +2007,7 @@ bool EmberBackend::beginLocalProjectAgent(const QString &goal,
         ? "Local model: investigating and preparing at most one reviewed "
           "source edit (no automatic writes)..."
         : "Local agent: investigating the approved folder read-only "
-          "(maximum three calls)...");
+          "(maximum six calls)...");
     requestLocalAgentStep();
     return true;
 }
@@ -2020,7 +2026,12 @@ void EmberBackend::requestLocalAgentStep() {
         endLocalAgent("Managed local model listener changed; investigation stopped.");
         return;
     }
-    const int maxCalls = m_agentMayProposeEdit ? 4 : 3;
+    const int maxCalls = m_agentScope == EmberAgent::Scope::GitHubRepository
+        ? kGitHubInvestigationCalls
+        : m_agentScope == EmberAgent::Scope::WikipediaResearch
+          ? kWikipediaResearchCalls
+          : (m_agentMayProposeEdit ? kProjectFixCalls
+                                   : kProjectInvestigationCalls);
     const auto payload = EmberAgent::modelRequest(
         m_agentMessages, std::max(0, maxCalls - m_agentCalls),
         m_agentScope, m_agentMayProposeEdit);
@@ -2057,7 +2068,12 @@ void EmberBackend::requestLocalAgentStep() {
             endLocalAgent({}, decision.text);
             return;
         }
-        const int maxCalls = m_agentMayProposeEdit ? 4 : 3;
+        const int maxCalls = m_agentScope == EmberAgent::Scope::GitHubRepository
+        ? kGitHubInvestigationCalls
+        : m_agentScope == EmberAgent::Scope::WikipediaResearch
+          ? kWikipediaResearchCalls
+          : (m_agentMayProposeEdit ? kProjectFixCalls
+                                   : kProjectInvestigationCalls);
         if (m_agentCalls >= maxCalls) {
             endLocalAgent("Local model requested a tool beyond the task call budget.");
             return;
@@ -2125,7 +2141,8 @@ void EmberBackend::requestLocalAgentStep() {
 }
 void EmberBackend::requestAgentGitHubRead(const EmberAgent::Decision &decision) {
     if (m_agentGitHubReply || m_agentScope != EmberAgent::Scope::GitHubRepository ||
-        m_agentRepository.isEmpty() || m_agentCalls >= 3) {
+        m_agentRepository.isEmpty() ||
+        m_agentCalls >= kGitHubInvestigationCalls) {
         endLocalAgent("GitHub research permission or call budget changed.");
         return;
     }
@@ -2222,14 +2239,16 @@ void EmberBackend::requestAgentGitHubRead(const EmberAgent::Decision &decision) 
                 preview));
         ++m_agentCalls;
         setStatus("GitHub agent: " + QString::number(m_agentCalls) +
-                  "/3 read-only requests completed.");
+                  "/" + QString::number(kGitHubInvestigationCalls) +
+                  " read-only requests completed.");
         requestLocalAgentStep();
     });
 }
 void EmberBackend::requestAgentWikipediaRead(const EmberAgent::Decision &decision) {
     if (m_agentWikipediaReply || m_wikipediaReply ||
         m_agentScope != EmberAgent::Scope::WikipediaResearch ||
-        m_agentCalls >= 3 || decision.tool != "wikipedia_search" ||
+        m_agentCalls >= kWikipediaResearchCalls ||
+        decision.tool != "wikipedia_search" ||
         decision.kind != EmberAgent::Decision::Kind::Call) {
         endLocalAgent("Wikipedia search permission or call budget changed.");
         return;
@@ -3747,7 +3766,8 @@ void EmberBackend::cancelWork() {
         m_projectTestProcess.waitForFinished(1000);
         m_projectTestOutput.clear();
     }
-    if (m_agentReply || m_agentGitHubReply || !m_agentRoot.isEmpty() ||
+    if (m_agentReply || m_agentGitHubReply || m_agentWikipediaReply ||
+        !m_agentRoot.isEmpty() ||
         !m_agentRepository.isEmpty()) {
         endLocalAgent("Cancelled by the user.");
     }

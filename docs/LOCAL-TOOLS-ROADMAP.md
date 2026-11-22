@@ -126,6 +126,17 @@ limits must be measured on target hardware. The existing native Qt front
 end remains independent of any cloud API.
 
 
+## Expanded on-demand coding research budget (22 November 2026)
+
+A single explicitly user-approved local source investigation can now execute
+up to six bounded read/search/map tool calls. Propose fix has six source reads
+plus a single staged, separately approved file edit; no automatic writes.
+GitHub agent can inspect up to six read-only views of one approved repository
+(instead of three); it never creates issues or PRs or starts Actions. Wikipedia
+keeps the existing three-request cap. These are finite foreground tasks, not
+scheduled checks. Longer tool traces will use more of the local model context;
+reliability and speed must be tested with the actual GGUF/RTX4070 profile.
+
 ## Text-first delivery gate (22 November 2026)
 
 Voice conversation/TTS is deferred behind the first usable Windows build;

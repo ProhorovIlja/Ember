@@ -1273,7 +1273,7 @@ ApplicationWindow {
                                             onClicked: ember.researchLocalProject(composer.text)
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
-                                            ToolTip.text: "Select one local project root. The local model may map, search and inspect bounded source excerpts up to three times. No writes, shell, Git or Internet."
+                                            ToolTip.text: "Select one local project root. The local model may map, search and inspect bounded source excerpts up to six times. No writes, shell, Git or Internet."
                                         }
                                         PillButton {
                                             text: "Propose fix"
@@ -1310,7 +1310,7 @@ ApplicationWindow {
                                             onClicked: ember.researchGitHubRepository(composer.text)
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
-                                            ToolTip.text: "Approve one GitHub repo and public or scoped read-only access. The local model investigates up to three views; it cannot publish issues, rerun Actions or edit code."
+                                            ToolTip.text: "Approve one GitHub repo and public or scoped read-only access. The local model investigates up to six views; it cannot publish issues, rerun Actions or edit code."
                                         }
                                         PillButton {
                                             text: "Edit source"
