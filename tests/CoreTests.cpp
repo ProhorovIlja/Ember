@@ -110,8 +110,10 @@ private slots:
         gguf.replace(0, 4, "GGUF");
         gguf[4] = char(3);
         QVERIFY(writeWeight("language.gguf", gguf));
-        QVERIFY(writeWeight("ggml-base.bin", QByteArray("synthetic mock ASR")));
-        QVERIFY(writeWeight("ggml-base.en.bin", QByteArray("synthetic mock ASR")));
+        // whisper.cpp GGML magic: 0x67676d6c in little endian ("lmgg").
+        QVERIFY(writeWeight("ggml-base.bin", QByteArray("lmgg", 4)));
+        QVERIFY(writeWeight("ggml-base.en.bin", QByteArray("lmgg", 4)));
+        QVERIFY(writeWeight("ggml-corrupt.bin", QByteArray("BAD!", 4)));
         Inputs input{root.filePath("llama-server.exe"),
                      root.filePath("language.gguf"),
                      root.filePath("whisper-cli.exe"),
@@ -127,6 +129,8 @@ private slots:
         input.microphoneDetected = true;
         input.whisperModel = root.filePath("ggml-base.en.bin");
         QVERIFY(!inspect(input).dictationFilesReady); // Russian is not supported by .en
+        input.whisperModel = root.filePath("ggml-corrupt.bin");
+        QVERIFY(!inspect(input).dictationFilesReady); // A random large .bin is not a Whisper model.
         input.whisperModel = root.filePath("ggml-base.bin");
         input.brainExe = root.filePath("x86.exe");
         QVERIFY(!inspect(input).textFilesReady);
