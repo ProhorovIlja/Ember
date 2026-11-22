@@ -33,10 +33,15 @@ app. When both optional ASR paths are supplied, it also copies the offline
 whisper-cli binary and its DLLs into `engines/whisper/` and a multilingual
 GGML .bin into `models/stt/ggml-base.bin`. The `-RequireAsr` switch
 refuses text-only staging and `-CheckOnly -RequireAsr` validates presence.
-Whisper model compatibility is checked only by the real engine, not this
-file copier. It checks EXE/GGUF file signatures, verifies SHA-256 after copy,
-refuses replacing different existing files, cleans newly staged files on
-failure, and never downloads, executes, schedules or uploads anything.
+The copier now rejects obvious file-format mismatches before staging:
+Windows PE must identify native AMD64 (not x86); GGUF must be v2 or v3 and
+at least 1 MiB; Whisper models must have whisper.cpp's original GGML magic,
+be at least 1 MiB and not use the English-only `.en.bin` filename.
+A valid header is not proof of complete weights, tokenizer compatibility,
+multilingual capacity or good recognition; only real offline inference can
+establish those. SHA-256 is verified after each copy; different existing
+user files are never overwritten. A failed stage removes newly copied files.
+No downloads, executables, scheduled tasks or uploads are invoked.
 Run again with `-AppDirectory 'D:\Games\Ember' -CheckOnly -RequireAsr` to
 check presence after staging. Python is not required on the user's PC.
 
