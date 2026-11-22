@@ -849,7 +849,7 @@ private slots:
         QVERIFY(!parseCreatedIssue("Other/repo", 201, success).ok());
         QVERIFY(!parseCreatedIssue("ProhorovIlja/Ember", 201, "invalid").ok());
         const QByteArray forgedResponse = QByteArray(
-            "{\\"number\\":77,\\"html_url\\":\\"https://github.com/attacker/repo/issues/77\\"}");
+            "{\"number\":77,\"html_url\":\"https://github.com/attacker/repo/issues/77\"}");
         QVERIFY(!parseCreatedIssue(
             "ProhorovIlja/Ember", 201, forgedResponse).ok());
         QVERIFY(QString::fromLatin1(EmberCredential::kGitHubCredentialTarget) !=
