@@ -719,7 +719,7 @@ private slots:
                                       0.73, {}, false, 8192, 4096);
         QVERIFY(!tiny.isEmpty());
         QCOMPARE(tiny.value("max_tokens").toInt(), 2048);
-        const auto longRus = QString(4000, QChar(0x0436));
+        const auto longRus = QString(8000, QChar(0x0436));
         const auto reject = chatRequest("You are Ember.", {}, longRus,
                                         2048, 0.73, {}, false, 8192, 4096);
         QVERIFY(reject.isEmpty()); // never silently truncate Russian input

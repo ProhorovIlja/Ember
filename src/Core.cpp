@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <numbers>
 namespace EmberCore {
 bool validBrainLaunchProfile(int contextTokens, int gpuLayers) {
