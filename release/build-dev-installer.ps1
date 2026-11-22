@@ -55,6 +55,13 @@ foreach ($item in Get-ChildItem -LiteralPath $payload -Recurse -Force) {
         }
     }
 }
+# A development runner may already have MSVC/Qt DLLs installed. Native
+# portable users must receive every non-system PE import inside this folder.
+# Analyze executable import tables without running any untrusted model engine.
+& python (Join-Path $root 'tools/windows_pe_audit.py') --root $payload
+if ($LASTEXITCODE -ne 0) {
+    throw 'Native Windows x64 PE import dependency closure failed.'
+}
 if ($RequireVoiceBundle -and -not $RequireOfflineBundle) {
     throw '-RequireVoiceBundle requires -RequireOfflineBundle.'
 }
