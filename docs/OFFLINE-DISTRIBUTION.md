@@ -147,3 +147,50 @@ not a proof that every unknown native binary cannot initiate arbitrary
 network activity. Run a genuine fresh-install disconnected-network test with
 trusted/pinned speech.cpp binaries and explicit GGUF paths before any public
 release, and ensure no unexpected process-level network access occurs.
+
+
+## Pinned official Windows speech.cpp runtime, offline verification
+
+Official publisher source: https://github.com/nyosegawa/speech.cpp
+Pinned release: https://github.com/nyosegawa/speech.cpp/releases/tag/v0.11.2
+Windows Vulkan archive:
+https://github.com/nyosegawa/speech.cpp/releases/download/v0.11.2/speech-0.11.2-windows-x64-vulkan.zip
+
+The actual GitHub release asset metadata reports:
+- `speech-0.11.2-windows-x64-vulkan.zip`
+- **29,726,411 bytes**
+- SHA-256 **`2cf46f0351a2a90b9ce0bfb83cf63ac209ca31c88df9a5bc0126898a20a58586`**
+
+The original speech.cpp repository currently carries the MIT license, but
+all its **binary dependencies, GGUF model conversions and original weights**
+still need their own pinned license/NOTICE and redistribution review.
+
+The new standard-library-only helper
+`tools/verify_speechcpp_archive.py` supports a legal, manual
+**download-once / USB-transfer** workflow without any model registry,
+installation script, network access or executable launch:
+
+```powershell
+python tools/verify_speechcpp_archive.py --self-test
+python tools/verify_speechcpp_archive.py --archive D:\Downloads\speech-0.11.2-windows-x64-vulkan.zip
+python tools/verify_speechcpp_archive.py --archive D:\Downloads\speech-0.11.2-windows-x64-vulkan.zip --output D:\EmberInputs\engines\speech
+```
+
+Create `D:\EmberInputs\engines` beforehand; the `speech` directory must
+**not** exist yet. The script checks exact official ZIP size and SHA-256,
+normalizes internal member paths, refuses symlinks, Windows traversal,
+reserved/colliding names, excessive extraction and an absent/non-x64 root
+`speech.exe`. Only after verification does it stage to a new directory,
+without overwriting a previous runtime. Manual model setup remains separate
+and requires genuine Qwen3 speech GGUF files, verified licensing and real
+Windows execution to confirm model compatibility.
+
+The repository/CI self-test generates tiny synthetic ZIPs and never downloads
+or runs the official binary, so it **cannot** assert that the official asset
+has already been staged or that its dependency DLLs load on a clean Windows
+system. For portability in Russia, obtain the lawfully redistributable ZIP
+through an available channel once, check the SHA-256 on the target PC and
+transfer it via removable media if needed; no particular remote host is
+guaranteed accessible without a VPN. Never silently download models on first
+run. Native Ember still requires a complete approved offline manifest before
+public release.
