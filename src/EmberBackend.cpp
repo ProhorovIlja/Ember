@@ -2696,6 +2696,11 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
         setStatus("Could not construct a private local multimodal request.");
         return false;
     }
+    // The model-specific request can shrink max_tokens to fit its context.
+    // Size the finite UI safety budget from that actual value, not the user's
+    // pre-clamped setting, or long code/story answers fail at 16K characters.
+    const int visibleCharacterLimit = EmberCore::chatVisibleCharacterLimit(
+        payload.value("max_tokens").toInt(), voice);
     payload.insert("stream", true);
     const QString url = "http://127.0.0.1:43821/v1/chat/completions";
     if (!EmberCore::allowedLocalEndpoint(url)) {
@@ -2749,7 +2754,7 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
     m_llmFirstTokenMs = -1;
     emit voiceTimingsChanged();
     m_reply = reply;
-    auto receive = [this, reply]() {
+    auto receive = [this, reply, visibleCharacterLimit]() {
         if (m_reply != reply || m_chatStreamDone || m_chatStreamInvalid) return;
         const auto received = reply->readAll();
         const auto tokens = EmberCore::consumeChatStream(m_chatStreamState, received);
@@ -2764,7 +2769,7 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
             // buffering. Never keep the full hidden thought in RAM.
             const QString committed = EmberCore::consumeVisibleAssistantDelta(
                 m_visibleStream, tokens.text);
-            if (m_chatStreamText.size() + committed.size() > 16384) {
+            if (m_chatStreamText.size() + committed.size() > visibleCharacterLimit) {
                 m_chatStreamInvalid = true;
                 reply->abort();
                 return;
