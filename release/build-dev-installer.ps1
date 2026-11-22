@@ -3,7 +3,8 @@ param(
     [string]$OutputDirectory = 'dist',
     [string]$Version = '0.1.0-dev',
     [switch]$VerifyInstall,
-    [switch]$RequireOfflineBundle
+    [switch]$RequireOfflineBundle,
+    [switch]$RequireVoiceBundle
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -54,11 +55,16 @@ foreach ($item in Get-ChildItem -LiteralPath $payload -Recurse -Force) {
         }
     }
 }
+if ($RequireVoiceBundle -and -not $RequireOfflineBundle) {
+    throw '-RequireVoiceBundle requires -RequireOfflineBundle.'
+}
 if ($RequireOfflineBundle) {
     $manifest = Join-Path $payload 'offline-assets.json'
     if (!(Test-Path $manifest)) { throw 'Complete offline asset manifest is missing.' }
-    & python (Join-Path $root 'tools/offline_bundle.py') verify --root $payload --manifest $manifest --redistribution-required
-    if ($LASTEXITCODE -ne 0) { throw 'Offline asset hash or license approval failed.' }
+    $verifyArgs = @('verify', '--root', $payload, '--manifest', $manifest, '--redistribution-required')
+    if ($RequireVoiceBundle) { $verifyArgs += '--require-voice' }
+    & python (Join-Path $root 'tools/offline_bundle.py') @verifyArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Offline asset hash, TTS presence or license approval failed.' }
 }
 
 $compilerCandidates = @(

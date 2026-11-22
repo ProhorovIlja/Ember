@@ -29,6 +29,15 @@ REQUIRED_TEXT_FIRST = {
     "engines/whisper/whisper-cli.exe": "asr",
     "models/stt/ggml-base.bin": "asr",
 }
+# The user requires *spoken English* in the first PUBLIC release, not merely
+# a typed text/dictation preview. The internal text-first milestone remains
+# buildable without TTS, but stable release must ship a genuine local TTS
+# engine plus an alias Ember actually knows how to start with speech.cpp.
+REQUIRED_VOICE_EXE = "engines/speech/speech.exe"
+SUPPORTED_VOICE_MODELS = (
+    "models/speech/qwen3-tts-0.6b.gguf",
+    "models/speech/qwen3-tts-1.7b.gguf",
+)
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {
     f"{letter}{number}" for letter in ("COM", "LPT") for number in range(1, 10)
@@ -222,7 +231,9 @@ def load_manifest(path):
     return entries
 
 
-def verify(root, manifest_path, approved=False):
+def verify(root, manifest_path, approved=False, require_voice=False):
+    if require_voice and not approved:
+        raise ValueError("Full stable voice requires human-approved offline assets")
     entries = load_manifest(manifest_path)
     paths, items = set(), {}
     for entry in entries:
@@ -269,10 +280,9 @@ def verify(root, manifest_path, approved=False):
         for name, entry in items.items():
             if not name.startswith("licenses/") and entry["license_path"] not in license_files:
                 raise ValueError(f"No bundled license text: {name}")
-        # Text-first milestone requires both a local LLM and RU/EN ASR;
-        # natural TTS is optional and must NOT block that release profile.
-        # Voice-capable bundles may include TTS with independently approved
-        # executable/model/license evidence, but cannot omit its runtime.
+        # Development text-first staging requires LLM + RU/EN Whisper.
+        # PUBLIC stable release enables require_voice and refuses TTS-free
+        # payloads even when all other release acceptance records are signed.
         components = {"llm", "asr"}
         available_models = {
             entry["component"] for name, entry in items.items()
@@ -290,11 +300,20 @@ def verify(root, manifest_path, approved=False):
             if component not in engine_components and "shared" not in engine_components:
                 raise ValueError(f"Required {component} engine executable missing")
         verify_text_first_shapes(root, items)
+        if require_voice:
+            runtime = items.get(REQUIRED_VOICE_EXE)
+            if not runtime or runtime["component"] not in ("tts", "shared"):
+                raise ValueError("Stable Ember voice requires engines/speech/speech.exe")
+            available = [name for name in SUPPORTED_VOICE_MODELS
+                         if name in items and items[name]["component"] == "tts"]
+            if not available:
+                raise ValueError("Stable Ember voice needs at least one supported "
+                                 "bundled local Qwen3-TTS GGUF with approved license")
     return len(entries)
 
 
-def stage(root, manifest, destination):
-    verify(root, manifest, approved=True)
+def stage(root, manifest, destination, require_voice=False):
+    verify(root, manifest, approved=True, require_voice=require_voice)
     output = Path(destination)
     if output.exists():
         raise ValueError("Refusing to overwrite existing staged output")
@@ -308,7 +327,7 @@ def stage(root, manifest, destination):
             shutil.copyfile(local_file(root, name), destination_file)
         manifest_file = temp / "offline-assets.json"
         shutil.copyfile(manifest, manifest_file)
-        verify(temp, manifest_file, approved=True)
+        verify(temp, manifest_file, approved=True, require_voice=require_voice)
         temp.rename(output)
     finally:
         if temp.exists():
@@ -316,9 +335,9 @@ def stage(root, manifest, destination):
     return output
 
 
-def assemble(staged_root, manifest, application, output):
+def assemble(staged_root, manifest, application, output, require_voice=False):
     """Combine clean windeployqt output and approved offline assets without user data."""
-    verify(staged_root, manifest, approved=True)
+    verify(staged_root, manifest, approved=True, require_voice=require_voice)
     app = Path(application).resolve(strict=True)
     for required in ("Ember.exe", "Qt6Core.dll", "LICENSE"):
         if not (app / required).is_file():
@@ -346,7 +365,8 @@ def assemble(staged_root, manifest, application, output):
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(local_file(staged_root, name), dest)
         shutil.copyfile(manifest, temp / "offline-assets.json")
-        verify(temp, temp / "offline-assets.json", approved=True)
+        verify(temp, temp / "offline-assets.json",
+               approved=True, require_voice=require_voice)
         temp.rename(out)
     finally:
         if temp.exists():
@@ -412,6 +432,7 @@ def self_test():
         approved = root / "approved.json"
         approved.write_text(json.dumps(content), encoding="utf-8")
         assert verify(payload, approved, approved=True) == 7
+        assert verify(payload, approved, approved=True, require_voice=True) == 7
 
         # Approval must reject a forged but correctly rehashed payload, not
         # merely catch different bytes against an old SHA-256 manifest.
@@ -476,10 +497,41 @@ def self_test():
         text_manifest = root / "text-only-approved.json"
         text_manifest.write_text(json.dumps(text_doc), encoding="utf-8")
         assert verify(text_payload, text_manifest, approved=True) == 5
+        try:
+            verify(text_payload, text_manifest, approved=True, require_voice=True)
+            raise AssertionError("TTS-free public stable bundle accepted")
+        except ValueError:
+            pass
+        try:
+            verify(payload, approved, approved=False, require_voice=True)
+            raise AssertionError("Unapproved public speech bundle accepted")
+        except ValueError:
+            pass
         stage(text_payload, text_manifest, root / "text-only-stage")
         assert verify(root / "text-only-stage",
                       root / "text-only-stage" / "offline-assets.json",
                       approved=True) == 5
+        # Merely labeling another unknown GGUF "tts" must NOT satisfy a
+        # stable release, because Ember cannot start an arbitrary renamed
+        # model as its known Qwen3-TTS preset.
+        other = root / "unknown-tts-alias"
+        shutil.copytree(payload, other)
+        other_manifest = json.loads(json.dumps(content))
+        old_gguf = other / "models/speech/qwen3-tts-0.6b.gguf"
+        alt_gguf = other / "models/speech/unrelated.gguf"
+        old_gguf.rename(alt_gguf)
+        next(x for x in other_manifest["assets"]
+             if x["path"] == "models/speech/qwen3-tts-0.6b.gguf")["path"] = (
+                 "models/speech/unrelated.gguf")
+        alternate_manifest = root / "unknown-tts-approved.json"
+        alternate_manifest.write_text(json.dumps(other_manifest), encoding="utf-8")
+        assert verify(other, alternate_manifest, approved=True) == 7
+        try:
+            verify(other, alternate_manifest, approved=True, require_voice=True)
+            raise AssertionError("Unsupported TTS path was accepted for stable Ember")
+        except ValueError:
+            pass
+
         # A TTS model without its runtime is not an accepted voice bundle.
         no_tts_engine = root / "tts-without-engine"
         partial = [item for item in content["assets"]
@@ -593,6 +645,9 @@ def main():
         command.add_argument("--manifest", required=True, type=Path)
         if name in ("stage", "assemble"):
             command.add_argument("--output", required=True, type=Path)
+        if name in ("verify", "stage", "assemble"):
+            command.add_argument("--require-voice", action="store_true",
+                                 help="Full PUBLIC stable package must include approved native TTS")
         if name == "assemble":
             command.add_argument("--application", required=True, type=Path)
         if name == "verify":
@@ -604,11 +659,11 @@ def main():
         elif args.action == "inventory":
             print(f"Inventory created for {inventory(args.root, args.manifest)} local files")
         elif args.action == "verify":
-            print(f"Verified {verify(args.root, args.manifest, args.redistribution_required)} local files")
+            print(f"Verified {verify(args.root, args.manifest, args.redistribution_required, args.require_voice)} local files")
         elif args.action == "stage":
-            print(f"Fully offline asset directory staged at {stage(args.root, args.manifest, args.output)}")
+            print(f"Fully offline asset directory staged at {stage(args.root, args.manifest, args.output, args.require_voice)}")
         elif args.action == "assemble":
-            print(f"Complete offline native payload assembled at {assemble(args.root, args.manifest, args.application, args.output)}")
+            print(f"Complete offline native payload assembled at {assemble(args.root, args.manifest, args.application, args.output, args.require_voice)}")
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         parser.error(f"{type(exc).__name__}: {exc}")
 

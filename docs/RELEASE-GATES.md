@@ -261,3 +261,24 @@ Development CI now runs native builds, installer round-trip checks and quality-g
 - [ ] On real Windows 10, verify Ctrl+Enter and button paths, invalid mmproj,
   deleted Library image, disconnected brain service, simultaneous dictation,
   legitimate accepted send and touch/keyboard focus behavior at 100–200% DPI.
+
+
+### November 22 — structural voice assets now mandatory in stable packaging
+
+A text-first development package can still be staged with approved
+llama.cpp + Whisper weights. **Public stable releases cannot use that
+shortcut.** The stable GitHub workflow now passes `--require-voice` to
+`tools/offline_bundle.py verify` and `-RequireVoiceBundle` to the
+installer wrapper. This requires:
+- the approved full LLM + multilingual Whisper files and dependencies;
+- `engines/speech/speech.exe` (native AMD64 PE, approved provenance/license);
+- at least one approved `models/speech/qwen3-tts-0.6b.gguf` or
+  `models/speech/qwen3-tts-1.7b.gguf`, with per-file SHA-256 and license
+  evidence, rather than an arbitrary TTS label or a catalog-only alias.
+
+Existing self-tests explicitly reject a text-only public package and an
+unrecognized TTS path while retaining legitimate internal text-first
+staging. This is a **structural safeguard**, not hardware voice acceptance:
+a forged 1 MiB GGUF header can pass preflight, so real local sound
+generation, Windows playback, English female voice quality and genuine
+no-VPN first-run tests remain separately mandatory release evidence.

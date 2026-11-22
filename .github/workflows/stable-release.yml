@@ -53,7 +53,7 @@ jobs:
           if (!(Test-Path $manifest)) {
             throw 'Stable release blocked: approved complete offline asset manifest missing.'
           }
-          python tools/offline_bundle.py verify --root build/Release --manifest $manifest --redistribution-required
+          python tools/offline_bundle.py verify --root build/Release --manifest $manifest --redistribution-required --require-voice
           if ($LASTEXITCODE -ne 0) { throw 'Stable release blocked: offline assets not approved or complete.' }
           Copy-Item README.md build/Release/README.md
           Copy-Item LICENSE build/Release/LICENSE
@@ -86,7 +86,7 @@ jobs:
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.Substring(1)
-          pwsh -NoProfile -File release/build-dev-installer.ps1 -Version $version -VerifyInstall -RequireOfflineBundle
+          pwsh -NoProfile -File release/build-dev-installer.ps1 -Version $version -VerifyInstall -RequireOfflineBundle -RequireVoiceBundle
           if ($LASTEXITCODE -ne 0) { throw 'Installer acceptance failed.' }
           $hash = (Get-FileHash -Path 'dist/Ember-win64-portable.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content -Path 'dist/Ember-portable-SHA256.txt' -Value ($hash + '  Ember-win64-portable.zip') -Encoding ascii
