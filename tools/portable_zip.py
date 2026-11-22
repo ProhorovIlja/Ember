@@ -9,7 +9,38 @@ import os
 from pathlib import Path
 import tempfile
 import zipfile
-from offline_bundle import verify, is_link_or_junction, private_payload_path
+from offline_bundle import (verify, is_link_or_junction, private_payload_path,
+                            WINDOWS_RESERVED)
+
+
+def validate_portable_members(names):
+    """Fail closed on Windows filename aliases across app, DLL and model files.
+
+    Manifests validate engines/models, but the full Qt application directory
+    can contain additional files. On case-insensitive Windows extraction,
+    A.txt and a.txt (or a file and a same-named directory) collide.
+    """
+    if len(names) > 20000:
+        raise ValueError("Offline portable payload contains too many files")
+    files, directories = set(), set()
+    for name in names:
+        if not isinstance(name, str) or not 0 < len(name) <= 240:
+            raise ValueError("Invalid Windows portable member name")
+        segments = name.split("/")
+        if any(not part or part in (".", "..") or part.endswith((" ", ".")) or
+               any(ord(ch) < 32 or ch in '\\:*?"<>|' for ch in part) or
+               part.split(".", 1)[0].upper() in WINDOWS_RESERVED
+               for part in segments):
+            raise ValueError("Unsafe Windows portable member: " + name)
+        key_parts = [part.casefold() for part in segments]
+        key = "/".join(key_parts)
+        if key in files:
+            raise ValueError("Case-insensitive Windows archive member collision")
+        files.add(key)
+        for depth in range(1, len(key_parts)):
+            directories.add("/".join(key_parts[:depth]))
+    if files.intersection(directories):
+        raise ValueError("Windows portable archive has file/directory name collision")
 
 
 def archive(root, output):
@@ -33,6 +64,7 @@ def archive(root, output):
         if private_payload_path(relative):
             raise ValueError("Sensitive data or smoke diagnostic in portable ZIP")
         files.append((relative, p))
+    validate_portable_members([name for name, _ in files])
     files.sort(key=lambda pair: pair[0].casefold())
     dest = Path(output)
     if dest.exists():
@@ -66,6 +98,23 @@ def archive(root, output):
 
 
 def self_test():
+    # These are pure string tests so they run on Windows, where invalid
+    # filenames cannot be constructed as real filesystem entries.
+    validate_portable_members(["Ember.exe", "Qt6Core.dll", "qml/Main.qml"])
+    for bad in (
+        ["Ember.exe", "ember.EXE"],
+        ["a.txt", "A.TXT/nested.txt"],
+        ["docs/CON.txt"],
+        ["plugins/trailing."],
+        ["plugins/trailing "],
+        ["plugins/C:stream"],
+        ["plugins\\outside.dll"],
+    ):
+        try:
+            validate_portable_members(bad)
+            raise AssertionError("Unsafe Windows ZIP members accepted: " + repr(bad))
+        except ValueError:
+            pass
     from offline_bundle import inventory, stage, assemble, fake_pe64, fake_gguf, fake_whisper
     import json
     with tempfile.TemporaryDirectory() as temp:
