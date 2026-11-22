@@ -823,8 +823,8 @@ void EmberBackend::setLocalVoice(const QString &value) {
     }
     if (m_voiceEngine == 1 && m_speechServerReady &&
         !m_speechEnglishVoices.contains(value)) {
-        setStatus("This voice is not an English speaker in the loaded GGUF. "
-                  "Choose a verified English voice from the list.");
+        setStatus("This voice is not an English female speaker in the loaded GGUF. "
+                  "Choose a verified female voice from the list.");
         return;
     }
     m_localVoice = value;
@@ -1436,7 +1436,7 @@ void EmberBackend::pollSpeechServer() {
             setStatus(m_voiceEngine == 1
                 ? (m_recognitionEngine > 0
                     ? "Native Qwen3-TTS voice and RU/EN Qwen3-ASR models verified."
-                    : "Native Qwen3-TTS English voice and selected speaker verified.")
+                    : "Native Qwen3-TTS English female speaker verified.")
                 : "Native Qwen3-ASR RU/EN recognition model verified.");
         });
 
