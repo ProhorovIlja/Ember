@@ -19,6 +19,64 @@ ApplicationWindow {
     property color cardColor: "#0A101C"
     property string historyQuery: ""
     property string imageToDelete: ""
+    property string publicGitHubPreview: ""
+    Dialog {
+        id: publicGitHubDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(window.width - 70, 760)
+        height: Math.min(window.height - 70, 560)
+        modal: true
+        title: "Public GitHub · Review before inserting"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            if (composer.text.length + window.publicGitHubPreview.length > 8192) {
+                publicGitHubDialog.open()
+                return
+            }
+            composer.text += window.publicGitHubPreview
+            composer.cursorPosition = composer.length
+            window.page = 1
+        }
+        background: Rectangle {
+            color: "#091522"
+            radius: 16
+            border.color: "#2A6292"
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: "#9CB8D4"
+                font.pixelSize: 12
+                text: composer.text.length + window.publicGitHubPreview.length <= 8192
+                      ? "Read-only public GitHub response. You control whether it enters your local text prompt."
+                      : "Too much text for the current draft. Remove text before inserting; the preview remains copyable."
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                TextArea {
+                    readOnly: true
+                    text: window.publicGitHubPreview
+                    font.pixelSize: 12
+                    color: "#E4EDF9"
+                    wrapMode: TextEdit.Wrap
+                    selectByMouse: true
+                    background: Rectangle { color: "#0B192A"; radius: 8 }
+                }
+            }
+        }
+    }
+    Connections {
+        target: ember
+        function onPublicGitHubExcerptReady(excerpt) {
+            window.publicGitHubPreview = excerpt
+            publicGitHubDialog.open()
+        }
+    }
+
     Dialog {
         id: deleteImageDialog
         parent: Overlay.overlay
@@ -1089,6 +1147,16 @@ ApplicationWindow {
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
                                             ToolTip.text: "Search one chosen local folder without executing code. Results appear in your editable draft."
+                                        }
+                                        PillButton {
+                                            text: "GitHub · Read"
+                                            implicitWidth: 122
+                                            implicitHeight: 31
+                                            enabled: !ember.busy && !ember.listening
+                                            onClicked: ember.inspectPublicGitHub()
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Inspect one public repository, issues, PRs or file. Network access only on your click; no token or modifications."
                                         }
                                         PillButton {
                                             text: "Add image"

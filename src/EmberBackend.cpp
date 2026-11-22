@@ -1,7 +1,9 @@
 #include "EmberBackend.h"
 #include "LocalTextImport.h"
 #include "LocalRepoSearch.h"
+#include "PublicGitHub.h"
 #include <QInputDialog>
+#include <QLineEdit>
 
 #include <QAudioDevice>
 #include <QAudioFormat>
@@ -199,6 +201,7 @@ EmberBackend::EmberBackend(QObject *parent)
     // Ignore Windows/system proxies for both local inference services.
     // Otherwise an environment proxy could receive private conversation text.
     m_network.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+    m_publicGitHubNetwork.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     m_voiceId = qBound(0, m_voiceId, 10);
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
     m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 4);
@@ -1173,6 +1176,92 @@ QString EmberBackend::messageText(const QString &body) const {
 }
 bool EmberBackend::submitText(const QString &text) {
     return submit(text, false);
+}
+void EmberBackend::inspectPublicGitHub() {
+    if (m_publicGitHubReply || m_busy || m_listening) {
+        setStatus("Finish the current task or GitHub request before reading another repository.");
+        return;
+    }
+    bool accepted = false;
+    const QString repository = QInputDialog::getText(
+        nullptr, "Public GitHub repository", "Owner/repository (public):",
+        QLineEdit::Normal, "ProhorovIlja/Ember", &accepted).trimmed();
+    if (!accepted) return;
+    const QStringList choices{"Overview", "Open issues", "Open pull requests", "Source file"};
+    const QString choice = QInputDialog::getItem(
+        nullptr, "Public GitHub read-only", "Inspect:", choices, 0, false, &accepted);
+    if (!accepted) return;
+    const int index = choices.indexOf(choice);
+    if (index < 0) return;
+    const auto view = static_cast<EmberGitHub::View>(index);
+    QString filePath;
+    if (view == EmberGitHub::View::File) {
+        filePath = QInputDialog::getText(
+            nullptr, "GitHub source file", "Repository-relative path:",
+            QLineEdit::Normal, "README.md", &accepted).trimmed();
+        if (!accepted) return;
+    }
+    const QUrl endpoint = EmberGitHub::publicRequestUrl(repository, view, filePath);
+    if (endpoint.isEmpty()) {
+        setStatus("Invalid public owner/repository or source path; no network request made.");
+        return;
+    }
+    QNetworkRequest request(endpoint);
+    request.setTransferTimeout(12000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    request.setRawHeader("Accept", "application/vnd.github+json");
+    request.setRawHeader("User-Agent", "Ember-local-read-only/0.1");
+    request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
+    m_publicGitHubBuffer.clear();
+    m_publicGitHubOversize = false;
+    QNetworkReply *reply = m_publicGitHubNetwork.get(request);
+    m_publicGitHubReply = reply;
+    setStatus("Reading explicitly selected public GitHub metadata (no credentials)...");
+    connect(reply, &QIODevice::readyRead, this, [this, reply]() {
+        if (m_publicGitHubReply != reply) return;
+        constexpr qsizetype limit = 256 * 1024;
+        if (reply->bytesAvailable() > limit - m_publicGitHubBuffer.size()) {
+            m_publicGitHubOversize = true;
+            reply->abort();
+            return;
+        }
+        m_publicGitHubBuffer += reply->readAll();
+    });
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, repository, view, filePath]() {
+        if (m_publicGitHubReply != reply) { reply->deleteLater(); return; }
+        m_publicGitHubReply = nullptr;
+        QByteArray body = std::move(m_publicGitHubBuffer);
+        m_publicGitHubBuffer.clear();
+        if (reply->bytesAvailable() > (256 * 1024 - body.size()))
+            m_publicGitHubOversize = true;
+        else body += reply->readAll();
+        const int status = reply->attribute(
+            QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const auto networkError = reply->error();
+        reply->deleteLater();
+        if (m_publicGitHubOversize) {
+            setStatus("GitHub response exceeded the 256 KiB read-only limit.");
+            return;
+        }
+        if (status != 200 || networkError != QNetworkReply::NoError) {
+            setStatus("Public GitHub read failed (HTTP " + QString::number(status) +
+                      "). Check Internet availability, repository visibility or rate limit.");
+            return;
+        }
+        const auto preview = EmberGitHub::parsePublicResponse(
+            repository, view, filePath, body);
+        if (!preview.ok()) {
+            setStatus(preview.error);
+            return;
+        }
+        // The preview is shown in a separate user-controlled window and
+        // inserted into composer ONLY after the user confirms. Never
+        // automatically send an external page's contents to the local LLM.
+        emit publicGitHubExcerptReady(preview.text);
+        setStatus("Public GitHub preview ready. Review before inserting into chat.");
+    });
 }
 QString EmberBackend::searchLocalCodeFolder(const QString &existingDraft) {
     if (m_busy || m_listening) {

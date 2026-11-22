@@ -104,3 +104,11 @@ default 8,192-token context available for a large pasted prompt. It does
 not transform a small model into GPT-6 High or guarantee that non-Qwen
 models accept the template setting. Voice generation remains short. This
 option is separate from, and never consumes, ChatGPT cloud usage limits.
+
+
+The Chat toolbar can also use **GitHub · Read** to inspect a selected
+**public** GitHub repository, open issues/PRs and a small UTF-8 source file.
+This is an explicit one-shot network read from `api.github.com`, with no
+token, redirects, mutation or background requests. Review the untrusted
+preview before inserting it into the offline LLM's editable prompt. Private
+GitHub account access and Google Drive remain future gated integrations.

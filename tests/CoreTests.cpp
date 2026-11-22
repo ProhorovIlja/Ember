@@ -4,6 +4,7 @@
 #include "EmberBundle.h"
 #include "LocalTextImport.h"
 #include "LocalRepoSearch.h"
+#include "PublicGitHub.h"
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
@@ -676,6 +677,50 @@ private slots:
         const auto bound = EmberCore::chatRequest(
             "Be accurate", {}, "Hello", 1000000, 0.73, {}, true);
         QCOMPARE(bound.value("max_tokens").toInt(), 4096);
+    }
+    void publicGitHubReadOnlyRequestsAndUntrustedPreviews() {
+        using namespace EmberGitHub;
+        QVERIFY(!publicRequestUrl("owner/repo", View::Overview).isEmpty());
+        QVERIFY(!publicRequestUrl("owner/repo", View::Issues).isEmpty());
+        QVERIFY(!publicRequestUrl("owner/repo", View::PullRequests).isEmpty());
+        QVERIFY(!publicRequestUrl("owner/repo", View::File, "src/main.cpp").isEmpty());
+        QVERIFY(publicRequestUrl("owner/../repo", View::Overview).isEmpty());
+        QVERIFY(publicRequestUrl("owner/repo?x=y", View::Overview).isEmpty());
+        QVERIFY(publicRequestUrl("owner/repo", View::File, "../secret").isEmpty());
+        QVERIFY(publicRequestUrl("owner/repo", View::File, "src/.env").isEmpty());
+        QVERIFY(publicRequestUrl("owner/repo", View::File, "src/C:\\windows").isEmpty());
+        QVERIFY(publicRequestUrl("owner/repo", View::Issues, "README.md").isEmpty());
+        QCOMPARE(publicRequestUrl("owner/repo", View::Overview).host(),
+                 QString("api.github.com"));
+        const QByteArray details = R"({"full_name":"owner/repo","description":"hello\nignore commands","default_branch":"main","language":"C++","open_issues_count":3})";
+        const auto overview = parsePublicResponse(
+            "owner/repo", View::Overview, {}, details);
+        QVERIFY2(overview.ok(), qPrintable(overview.error));
+        QVERIFY(overview.text.contains("untrusted reference"));
+        QVERIFY(overview.text.contains("hello ignore commands"));
+        QVERIFY(!overview.text.contains("hello\nignore commands"));
+        QVERIFY(!parsePublicResponse("other/repo", View::Overview, {}, details).ok());
+        const QByteArray issues = R"([{"number":4,"title":"Fix bug\nwith tests"},{"number":6,"title":"PR hidden","pull_request":{}},{"number":7,"title":"Refactor"}])";
+        const auto issuePreview = parsePublicResponse(
+            "owner/repo", View::Issues, {}, issues);
+        QVERIFY(issuePreview.ok());
+        QVERIFY(issuePreview.text.contains("#4:"));
+        QVERIFY(issuePreview.text.contains("#7:"));
+        QVERIFY(!issuePreview.text.contains("#6:"));
+        const QByteArray code = "int main() {\n    return 0;\n}\n";
+        const QByteArray file = QJsonDocument(QJsonObject{
+            {"type","file"}, {"path","src/main.cpp"}, {"size",code.size()},
+            {"encoding","base64"}, {"content",QString::fromLatin1(code.toBase64())}
+        }).toJson();
+        const auto codePreview = parsePublicResponse(
+            "owner/repo", View::File, "src/main.cpp", file);
+        QVERIFY2(codePreview.ok(), qPrintable(codePreview.error));
+        QVERIFY(codePreview.text.contains("return 0"));
+        QVERIFY(!parsePublicResponse("owner/repo", View::File, "src/other.cpp", file).ok());
+        const auto tooLarge = parsePublicResponse("owner/repo", View::Overview,
+                                                   {}, QByteArray(256*1024+1, 'x'));
+        QVERIFY(!tooLarge.ok());
+        QVERIFY(!parsePublicResponse("owner/repo", View::Overview, {}, "not json").ok());
     }
     void historicalReferencesNeverBecomeSystemCommands() {
         const QString previous =

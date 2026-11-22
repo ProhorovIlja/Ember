@@ -34,6 +34,20 @@ clearly marked capped result. There is no directory watcher, persistent
 index, global drive search, autonomous tool call or Git execution. Larger
 projects need a separate authorized retrieval/indexing design.
 
+## Implemented third step: explicitly selected public GitHub read
+
+The **GitHub · Read** toolbar action asks which public owner/repository to
+inspect and whether to fetch its overview, open issues, open pull requests
+or one source file. The native Qt client reads only
+`https://api.github.com/repos/...` with strict path validation, no personal
+token, redirect following, remote code execution, polling or scheduled jobs.
+It limits each JSON response to 256 KiB and displays a bounded, copyable
+read-only preview in a review dialog before the user may insert it into a
+local chat draft. The model is never granted network access automatically.
+Private repositories, authentication, issue details, diff/commit writing,
+Drive and general web search are **not implemented**. GitHub access itself
+requires an Internet connection and may be unavailable in some regions.
+
 ## Next integrations — NOT YET IMPLEMENTED
 
 1. **Local codebase retrieval/indexing:** expand the implemented one-shot
@@ -44,9 +58,10 @@ projects need a separate authorized retrieval/indexing design.
    HTTP client, content-length / MIME / timeout limits, direct URL citations,
    injected page text treated as untrusted data; network off means clear
    offline error, not a fabricated search result.
-3. **GitHub:** user connects a fine-grained token with narrow repository
-   permissions, stored via Windows Credential Manager/DPAPI rather than
-   plaintext settings. Start read-only issue/PR/file inspection. Editing
+3. **Authenticated GitHub:** extend public read-only access with a user
+   connected fine-grained token with narrow repository permissions, stored
+   via Windows Credential Manager/DPAPI rather than plaintext settings.
+   Read private issues/PRs/files only after account consent. Editing
    files, commits or PRs requires a visible diff and explicit confirmation.
    Do not let a web page or model prompt invent permissions.
 4. **Google Drive:** registered Desktop OAuth application, minimum

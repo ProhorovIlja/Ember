@@ -147,6 +147,7 @@ public:
     Q_INVOKABLE bool submitText(const QString &text);
     Q_INVOKABLE QString chooseLocalTextFile(const QString &existingDraft);
     Q_INVOKABLE QString searchLocalCodeFolder(const QString &existingDraft);
+    Q_INVOKABLE void inspectPublicGitHub();
     Q_INVOKABLE void continueIncompleteReply();
     Q_INVOKABLE void chooseImage();
     Q_INVOKABLE void pasteImage();
@@ -198,6 +199,7 @@ signals:
     void speechServerChanged();
     void configurationChanged();
     void audioDevicesChanged();
+    void publicGitHubExcerptReady(const QString &text);
 private:
     void setStatus(const QString &text);
     void setBusy(bool value);
@@ -310,6 +312,10 @@ private:
     quint64 m_voiceScratchRevision = 0;
     bool m_pcmHttpDone = false, m_pcmStarted = false;
     QNetworkAccessManager m_network;
+    QNetworkAccessManager m_publicGitHubNetwork;
+    QPointer<QNetworkReply> m_publicGitHubReply;
+    QByteArray m_publicGitHubBuffer;
+    bool m_publicGitHubOversize = false;
     QPointer<QNetworkReply> m_reply;
     QPointer<QNetworkReply> m_speechReply;
     QPointer<QNetworkReply> m_nativeAsrReply;
