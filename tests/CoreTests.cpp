@@ -121,6 +121,18 @@ private slots:
             both, "application/json", "qwen3-tts-0.6b",
             "qwen3-asr-1.7b", "vivian", &advertised));
         QCOMPARE(advertised, QStringList({"vivian", "serena"}));
+        // Only synthesis metadata may expose selectable output speakers.
+        QJsonObject fakeAsrVoices = asr;
+        QJsonObject fakeInfo = fakeAsrVoices.value("speech").toObject();
+        fakeInfo.insert("voices", QJsonArray{
+            QJsonObject{{"name", "rogue-recognition-voice"}, {"language", "en"}}
+        });
+        fakeAsrVoices.insert("speech", fakeInfo);
+        QStringList actualVoices;
+        QVERIFY(validNativeSpeechInventory(
+            inventory(QJsonArray{tts, fakeAsrVoices}), "application/json",
+            "qwen3-tts-0.6b", "qwen3-asr-1.7b", "vivian", &actualVoices));
+        QCOMPARE(actualVoices, QStringList({"vivian", "serena"}));
         advertised = {"untrusted"};
         QVERIFY(!validNativeSpeechInventory(
             both, "application/json", "qwen3-tts-0.6b",
