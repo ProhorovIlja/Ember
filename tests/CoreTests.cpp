@@ -8,10 +8,44 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QTest>
+#include <QTcpServer>
+#include <QHostAddress>
+#include <QCoreApplication>
 #include <cstring>
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void authenticatesManagedLoopbackListenersByOwnerPid() {
+        // A working localhost health endpoint can belong to any process.
+        // The exact TCP listener must be 127.0.0.1 AND owned by the expected
+        // managed process. This test uses a REAL Windows kernel TCP table.
+#ifdef Q_OS_WIN
+        const quint64 pid = quint64(QCoreApplication::applicationPid());
+        QVERIFY(pid > 0);
+        QTcpServer owned;
+        QVERIFY2(owned.listen(QHostAddress::LocalHost, 0),
+                 qPrintable(owned.errorString()));
+        const quint16 port = owned.serverPort();
+        QVERIFY(port > 0);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            EmberCore::ownedLoopbackTcpListener(port, pid), 2000);
+        QVERIFY(!EmberCore::ownedLoopbackTcpListener(port, 0));
+        QVERIFY(!EmberCore::ownedLoopbackTcpListener(port, pid + 1));
+        QVERIFY(!EmberCore::ownedLoopbackTcpListener(0, pid));
+
+        QTcpServer exposed;
+        QVERIFY2(exposed.listen(QHostAddress::AnyIPv4, 0),
+                 qPrintable(exposed.errorString()));
+        QVERIFY(!EmberCore::ownedLoopbackTcpListener(exposed.serverPort(), pid));
+        exposed.close();
+
+        owned.close();
+        QTRY_VERIFY_WITH_TIMEOUT(
+            !EmberCore::ownedLoopbackTcpListener(port, pid), 2000);
+#else
+        QVERIFY(!EmberCore::ownedLoopbackTcpListener(43821, 1234));
+#endif
+    }
     void interruptedDictationRecoversOnlyIntegrityCheckedAudio() {
         QAudioFormat mono;
         mono.setSampleRate(16000);
