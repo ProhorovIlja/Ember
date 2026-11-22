@@ -2746,6 +2746,7 @@ void EmberBackend::interruptCapture(const QString &reason,
         // The recovered content stays in the editable composer; there is
         // never an automatic submit from an interrupted microphone.
         m_captureWasInterrupted = true;
+        m_dictationAutoSend = false;
         stopRecording();
         if (m_transcriptionSize > 0)
             setStatus(reason + " Recovering the recorded dictation locally; "
@@ -2800,18 +2801,33 @@ void EmberBackend::startDictation() {
     startCapture(true);
 }
 void EmberBackend::startDictationForSend() {
-    m_dictationAutoSend = false;
-    if (!m_brainReady) {
-        setStatus("Start the local brain before dictation with immediate send.");
-        return;
-    }
-    startCapture(true);
-    m_dictationAutoSend = m_listening && m_captureDictation;
+    // Compatibility entry point: recording no longer commits to a send
+    // before the user has actually spoken. The completion action decides.
+    startDictation();
 }
-void EmberBackend::stopDictation() {
-    if (m_listening && m_captureDictation) stopRecording();
+void EmberBackend::stopDictation() { finishDictation(false); }
+void EmberBackend::finishDictation(bool sendAfterTranscription) {
+    if (!m_listening || !m_captureDictation) return;
+    // A draft-only completion must never inherit an earlier send intent.
+    // If the brain disappeared, still transcribe locally into the editor.
+    m_dictationAutoSend = sendAfterTranscription && m_brainReady &&
+        m_brain.state() == QProcess::Running &&
+        EmberCore::ownedLoopbackTcpListener(
+            43821, quint64(m_brain.processId()));
+    stopRecording();
+    if (sendAfterTranscription && !m_dictationAutoSend &&
+        m_transcribingDictation)
+        setStatus("Local brain unavailable; transcribing to editable draft instead.");
+}
+void EmberBackend::cancelDictation() {
+    if (!dictationActive() && !m_transcribingDictation) return;
+    m_dictationAutoSend = false;
+    cancelWork(); // closes capture, invalidates stale ASR and deletes scratch
+    emit dictationChanged();
+    setStatus("Dictation cancelled. No transcript was sent and audio was discarded.");
 }
 void EmberBackend::startCapture(bool dictation) {
+    m_dictationAutoSend = false;
     const bool interruptibleSpeech = m_speaking || m_speechSequence ||
         bool(m_pcmSink) || bool(m_speechReply) ||
         m_tts.state() != QProcess::NotRunning;
@@ -2958,6 +2974,7 @@ void EmberBackend::stopRecording() {
         frameBytes) * frameBytes;
     m_transcriptionSegments.clear();
     m_transcribingDictation = wasDictation;
+    if (wasDictation) emit dictationChanged();
     m_asrElapsed.start();
     transcribeNextChunk();
 }
@@ -3171,6 +3188,8 @@ void EmberBackend::failTranscription(const QString &reason) {
     const QString partial = EmberCore::partialDictationOnError(
         m_transcribingDictation, m_transcriptionSegments);
     m_transcribingDictation = false;
+    m_dictationAutoSend = false;
+    emit dictationChanged();
     m_transcriptionSegments.clear();
     m_transcriptionSize = m_transcriptionOffset = m_transcriptionChunkSize = 0;
     // The last Whisper output QFile or a native multipart upload can still
@@ -3204,6 +3223,7 @@ void EmberBackend::completeTranscription() {
     const bool captureInterrupted = m_captureWasInterrupted;
     m_captureWasInterrupted = false;
     m_transcribingDictation = false;
+    if (dictate) emit dictationChanged();
     const QString text = EmberCore::joinTranscriptionSegments(m_transcriptionSegments);
     m_transcriptionSegments.clear();
     m_transcriptionOffset = m_transcriptionSize = m_transcriptionChunkSize = 0;
@@ -3212,13 +3232,15 @@ void EmberBackend::completeTranscription() {
     emit voiceTimingsChanged();
     setBusy(false);
     if (text.isEmpty()) {
+        m_dictationAutoSend = false;
         setStatus("No speech recognized. Try again with a clearer microphone signal.");
         return;
     }
     m_transcript = text;
     emit transcriptChanged();
     if (dictate) {
-        const bool sendOnCompletion = m_dictationAutoSend && !captureInterrupted;
+        const bool sendOnCompletion = EmberCore::maySendCompletedDictation(
+            m_dictationAutoSend, captureInterrupted, m_brainReady);
         m_dictationAutoSend = false;
         m_dictatedText = text;
         emit dictationChanged();
@@ -3730,6 +3752,7 @@ void EmberBackend::cancelWork() {
         endLocalAgent("Cancelled by the user.");
     }
     m_captureWasInterrupted = false;
+    m_dictationAutoSend = false;
     m_visibleStream = {};
     m_asrProcessWatchdog.stop();
     m_ttsProcessWatchdog.stop();
@@ -3760,6 +3783,7 @@ void EmberBackend::cancelWork() {
     m_cliTtsActive = false;
     if (m_whisper.state() != QProcess::NotRunning) m_whisper.kill();
     m_transcribingDictation = false;
+    emit dictationChanged();
     m_transcriptionSegments.clear();
     m_transcriptionSize = m_transcriptionOffset = 0;
     if (m_tts.state() != QProcess::NotRunning) m_tts.kill();

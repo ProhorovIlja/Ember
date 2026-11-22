@@ -48,6 +48,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(int microphoneLevel READ microphoneLevel NOTIFY microphoneLevelChanged)
     Q_PROPERTY(bool autoEndOnSilence READ autoEndOnSilence WRITE setAutoEndOnSilence NOTIFY configurationChanged)
     Q_PROPERTY(bool dictationActive READ dictationActive NOTIFY dictationChanged)
+    Q_PROPERTY(bool dictationTranscribing READ dictationTranscribing NOTIFY dictationChanged)
     Q_PROPERTY(QString dictatedText READ dictatedText NOTIFY dictationChanged)
     Q_PROPERTY(bool brainReady READ brainReady NOTIFY brainReadyChanged)
     Q_PROPERTY(bool visionReady READ visionReady NOTIFY brainReadyChanged)
@@ -102,6 +103,7 @@ public:
     int microphoneLevel() const { return m_microphoneLevel; }
     bool autoEndOnSilence() const { return m_autoEndOnSilence; }
     bool dictationActive() const { return m_listening && m_captureDictation; }
+    bool dictationTranscribing() const { return m_transcribingDictation; }
     QString dictatedText() const { return m_dictatedText; }
     bool brainReady() const { return m_brainReady; }
     bool visionReady() const { return m_brainReady && m_brainVisionMode; }
@@ -187,6 +189,8 @@ public:
     Q_INVOKABLE void startDictationForSend();
     Q_INVOKABLE void setAutoEndOnSilence(bool enabled);
     Q_INVOKABLE void stopDictation();
+    Q_INVOKABLE void finishDictation(bool sendAfterTranscription);
+    Q_INVOKABLE void cancelDictation();
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void testVoice();
     Q_INVOKABLE void cancelWork();

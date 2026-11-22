@@ -58,6 +58,14 @@ private slots:
         QVERIFY(!EmberCore::ownedLoopbackTcpListener(43821, 1234));
 #endif
     }
+    void textFirstDictationNeverImplicitlySends() {
+        using EmberCore::maySendCompletedDictation;
+        QVERIFY(!maySendCompletedDictation(false, false, true));
+        QVERIFY(!maySendCompletedDictation(false, false, false));
+        QVERIFY(!maySendCompletedDictation(true, true, true));
+        QVERIFY(!maySendCompletedDictation(true, false, false));
+        QVERIFY(maySendCompletedDictation(true, false, true));
+    }
     void interruptedDictationRecoversOnlyIntegrityCheckedAudio() {
         QAudioFormat mono;
         mono.setSampleRate(16000);

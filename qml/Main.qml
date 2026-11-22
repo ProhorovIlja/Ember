@@ -12,7 +12,7 @@ ApplicationWindow {
     title: "Ember · Local Intelligence"
     color: "#000000"
     font.family: "Segoe UI"
-    property int page: 0
+    property int page: 1
     property color mint: "#77C4FF"
     property color silver: "#B2C2D1"
     property color borderColor: "#1A2D45"
@@ -405,7 +405,8 @@ ApplicationWindow {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 8
-                    NavButton { label: "Voice"; symbol: "◉"; index: 0 }
+                    // Voice conversation remains available in source for a later
+                    // milestone; the text-first release opens in Chat.
                     NavButton { label: "Chat"; symbol: "▤"; index: 1 }
                     NavButton { label: "Library"; symbol: "▧"; index: 3 }
                     NavButton { label: "Settings"; symbol: "⚙"; index: 2 }
@@ -1169,7 +1170,7 @@ ApplicationWindow {
                                         id: composer
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        enabled: !ember.busy
+                                        enabled: !ember.busy && !ember.listening
                                         color: "#ECF4F8"
                                         font.pixelSize: 14
                                         wrapMode: TextEdit.Wrap
@@ -1401,33 +1402,52 @@ ApplicationWindow {
                                         }
                                         Item { Layout.fillWidth: true }
                                         PillButton {
-                                            text: ember.dictationActive ? "Stop recording" : "Dictate · edit"
-                                            implicitWidth: 127
+                                            text: "Start dictation"
+                                            implicitWidth: 131
                                             implicitHeight: 38
-                                            enabled: (!ember.busy || ember.speaking) &&
-                                                     (!ember.listening || ember.dictationActive)
-                                            onClicked: {
-                                                if (ember.dictationActive) ember.stopDictation()
-                                                else ember.startDictation()
-                                            }
-                                            ToolTip.visible: hovered && !ember.dictationActive
-                                            ToolTip.delay: 800
-                                            ToolTip.text: "Click to record, click again to stop. RU/EN speech becomes editable text; no fixed 30-second cutoff."
+                                            visible: !ember.dictationActive && !ember.dictationTranscribing
+                                            enabled: !ember.busy && !ember.listening
+                                            onClicked: ember.startDictation()
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Record RU/EN locally without starting the text model. Speak as long as needed, then Cancel, To draft or Transcribe & send."
+                                        }
+                                        Text {
+                                            visible: ember.dictationActive || ember.dictationTranscribing
+                                            text: ember.dictationActive ? "● Recording" : "Transcribing locally…"
+                                            color: "#88CEF5"
+                                            font.pixelSize: 12
+                                            Layout.alignment: Qt.AlignVCenter
                                         }
                                         PillButton {
-                                            text: ember.dictationActive ? "Stop & transcribe" : "Dictate · send"
-                                            implicitWidth: 145
+                                            text: "Cancel"
+                                            implicitWidth: 78
                                             implicitHeight: 38
-                                            enabled: ember.brainReady &&
-                                                     (!ember.busy || ember.speaking) &&
-                                                     (!ember.listening || ember.dictationActive)
-                                            onClicked: {
-                                                if (ember.dictationActive) ember.stopDictation()
-                                                else ember.startDictationForSend()
-                                            }
-                                            ToolTip.visible: hovered && !ember.dictationActive
-                                            ToolTip.delay: 800
-                                            ToolTip.text: "Click to start/stop. Intact completed speech is sent to the managed local model; partial recovery remains editable only."
+                                            visible: ember.dictationActive || ember.dictationTranscribing
+                                            enabled: visible
+                                            onClicked: ember.cancelDictation()
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "Discard this recording or cancel ongoing local transcription. Existing text draft remains unchanged."
+                                        }
+                                        PillButton {
+                                            text: "To draft"
+                                            implicitWidth: 92
+                                            implicitHeight: 38
+                                            visible: ember.dictationActive
+                                            enabled: visible
+                                            onClicked: ember.finishDictation(false)
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "Stop microphone, transcribe all intact RU/EN audio locally and insert editable text. Never automatically send."
+                                        }
+                                        PillButton {
+                                            text: "Transcribe & send"
+                                            implicitWidth: 151
+                                            implicitHeight: 38
+                                            visible: ember.dictationActive
+                                            enabled: visible && ember.brainReady
+                                            onClicked: ember.finishDictation(true)
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "Stop, transcribe locally, insert text in the draft, then send to the local model. No send on cancel, errors or microphone interruption."
                                         }
                                         PillButton {
                                             text: ember.busy ? "Working…" : "Send message"

@@ -42,6 +42,10 @@ ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep = fa
 // false when the listener is absent, wildcard-bound or cannot be inspected.
 bool ownedLoopbackTcpListener(quint16 port, quint64 processId);
 bool allowedLocalEndpoint(const QString &url);
+// Dictation may send only after the user selects Send, ASR finishes,
+// recording was intact, and the local model is available.
+bool maySendCompletedDictation(bool userSelectedSend, bool captureInterrupted,
+                              bool brainReady);
 bool allowedLocalSpeechEndpoint(const QString &url);
 bool allowedLocalAsrEndpoint(const QString &url);
 QString nativeAsrModel(int recognitionEngine);

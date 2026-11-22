@@ -131,6 +131,19 @@ full articles. Wikimedia connectivity is required; the LLM itself remains
 fully local. See `docs/LOCAL-TOOLS-ROADMAP.md`.
 
 
+**Text-first milestone (November 2026):** The app starts on the **Chat**
+page. Full duplex live Voice is deferred, but its implementation is preserved
+for future work and does not need to run. **Start dictation** records offline
+Russian/English microphone audio without needing the text LLM. While recording,
+select **Cancel** (discard audio), **To draft** (transcribe into the editable
+composer with no send), or **Transcribe & send** (complete ASR then request the
+managed local model). The completion choice, not the start button, controls
+sending. Incomplete/recovered audio never automatically sends; failure or
+cancellation keeps the existing draft. Recognition works through installed
+multilingual whisper.cpp or optional speech.cpp/Qwen3-ASR; these engines and
+weights are separate local installation requirements. Speech quality and
+hardware still require testing.
+
 **Wikipedia agent (on demand):** With the managed local model running, select
 **Wiki agent** after typing a question. Ember asks before allowing up to three
 model-selected English or Russian Wikipedia REST searches. Only official

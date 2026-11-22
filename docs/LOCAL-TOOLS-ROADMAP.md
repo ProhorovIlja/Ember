@@ -126,6 +126,25 @@ limits must be measured on target hardware. The existing native Qt front
 end remains independent of any cloud API.
 
 
+## Text-first delivery gate (22 November 2026)
+
+Voice conversation/TTS is deferred behind the first usable Windows build;
+the existing source implementation is retained for future work but no longer
+has an entry in the default navigation. Chat is the startup page. Dictation
+remains a mandatory local ASR function independent of the LLM: one recording
+button and explicit **Cancel**, **To draft** or **Transcribe & send** endings.
+Send intent is selected only at the end of a recording. The safe fallback is
+editable text; disconnected model, cancelled audio, incomplete microphone
+capture or partial ASR failure never automatically sends a message. QtTest
+covers the send decision truth table. The manually confirmed selection never
+allows external model calls; only trusted loopback inference is used.
+
+Pending release gates: prove real bilingual long-dictation on the target
+Windows microphone and GPU (including punctuation, interrupted recording,
+empty/silent input, cancellation, incomplete ASR); prove local model chat and
+source-tool reliability, bundle legal/offline weights, and finish Windows
+installer visual/operational acceptance. GitHub CI alone is insufficient.
+
 ## Explicit model-driven Wikipedia search (22 November 2026)
 
 The **Wiki agent** button now grants an isolated, one-shot Wikipedia research

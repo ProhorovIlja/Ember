@@ -599,6 +599,10 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
 // A shared offline speech adapter deliberately has no configurable remote
 // host and rejects redirects in the network client. Qwen3, Chatterbox and
 // compatible local TTS servers may implement this exact small contract.
+bool maySendCompletedDictation(bool userSelectedSend, bool captureInterrupted,
+                              bool brainReady) {
+    return userSelectedSend && !captureInterrupted && brainReady;
+}
 bool allowedLocalSpeechEndpoint(const QString &raw) {
     const QUrl url(raw);
     return url.isValid() && url.scheme() == "http" &&
