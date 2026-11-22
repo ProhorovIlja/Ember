@@ -625,6 +625,21 @@ def self_test():
     for required, component in REQUIRED_TEXT_FIRST.items():
         assert required in skeleton and skeleton[required]["component"] == component
         assert skeleton[required]["redistribution_approved"] is False
+    # The full-voice template is a list of CHECKS TO SATISFY, not a set of
+    # fabricated model assets or authorized-to-redistribute weights.
+    voice_template = (Path(__file__).resolve().parent.parent /
+                      "release/offline-voice-assets.template.json")
+    voice_skeleton = {entry["path"]: entry
+                      for entry in load_manifest(voice_template)}
+    for required, component in REQUIRED_TEXT_FIRST.items():
+        assert required in voice_skeleton
+        assert voice_skeleton[required]["component"] == component
+    assert voice_skeleton[REQUIRED_VOICE_EXE]["component"] == "tts"
+    assert any(voice_skeleton.get(name, {}).get("component") == "tts"
+               for name in SUPPORTED_VOICE_MODELS)
+    assert all(item["redistribution_approved"] is False and
+               item["bytes"] == 0 and item["sha256"] == ""
+               for item in voice_skeleton.values())
     # The manually invoked Windows acceptance tester has a pure offline
     # self-test: test the parser and private WAV boundaries without starting
     # llama-server, whisper-cli or any scheduled task.

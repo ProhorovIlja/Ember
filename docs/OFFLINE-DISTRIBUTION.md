@@ -194,3 +194,19 @@ transfer it via removable media if needed; no particular remote host is
 guaranteed accessible without a VPN. Never silently download models on first
 run. Native Ember still requires a complete approved offline manifest before
 public release.
+
+
+### Full-voice inventory review template (zero approved files)
+
+`release/offline-voice-assets.template.json` is a **deliberately
+unapproved** sample inventory of native llama.cpp, multilingual whisper.cpp,
+Windows speech.cpp, a Qwen3-TTS GGUF alias Ember can start, and license
+evidence. Every size is zero, every SHA is blank, and every redistribution
+flag is `false`. This is not a download list, assembled distribution or
+an assertion that files/licenses were obtained. A maintainer replaces each
+placeholder with the exact verified local artifact size/SHA/license path and
+explicitly approves it only after reviewing actual rights, transitive DLLs,
+genuine inference and sound quality. Existing
+`release/offline-assets.template.json` remains the internal text-first
+milestone template. The stable `--require-voice` check validates a real
+approved manifest and refuses either template unmodified.
