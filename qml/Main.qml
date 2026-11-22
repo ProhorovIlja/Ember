@@ -1175,8 +1175,8 @@ ApplicationWindow {
                                     }
                                     Flow {
                                         Layout.fillWidth: true
+                                        Layout.preferredHeight: childrenRect.height
                                         spacing: 8
-                                        implicitHeight: childrenRect.height
                                         PillButton {
                                             text: "Add text file"
                                             implicitWidth: 115
