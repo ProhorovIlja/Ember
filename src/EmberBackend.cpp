@@ -1200,17 +1200,18 @@ void EmberBackend::driveAction() {
     }
     bool accepted = false;
     const QStringList choices{
-        "Connect Google Drive (metadata only)",
+        "Connect Google Drive (read-only files)",
         "List selected Google Drive folder",
+        "Read one Drive text file or Google Doc",
         "Disconnect local Google Drive credential"
     };
     const QString action = QInputDialog::getItem(
-        nullptr, "Google Drive · Manual read-only access",
+        nullptr, "Google Drive · Manual file access",
         "Choose an explicitly requested operation:", choices, 0,
         false, &accepted);
     if (!accepted) return;
     const int index = choices.indexOf(action);
-    if (index == 2) {
+    if (index == 3) {
         m_driveClient.disconnectLocal();
         return;
     }
@@ -1235,6 +1236,15 @@ void EmberBackend::driveAction() {
             &accepted).trimmed();
         if (!accepted) return;
         m_driveClient.listFolder(folder, savedId);
+        return;
+    }
+    if (index == 2) {
+        const QString fileId = QInputDialog::getText(
+            nullptr, "Read one Google Drive text file",
+            "File ID from your folder listing (text or Google Doc):",
+            QLineEdit::Normal, {}, &accepted).trimmed();
+        if (!accepted) return;
+        m_driveClient.readTextFile(fileId, savedId);
     }
 }
 void EmberBackend::searchWikipedia() {
