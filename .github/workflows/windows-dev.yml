@@ -29,6 +29,11 @@ jobs:
         run: |
           python tools/voice_benchmark.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Local voice benchmark self-test failed.' }
+      - name: Validate one-shot real native speech acceptance safety (no model)
+        shell: pwsh
+        run: |
+          python tools/native_speech_acceptance.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Native speech acceptance preflight self-test failed.' }
       - name: Validate paired local TTS comparison constraints
         shell: pwsh
         run: |
