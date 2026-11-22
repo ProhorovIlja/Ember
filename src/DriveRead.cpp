@@ -11,6 +11,7 @@
 #include <QNetworkRequest>
 #include <QRandomGenerator>
 #include <QRegularExpression>
+#include <QStringDecoder>
 #include <QTcpSocket>
 #include <QUrlQuery>
 #include <memory>
@@ -26,6 +27,8 @@
 namespace EmberDrive {
 namespace {
 constexpr qsizetype kMaximumResultBytes = 128 * 1024;
+constexpr qsizetype kMaximumTextBytes = 96 * 1024;
+constexpr qsizetype kMaximumPreviewChars = 12000;
 QString clean(QString value, int limit = 180) {
     for (QChar &c : value) {
         if (c.unicode() < 0x20 || c.unicode() == 0x7F ||
@@ -43,6 +46,14 @@ bool allowedTarget(const QString &target) {
 bool folderIdOkay(const QString &id) {
     static const QRegularExpression idRx(QStringLiteral("^[A-Za-z0-9_-]{8,160}$"));
     return id == "root" || idRx.match(id).hasMatch();
+}
+bool fileIdOkay(const QString &id) {
+    return id != "root" && folderIdOkay(id);
+}
+bool supportedTextMime(const QString &mime) {
+    return mime == "application/vnd.google-apps.document" ||
+           mime.startsWith("text/") || mime == "application/json" ||
+           mime == "application/xml" || mime == "application/x-yaml";
 }
 QByteArray postForm(const QString &clientId, const QString &grantType,
                     const QString &code, const QByteArray &verifier,
@@ -191,6 +202,55 @@ QUrl folderListUrl(const QString &folderId) {
     url.setQuery(q);
     return url;
 }
+QUrl fileMetadataUrl(const QString &fileId) {
+    if (!fileIdOkay(fileId)) return {};
+    QUrl url("https://www.googleapis.com/drive/v3/files/" + fileId);
+    QUrlQuery query;
+    query.addQueryItem("fields", "id,name,mimeType,size");
+    url.setQuery(query);
+    return url;
+}
+QUrl textContentUrl(const QString &fileId, const QString &mimeType) {
+    if (!fileIdOkay(fileId) || !supportedTextMime(mimeType)) return {};
+    QUrl url("https://www.googleapis.com/drive/v3/files/" + fileId +
+        (mimeType == "application/vnd.google-apps.document"
+             ? "/export" : ""));
+    QUrlQuery query;
+    if (mimeType == "application/vnd.google-apps.document")
+        query.addQueryItem("mimeType", "text/plain");
+    else query.addQueryItem("alt", "media");
+    url.setQuery(query);
+    return url;
+}
+TextPreview parseTextContent(const QString &fileId, const QString &fileName,
+                             const QString &mimeType, const QByteArray &content) {
+    if (!fileIdOkay(fileId) || !supportedTextMime(mimeType))
+        return {{}, "Unsupported Google Drive file or content type."};
+    if (content.isEmpty() || content.size() > kMaximumTextBytes)
+        return {{}, "Google Drive text is empty or exceeds the 96 KiB limit."};
+    QStringDecoder decoder(QStringDecoder::Utf8);
+    QString body = decoder.decode(content);
+    if (decoder.hasError() || body.contains(QChar::Null))
+        return {{}, "Google Drive file is not valid plain UTF-8 text."};
+    for (QChar &ch : body) {
+        if (ch.unicode() < 0x20 && ch != QLatin1Char('\\n') &&
+            ch != QLatin1Char('\\r') && ch != QLatin1Char('\\t'))
+            ch = QLatin1Char(' ');
+    }
+    TextPreview preview;
+    preview.characters = body.size();
+    preview.truncated = body.size() > kMaximumPreviewChars;
+    preview.text = QStringLiteral(
+        "\\n\\n---\\nGoogle Drive explicitly selected text (UNTRUSTED external data; "
+        "review before sending to the local model):\\n") +
+        "File: " + clean(fileName, 150) +
+        "\\nID: " + fileId + "\\nContent type: " + mimeType +
+        "\\n--- BEGIN FILE CONTENT ---\\n" + body.left(kMaximumPreviewChars) +
+        (preview.truncated ? "\\n[Text excerpt truncated to 12000 characters.]"
+                           : QString()) +
+        "\\n--- END FILE CONTENT ---";
+    return preview;
+}
 bool saveRefreshToken(const QByteArray &token, const QString &target) {
     if (!allowedTarget(target) || !validSecret(token)) return false;
 #ifdef Q_OS_WIN
@@ -202,7 +262,7 @@ bool saveRefreshToken(const QByteArray &token, const QString &target) {
         const_cast<char *>(token.constData()));
     credential.CredentialBlobSize = DWORD(token.size());
     credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
-    credential.UserName = const_cast<LPWSTR>(L"Google Drive metadata-only OAuth");
+    credential.UserName = const_cast<LPWSTR>(L"Google Drive content read-only OAuth");
     return CredWriteW(&credential, 0) != 0;
 #else
     return false;
@@ -429,6 +489,7 @@ void Client::postToken(const QByteArray &form, bool refresh) {
             emit status("Google OAuth token exchange failed. Verify Desktop "
                         "OAuth client, consent and network access.");
             m_folderAfterRefresh.clear();
+            m_fileAfterRefresh.clear();
             if (!refresh) {
                 m_clientId = m_previousClientId;
                 m_previousClientId.clear();
@@ -457,6 +518,9 @@ void Client::postToken(const QByteArray &form, bool refresh) {
             const QString folder = m_folderAfterRefresh;
             m_folderAfterRefresh.clear();
             if (!folder.isEmpty()) requestFolder(folder);
+            const QString file = m_fileAfterRefresh;
+            m_fileAfterRefresh.clear();
+            if (!file.isEmpty()) requestTextFile(file);
         } else {
             verifyAccount();
         }
@@ -467,6 +531,7 @@ void Client::requestRefresh() {
     QByteArray token;
     if (!readRefreshToken(token)) {
         m_folderAfterRefresh.clear();
+        m_fileAfterRefresh.clear();
         emit status("Google Drive session expired. Connect the account again.");
         return;
     }
@@ -475,7 +540,9 @@ void Client::requestRefresh() {
     token.fill('\0');
     postToken(form, true);
 }
-void Client::getDrive(const QUrl &url, bool about, const QString &folderId) {
+void Client::getDrive(const QUrl &url, ResponseKind kind,
+                      const QString &id, const QString &name,
+                      const QString &mimeType) {
     if (m_request || m_accessToken.isEmpty()) return;
     QNetworkRequest request(url);
     request.setTransferTimeout(15000);
@@ -491,7 +558,7 @@ void Client::getDrive(const QUrl &url, bool about, const QString &folderId) {
             if (received > kMaximumResultBytes) reply->abort();
         });
     connect(reply, &QNetworkReply::finished, this,
-        [this, reply, about, folderId]() {
+        [this, reply, kind, id, name, mimeType]() {
         if (m_request != reply) { reply->deleteLater(); return; }
         m_request = nullptr;
         const int statusCode = reply->attribute(
@@ -506,17 +573,50 @@ void Client::getDrive(const QUrl &url, bool about, const QString &folderId) {
                             .arg(statusCode));
             return;
         }
-        if (about) {
+        if (kind == ResponseKind::Account) {
             const QJsonDocument json = QJsonDocument::fromJson(body);
             const QString account = json.object().value("user")
                 .toObject().value("emailAddress").toString();
             emit status(account.isEmpty()
                 ? "Google Drive connected. Account email could not be verified."
                 : "Google Drive connected as " + clean(account, 120) +
-                  ". Metadata-only, user-initiated reads.");
+                  ". User-initiated read-only access; no sync or uploads.");
             return;
         }
-        const auto preview = parseFolder(folderId, body);
+        if (kind == ResponseKind::FileMetadata) {
+            const auto json = QJsonDocument::fromJson(body);
+            const auto obj = json.isObject() ? json.object() : QJsonObject();
+            const QString type = obj.value("mimeType").toString();
+            const QString remoteId = obj.value("id").toString();
+            const QString size = obj.value("size").toString();
+            bool sizeValid = false;
+            const qint64 byteCount = size.toLongLong(&sizeValid);
+            if (remoteId != id || !supportedTextMime(type) ||
+                (sizeValid && byteCount > kMaximumTextBytes)) {
+                emit status("Selected Drive item is not a supported text/Docs file, "
+                            "or it exceeds 96 KiB.");
+                return;
+            }
+            const QUrl contentUrl = textContentUrl(id, type);
+            if (contentUrl.isEmpty()) {
+                emit status("Google Drive file content URL was rejected.");
+                return;
+            }
+            getDrive(contentUrl, ResponseKind::FileText, id,
+                     clean(obj.value("name").toString(), 150), type);
+            return;
+        }
+        if (kind == ResponseKind::FileText) {
+            const auto preview = parseTextContent(id, name, mimeType, body);
+            if (!preview.ok()) { emit status(preview.error); return; }
+            emit previewReady(preview.text);
+            emit status(QString("Read %1 UTF-8 characters from one Drive file%2. "
+                                "Review before inserting into chat.")
+                            .arg(preview.characters)
+                            .arg(preview.truncated ? " (excerpt shown)" : ""));
+            return;
+        }
+        const auto preview = parseFolder(id, body);
         if (!preview.ok()) {
             emit status(preview.error);
             return;
@@ -529,7 +629,7 @@ void Client::getDrive(const QUrl &url, bool about, const QString &folderId) {
 }
 void Client::verifyAccount() {
     getDrive(QUrl("https://www.googleapis.com/drive/v3/about?"
-                  "fields=user(emailAddress,displayName)"), true);
+                  "fields=user(emailAddress,displayName)"), ResponseKind::Account);
 }
 void Client::requestFolder(const QString &folderId) {
     const QUrl url = folderListUrl(folderId);
@@ -537,7 +637,31 @@ void Client::requestFolder(const QString &folderId) {
         emit status("Invalid Google Drive folder ID.");
         return;
     }
-    getDrive(url, false, folderId);
+    getDrive(url, ResponseKind::Folder, folderId);
+}
+void Client::requestTextFile(const QString &fileId) {
+    const QUrl url = fileMetadataUrl(fileId);
+    if (url.isEmpty()) { emit status("Invalid Google Drive file ID."); return; }
+    getDrive(url, ResponseKind::FileMetadata, fileId);
+}
+bool Client::readTextFile(const QString &fileId, const QString &clientId) {
+    if (!validDesktopClientId(clientId) || fileMetadataUrl(fileId).isEmpty()) {
+        emit status("Connect Google Drive and select a valid file ID.");
+        return false;
+    }
+    if (m_request || m_listener.isListening()) {
+        emit status("Finish the current Google Drive operation first.");
+        return false;
+    }
+    m_clientId = clientId;
+    if (m_accessToken.isEmpty() ||
+        QDateTime::currentSecsSinceEpoch() >= m_accessExpires) {
+        m_fileAfterRefresh = fileId;
+        requestRefresh();
+    } else {
+        requestTextFile(fileId);
+    }
+    return true;
 }
 bool Client::listFolder(const QString &folderId, const QString &clientId) {
     if (!validDesktopClientId(clientId) || folderListUrl(folderId).isEmpty()) {
@@ -577,6 +701,7 @@ void Client::disconnectLocal() {
     m_accessToken.clear();
     m_accessExpires = 0;
     m_folderAfterRefresh.clear();
+    m_fileAfterRefresh.clear();
     const bool cleared = deleteRefreshToken();
     emit status(cleared
         ? "Google Drive credential removed locally. Revoke access in your "
