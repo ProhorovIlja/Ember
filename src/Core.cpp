@@ -70,6 +70,74 @@ bool validManagedHealthResponse(const QByteArray &body,
            document.object().value(QStringLiteral("status")).toString() ==
                QStringLiteral("ok");
 }
+bool validNativeSpeechInventory(const QByteArray &body,
+                                const QByteArray &contentType,
+                                const QString &ttsAlias, const QString &asrAlias,
+                                const QString &selectedVoice) {
+    const bool needsTts = !ttsAlias.isEmpty();
+    const bool needsAsr = !asrAlias.isEmpty();
+    if ((!needsTts && !needsAsr) || body.isEmpty() ||
+        body.size() > 65536 ||
+        contentType.trimmed().toLower().split(';').first().trimmed() !=
+            QByteArrayLiteral("application/json"))
+        return false;
+    auto expectedSize = [](const QString &alias, const QString &prefix) {
+        if (alias == prefix + QStringLiteral("0.6b")) return QStringLiteral("0.6B");
+        if (alias == prefix + QStringLiteral("1.7b")) return QStringLiteral("1.7B");
+        return QString();
+    };
+    const QString ttsSize = needsTts
+        ? expectedSize(ttsAlias, QStringLiteral("qwen3-tts-")) : QString();
+    const QString asrSize = needsAsr
+        ? expectedSize(asrAlias, QStringLiteral("qwen3-asr-")) : QString();
+    if ((needsTts && (ttsSize.isEmpty() || selectedVoice.isEmpty() ||
+                      selectedVoice.size() > 80)) ||
+        (needsAsr && asrSize.isEmpty()))
+        return false;
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(body, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject())
+        return false;
+    const auto root = document.object();
+    const auto data = root.value(QStringLiteral("data")).toArray();
+    if (root.value(QStringLiteral("object")).toString() != QStringLiteral("list") ||
+        data.isEmpty() || data.size() > 8)
+        return false;
+    bool foundTts = false, foundAsr = false;
+    for (const auto &entry : data) {
+        if (!entry.isObject()) return false;
+        const QJsonObject model = entry.toObject();
+        if (model.value(QStringLiteral("id")).toString().isEmpty() ||
+            !model.value(QStringLiteral("speech")).isObject()) return false;
+        const QJsonObject info = model.value(QStringLiteral("speech")).toObject();
+        const QString task = info.value(QStringLiteral("task")).toString();
+        const QString architecture = info.value(QStringLiteral("architecture")).toString();
+        const QString size = info.value(QStringLiteral("size_label")).toString();
+        const QJsonArray languages = info.value(QStringLiteral("languages")).toArray();
+        bool english = false, russian = false, hasVoice = false;
+        for (const auto &lang : languages) {
+            if (lang.toString() == QStringLiteral("en")) english = true;
+            if (lang.toString() == QStringLiteral("ru")) russian = true;
+        }
+        for (const auto &item : info.value(QStringLiteral("voices")).toArray()) {
+            if (item.isObject() &&
+                item.toObject().value(QStringLiteral("name")).toString() == selectedVoice)
+                hasVoice = true;
+        }
+        if (task == QStringLiteral("synthesis")) {
+            if (foundTts || !needsTts || architecture != QStringLiteral("qwen3-tts") ||
+                size.compare(ttsSize, Qt::CaseInsensitive) != 0 ||
+                !english || !hasVoice) return false;
+            foundTts = true;
+        } else if (task == QStringLiteral("recognition")) {
+            if (foundAsr || !needsAsr || architecture != QStringLiteral("qwen3-asr") ||
+                size.compare(asrSize, Qt::CaseInsensitive) != 0 ||
+                !english || !russian) return false;
+            foundAsr = true;
+        }
+    }
+    return foundTts == needsTts && foundAsr == needsAsr;
+}
 QString nativeSpeechDeviceArg(int deviceIndex) {
     if (deviceIndex == 0) return QStringLiteral("auto");
     if (deviceIndex == 1) return QStringLiteral("gpu");
