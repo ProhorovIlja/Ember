@@ -578,6 +578,8 @@ def self_test():
     # llama-server, whisper-cli or any scheduled task.
     from offline_acceptance import self_test as acceptance_self_test
     acceptance_self_test()
+    from verify_speechcpp_archive import self_test as speech_archive_self_test
+    speech_archive_self_test()  # fake ZIP fixtures only; no downloads or model runs
     print("offline_bundle self-test passed (checksums, headers, default paths, no overwrites, unsafe paths, licenses)")
 
 
