@@ -52,7 +52,7 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
                 color: "#B2D6F1"
                 font.pixelSize: 12
-                text: "Apply changes to the selected local source file? This writes a private backup first. No shell commands, network requests or other files are modified."
+                text: "Apply this complete reviewed patch? One to three existing project source files may change, with separate private backups and per-file atomic writes. No shell/network commands. Multi-file changes are not power-failure atomic."
             }
             ScrollView {
                 Layout.fillWidth: true
@@ -1286,7 +1286,7 @@ ApplicationWindow {
                                             onClicked: ember.proposeLocalProjectFix(composer.text)
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
-                                            ToolTip.text: "Choose a local source project. The model can inspect and stage one exact patch, never write automatically; a full review and backup are mandatory."
+                                            ToolTip.text: "Choose a local project. The model can inspect code and stage up to three coordinated file edits. Nothing changes before you review and approve the entire patch."
                                         }
                                         PillButton {
                                             text: "Run tests"

@@ -131,6 +131,14 @@ full articles. Wikimedia connectivity is required; the LLM itself remains
 fully local. See `docs/LOCAL-TOOLS-ROADMAP.md`.
 
 
+**Reviewed multi-file coding:** The local project agent may stage up to three
+small, coordinated source replacements in different existing files. A combined
+source preview, verified snapshot of every original and separate approval are
+required. Private backups precede per-file QSaveFile commits; partial failures
+attempt rollback, but an abrupt power failure is not cross-file atomic.
+Tests remain independently approved. This is a bounded capability, not
+unrestricted autonomous programming.
+
 **Text-first milestone (November 2026):** The app starts on the **Chat**
 page. Full duplex live Voice is deferred, but its implementation is preserved
 for future work and does not need to run. **Start dictation** records offline

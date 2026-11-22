@@ -1636,8 +1636,11 @@ QString EmberBackend::stageLocalCodeEdit() {
         return {};
     }
     const QString preview = plan.displayPreview;
+    EmberLocalEdit::EditBatchPlan batch;
+    batch.displayPreview = preview;
+    batch.edits.append(std::move(plan));
     m_stagedCodeEdit =
-        std::make_unique<EmberLocalEdit::EditPlan>(std::move(plan));
+        std::make_unique<EmberLocalEdit::EditBatchPlan>(std::move(batch));
     setStatus("Proposed one-file edit ready. Review before explicitly applying.");
     return preview;
 }
@@ -1650,13 +1653,15 @@ bool EmberBackend::applyStagedLocalCodeEdit() {
     const QString privateBackups = QDir(
         QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
         .filePath("edit-backups");
-    const auto result = EmberLocalEdit::applyApprovedEdit(*plan, privateBackups);
+    const auto result = EmberLocalEdit::applyApprovedBatch(*plan, privateBackups);
     if (!result.ok()) {
         setStatus(result.error);
         return false;
     }
-    setStatus("One source file updated atomically. Original backup: " +
-              result.backupPath + ". Review the diff and run tests manually.");
+    setStatus(QString::number(plan->edits.size()) +
+              " source file(s) updated with per-file atomic writes. " +
+              "Private backups: " + result.backupPaths.join(", ") +
+              ". Run tests manually. Multi-file edits are not power-failure atomic.");
     return true;
 }
 void EmberBackend::discardStagedLocalCodeEdit() {
@@ -1988,8 +1993,9 @@ bool EmberBackend::beginLocalProjectAgent(const QString &goal,
             "up to six calls are allowed. In Propose fix mode up to "
             "six inspection calls and ONE final patch proposal are allowed. "
             "If the user enabled Propose fix, you may also call "
-            "propose_patch(path,old_text,new_text) ONCE for a precise "
-            "one-file change, only after reading the existing source. "
+            "propose_patch(path,old_text,new_text) once for one file, or "
+            "propose_patch_batch(edits) ONCE for up to three DIFFERENT "
+            "existing source files, after reading exact original text. "
             "This only STAGES the change and requires independent human "
             "diff review and approval before any source write. "
             "You have no shell, network, automatic write, Git or "
@@ -2004,8 +2010,8 @@ bool EmberBackend::beginLocalProjectAgent(const QString &goal,
     };
     setBusy(true);
     setStatus(mayProposeEdit
-        ? "Local model: investigating and preparing at most one reviewed "
-          "source edit (no automatic writes)..."
+        ? "Local model: investigating and staging a reviewed source "
+          "edit batch (no automatic writes)..."
         : "Local agent: investigating the approved folder read-only "
           "(maximum six calls)...");
     requestLocalAgentStep();
@@ -2086,14 +2092,22 @@ void EmberBackend::requestLocalAgentStep() {
             requestAgentWikipediaRead(decision);
             return;
         }
-        if (decision.tool == "propose_patch") {
+        if (decision.tool == "propose_patch" ||
+            decision.tool == "propose_patch_batch") {
             if (!m_agentMayProposeEdit || m_agentStagedEdit) {
                 endLocalAgent("Local agent has no remaining patch permission.");
                 return;
             }
-            auto plan = EmberLocalEdit::planWithinProject(
-                m_agentRoot, decision.path, decision.oldText,
-                decision.newText);
+            QVector<EmberLocalEdit::SourceReplacement> changes;
+            if (decision.tool == "propose_patch_batch") {
+                for (const auto &edit : decision.patches)
+                    changes.append({edit.path, edit.oldText, edit.newText});
+            } else {
+                changes.append({decision.path, decision.oldText,
+                                decision.newText});
+            }
+            auto plan = EmberLocalEdit::planWithinProjectBatch(
+                m_agentRoot, changes);
             if (!plan.ok()) {
                 // Send structured failure back to the same local model so it
                 // can correct its exact source snippet, within finite budget.
@@ -2107,13 +2121,13 @@ void EmberBackend::requestLocalAgentStep() {
                 return;
             }
             m_stagedCodeEdit =
-                std::make_unique<EmberLocalEdit::EditPlan>(std::move(plan));
+                std::make_unique<EmberLocalEdit::EditBatchPlan>(std::move(plan));
             m_agentStagedEdit = true;
-            m_agentTrace += QString("\nPatch staged (NOT APPLIED): %1\n")
-                .arg(decision.path);
+            m_agentTrace += QString("\nPatch staged (NOT APPLIED): %1 file(s)\n")
+                .arg(m_stagedCodeEdit->edits.size());
             m_agentMessages.append(EmberAgent::assistantToolMessage(decision));
             m_agentMessages.append(EmberAgent::toolResultMessage(
-                decision, "One exact source patch staged for manual review. "
+                decision, "Bounded source patch staged for manual review. "
                           "No file has been changed and no test was run. "
                           "Finish with an explanation of the proposed fix."));
             // Once a proposal is staged, require a FINAL answer. The model
@@ -2363,8 +2377,9 @@ void EmberBackend::endLocalAgent(const QString &error, const QString &result) {
                            "(unverified: no tests have run):\n") +
             result.left(5200) +
             QStringLiteral("\n--- End proposed edit ---"));
-        setStatus("One local source patch is staged. Review the full diff; "
-                  "only explicit approval writes a backed-up file.");
+        setStatus("A source patch batch is staged for " +
+                  QString::number(m_stagedCodeEdit->edits.size()) +
+                  " file(s); review every file before approval.");
         return;
     }
     // The original user question stays in the composer. Only a human

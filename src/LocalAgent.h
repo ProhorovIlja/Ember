@@ -3,9 +3,11 @@
 #include <QJsonObject>
 #include <QString>
 #include <QUrl>
+#include <QVector>
 
 namespace EmberAgent {
 enum class Scope { LocalProject, GitHubRepository, WikipediaResearch };
+struct SourcePatch { QString path, oldText, newText; };
 // A deliberately tiny on-demand READ-ONLY tool protocol. It is not a
 // general-purpose filesystem, browser, GitHub or command execution agent.
 struct Decision {
@@ -17,6 +19,7 @@ struct Decision {
     QString query;
     QString oldText;
     QString newText;
+    QVector<SourcePatch> patches;
     QString path;
     QString view;
     int startLine = 1;

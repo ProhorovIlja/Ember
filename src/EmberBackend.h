@@ -362,7 +362,7 @@ private:
     QByteArray m_publicGitHubBuffer;
     bool m_publicGitHubOversize = false;
     EmberDrive::Client m_driveClient;
-    std::unique_ptr<EmberLocalEdit::EditPlan> m_stagedCodeEdit;
+    std::unique_ptr<EmberLocalEdit::EditBatchPlan> m_stagedCodeEdit;
     QNetworkAccessManager m_wikipediaNetwork;
     QPointer<QNetworkReply> m_wikipediaReply;
     QByteArray m_wikipediaBuffer;

@@ -1203,6 +1203,62 @@ private slots:
         source.close();
         QVERIFY(!EmberLocalEdit::applyApprovedEdit(plan, backupDir).ok());
     }
+    void localAgentBatchPatchToolIsStrictAndRequiresPermission() {
+        using namespace EmberAgent;
+        const QJsonArray history{QJsonObject{{"role", "user"},
+                                             {"content", "Update two modules"}}};
+        auto active = modelRequest(history, 2, Scope::LocalProject, true);
+        const auto tools = active.value("tools").toArray();
+        QCOMPARE(tools.size(), 5);
+        QCOMPARE(tools.last().toObject().value("function").toObject()
+                     .value("name").toString(), QString("propose_patch_batch"));
+        QCOMPARE(modelRequest(history, 0, Scope::LocalProject, true)
+                     .value("tool_choice").toString(), QString("none"));
+        auto completion = [](const QJsonObject &args) {
+            return QJsonDocument(QJsonObject{{"choices", QJsonArray{
+                QJsonObject{{"message", QJsonObject{
+                    {"role", "assistant"}, {"tool_calls", QJsonArray{
+                        QJsonObject{{"id", "batch_1"}, {"type", "function"},
+                            {"function", QJsonObject{
+                                {"name", "propose_patch_batch"},
+                                {"arguments", QString::fromUtf8(
+                                    QJsonDocument(args).toJson(QJsonDocument::Compact))}
+                            }}}}
+                    }}
+                }}, {"finish_reason", "tool_calls"}}
+            }}}).toJson();
+        };
+        const QJsonArray validEdits{
+            QJsonObject{{"path", "src/main.cpp"}, {"old_text", "a=1"},
+                        {"new_text", "a=2"}},
+            QJsonObject{{"path", "tests/test.cpp"}, {"old_text", "a==1"},
+                        {"new_text", "a==2"}}
+        };
+        const QByteArray result = completion(QJsonObject{{"edits", validEdits}});
+        const auto parsed = parseModelResponse(result, Scope::LocalProject, true);
+        QVERIFY2(parsed.ok(), qPrintable(parsed.error));
+        QCOMPARE(parsed.tool, QString("propose_patch_batch"));
+        QCOMPARE(parsed.patches.size(), 2);
+        QCOMPARE(parsed.patches.at(1).path, QString("tests/test.cpp"));
+        QCOMPARE(assistantToolMessage(parsed).value("tool_calls")
+                     .toArray().size(), 1);
+        QVERIFY(!parseModelResponse(result, Scope::LocalProject, false).ok());
+        QVERIFY(!parseModelResponse(result, Scope::GitHubRepository, true).ok());
+        QVERIFY(!parseModelResponse(result, Scope::WikipediaResearch, true).ok());
+        QVERIFY(!parseModelResponse(completion(QJsonObject{{"edits",
+            QJsonArray{validEdits[0], validEdits[1],
+                       validEdits[0], validEdits[1]}}}),
+            Scope::LocalProject, true).ok());
+        QVERIFY(!parseModelResponse(completion(QJsonObject{{"edits",
+            QJsonArray{QJsonObject{{"path", "src/main.cpp"},
+                                   {"old_text", "x"}, {"new_text", "y"},
+                                   {"shell", "cmd.exe"}}}}}),
+            Scope::LocalProject, true).ok());
+        QVERIFY(!parseModelResponse(completion(QJsonObject{{"edits",
+            QJsonArray{QJsonObject{{"path", "src/main.cpp"},
+                                   {"old_text", "same"}, {"new_text", "same"}}}}}),
+            Scope::LocalProject, true).ok());
+    }
     void localAgentToolContractIsTypedAndStrictlyReadOnly() {
         using namespace EmberAgent;
         const QJsonArray history{

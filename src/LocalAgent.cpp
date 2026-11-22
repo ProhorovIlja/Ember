@@ -134,6 +134,24 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
                     {"new_text", QJsonObject{{"type", "string"},
                         {"description", "One replacement text snippet."}}}
                 }, QJsonArray{"path", "old_text", "new_text"}));
+            tools.append(functionDef("propose_patch_batch",
+                "Stage ONE bounded 1-3 file exact source patch proposal, with "
+                "distinct existing project files only. Requires a full combined "
+                "review and explicit approval; never writes source by itself. "
+                "Read original code before proposing, no shell commands.",
+                QJsonObject{{"edits", QJsonObject{
+                    {"type", "array"}, {"minItems", 1}, {"maxItems", 3},
+                    {"items", QJsonObject{
+                        {"type", "object"},
+                        {"properties", QJsonObject{
+                            {"path", QJsonObject{{"type", "string"}}},
+                            {"old_text", QJsonObject{{"type", "string"}}},
+                            {"new_text", QJsonObject{{"type", "string"}}}
+                        }},
+                        {"required", QJsonArray{"path", "old_text", "new_text"}},
+                        {"additionalProperties", false}
+                    }}
+                }}}, QJsonArray{"edits"}));
             request.insert("tools", tools);
         }
         }
@@ -192,7 +210,8 @@ Decision parseModelResponse(const QByteArray &json,
                  ? (tool != "wikipedia_search")
                  : (tool != "project_map" && tool != "search_text" &&
                     tool != "read_source" &&
-                    !(mayProposeEdit && tool == "propose_patch")))) {
+                    !(mayProposeEdit &&
+                      (tool == "propose_patch" || tool == "propose_patch_batch"))))) {
             answer.error = "Denied an unknown, privileged or invalid model tool call.";
             return answer;
         }
@@ -209,7 +228,40 @@ Decision parseModelResponse(const QByteArray &json,
             return answer;
         }
         const QJsonObject args = parsed.object();
-        if (tool == "propose_patch") {
+        if (tool == "propose_patch_batch") {
+            const QJsonArray edits = args.value("edits").toArray();
+            if (args.size() != 1 || !args.value("edits").isArray() ||
+                edits.isEmpty() || edits.size() > 3) {
+                answer.error = "Batch proposal needs one to three source edits.";
+                return answer;
+            }
+            for (const QJsonValue &value : edits) {
+                if (!value.isObject()) {
+                    answer.error = "Every batch edit must be an object.";
+                    return answer;
+                }
+                const QJsonObject patch = value.toObject();
+                if (patch.size() != 3 || !patch.value("path").isString() ||
+                    !patch.value("old_text").isString() ||
+                    !patch.value("new_text").isString()) {
+                    answer.error = "Batch edit needs exactly path, old_text, new_text.";
+                    return answer;
+                }
+                SourcePatch p{patch.value("path").toString(),
+                              patch.value("old_text").toString(),
+                              patch.value("new_text").toString()};
+                if (p.path.isEmpty() || p.path.size() > 240 ||
+                    p.oldText.isEmpty() || p.oldText.size() > 2000 ||
+                    p.newText.size() > 2600 || p.oldText == p.newText ||
+                    p.path.contains(QChar::Null) ||
+                    p.oldText.contains(QChar::Null) ||
+                    p.newText.contains(QChar::Null)) {
+                    answer.error = "Unsafe or oversized batch edit.";
+                    return answer;
+                }
+                answer.patches.append(std::move(p));
+            }
+        } else if (tool == "propose_patch") {
             if (args.size() != 3 || !args.value("path").isString() ||
                 !args.value("old_text").isString() ||
                 !args.value("new_text").isString()) {
@@ -351,6 +403,11 @@ Decision parseModelResponse(const QByteArray &json,
 }
 QJsonObject assistantToolMessage(const Decision &decision) {
     if (decision.kind != Decision::Kind::Call) return {};
+    QJsonArray batchArgs;
+    for (const auto &edit : decision.patches)
+        batchArgs.append(QJsonObject{{"path", edit.path},
+                                     {"old_text", edit.oldText},
+                                     {"new_text", edit.newText}});
     const QJsonObject args = decision.tool == "project_map"
         ? QJsonObject{} :
         decision.tool == "search_text"
@@ -367,6 +424,8 @@ QJsonObject assistantToolMessage(const Decision &decision) {
                 : decision.tool == "github_detail"
                     ? QJsonObject{{"kind", decision.view},
                                   {"number", double(decision.number)}}
+                    : decision.tool == "propose_patch_batch"
+                        ? QJsonObject{{"edits", batchArgs}}
                     : decision.tool == "propose_patch"
                         ? QJsonObject{{"path", decision.path},
                                       {"old_text", decision.oldText},

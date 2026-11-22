@@ -126,6 +126,26 @@ limits must be measured on target hardware. The existing native Qt front
 end remains independent of any cloud API.
 
 
+## One-shot multi-file source patch review (22 November 2026)
+
+The approved local project agent now supports one bounded
+`propose_patch_batch(edits)` tool call for up to **three different existing
+UTF-8 source files**. The model must inspect source first. Parsing rejects
+unknown JSON properties, invalid strings, unsupported scope, unsupported
+privileged tool names, more than three edits, and arguments exceeding 4096
+bytes. The existing 512 KiB file limits, forbidden private-key types,
+canonical root, symlink/junction/traversal rejection and unique old-text
+matching still apply independently to every file. One aggregate preview
+appears before any write. The user approves or rejects the *whole* batch.
+On approval, all original SHA-256 snapshots are revalidated before any
+source changes; separate private backups are written first, and each file
+is atomically replaced with QSaveFile and post-write SHA-256 checked. A
+failure attempts a conservative reverse-order rollback, never overwriting
+concurrent human changes. Cross-file power loss is not OS-atomic; retain the
+private backups for manual recovery. This does not start tests, access the
+Internet, or permit arbitrary local commands. Existing single-file/manual
+edits remain supported, and tests remain separately user-authorized.
+
 ## Expanded on-demand coding research budget (22 November 2026)
 
 A single explicitly user-approved local source investigation can now execute
