@@ -541,6 +541,13 @@ QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source) {
     return pcmToWav(pcm, 16000);
 }
 
+int chatVisibleCharacterLimit(int outputTokens, bool voice) {
+    // Text outputs up to 8192 tokens may legitimately exceed 16K UTF-16
+    // characters (especially code). Keep voice playback comparatively small.
+    if (voice) return 16384;
+    return std::clamp(std::clamp(outputTokens, 64, 8192) * 8, 16384, 65536);
+}
+
 int chatOutputBudget(int requestedTokens, int contextTokens, bool voice) {
     if (voice) return std::clamp(requestedTokens, 64, 512);
     const int validContext = contextTokens == 4096 || contextTokens == 8192 ||
