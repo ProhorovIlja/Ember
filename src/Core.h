@@ -165,6 +165,9 @@ QString offlineSpeechModelFile(const QString &applicationRoot, const QString &al
 QString localSpeechGgufFile(const QString &absoluteFilePath);
 // Upstream speech.cpp performs a once-a-day Internet version check by
 // default; disable it for EVERY managed launch, including offline weights.
+// Remove inherited cloud/API credentials from untrusted local model and test
+// executables while preserving PATH, SystemRoot, GPU and Qt runtime settings.
+QProcessEnvironment sanitizedChildProcessEnvironment(QProcessEnvironment inherited);
 QProcessEnvironment speechProcessEnvironment(QProcessEnvironment inherited);
 // Speech.cpp device choices are explicit; CPU can free RTX 4070 VRAM for LLM.
 QString nativeSpeechDeviceArg(int deviceIndex);
