@@ -146,6 +146,18 @@ private slots:
         input.whisperExe = root.filePath("missing.exe");
         QVERIFY(!inspect(input).dictationFilesReady);
     }
+    void holdToDraftRequiresRealRecordingAndNeverCountsAsSendApproval() {
+        using EmberCore::holdDictationReleasedToDraft;
+        QVERIFY(!holdDictationReleasedToDraft(-1, true));
+        QVERIFY(!holdDictationReleasedToDraft(0, true));
+        QVERIFY(!holdDictationReleasedToDraft(449, true));
+        QVERIFY(holdDictationReleasedToDraft(450, true));
+        QVERIFY(holdDictationReleasedToDraft(3000, true));
+        QVERIFY(holdDictationReleasedToDraft(24LL * 60 * 60 * 1000, true));
+        QVERIFY(!holdDictationReleasedToDraft(12000, false));
+        // Gesture completion is draft-only; explicit Send remains separate.
+        QVERIFY(!EmberCore::maySendCompletedDictation(false, false, true));
+    }
     void textFirstDictationNeverImplicitlySends() {
         using EmberCore::maySendCompletedDictation;
         QVERIFY(!maySendCompletedDictation(false, false, true));

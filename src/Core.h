@@ -50,6 +50,9 @@ bool allowedLocalEndpoint(const QString &url);
 // recording was intact, and the local model is available.
 bool maySendCompletedDictation(bool userSelectedSend, bool captureInterrupted,
                               bool brainReady);
+// The foreground QML mic button supports both tap-to-record and hold/release
+// to transcribe a draft. Only a genuine active capture may be finished.
+bool holdDictationReleasedToDraft(qint64 heldMilliseconds, bool captureActive);
 bool allowedLocalSpeechEndpoint(const QString &url);
 bool allowedLocalAsrEndpoint(const QString &url);
 QString nativeAsrModel(int recognitionEngine);

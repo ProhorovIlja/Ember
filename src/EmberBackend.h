@@ -201,6 +201,7 @@ public:
     Q_INVOKABLE QString formatReply(const QString &text) const;
     Q_INVOKABLE void startRecording();
     Q_INVOKABLE void startDictation();
+    Q_INVOKABLE bool shouldTranscribeHeldDictation(qint64 elapsedMs) const;
     Q_INVOKABLE void startDictationForSend();
     Q_INVOKABLE void setAutoEndOnSilence(bool enabled);
     Q_INVOKABLE void stopDictation();

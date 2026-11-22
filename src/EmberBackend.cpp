@@ -541,6 +541,12 @@ QString EmberBackend::pathFor(const QString &key) const {
 }
 void EmberBackend::choosePath(const QString &key) {
     if (defaultPath(key).isEmpty()) return;
+    // Do not change the executable or weight files between chunks of a
+    // currently recording/transcribing user's single dictation turn.
+    if (m_busy || m_listening || m_transcribingDictation) {
+        setStatus("Finish the current recording or local model task before changing paths.");
+        return;
+    }
     QString chosen;
     if (key == "ttsDir") {
         chosen = QFileDialog::getExistingDirectory(nullptr, "Select Kokoro model folder",
@@ -576,6 +582,13 @@ void EmberBackend::storeConfig() {
 }
 void EmberBackend::setRecognitionLanguage(int language) {
     if (language < 0 || language > 2 || language == m_recognitionLanguage) return;
+    // A user's mid-recording language switch must not make the same 25s
+    // microphone capture produce alternating RU/EN transcription segments.
+    if (m_busy || m_listening || m_transcribingDictation ||
+        m_cliAsrActive || m_nativeAsrReply) {
+        setStatus("Finish the current local recording or transcription before changing its language.");
+        return;
+    }
     m_recognitionLanguage = language;
     m_settings.setValue("asr/language", language);
     m_settings.sync();
@@ -2949,6 +2962,9 @@ void EmberBackend::startRecording() { startCapture(false); }
 void EmberBackend::startDictation() {
     m_dictationAutoSend = false;
     startCapture(true);
+}
+bool EmberBackend::shouldTranscribeHeldDictation(qint64 elapsedMs) const {
+    return EmberCore::holdDictationReleasedToDraft(elapsedMs, dictationActive());
 }
 void EmberBackend::startDictationForSend() {
     // Compatibility entry point: recording no longer commits to a send

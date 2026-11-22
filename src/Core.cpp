@@ -629,6 +629,12 @@ bool maySendCompletedDictation(bool userSelectedSend, bool captureInterrupted,
                               bool brainReady) {
     return userSelectedSend && !captureInterrupted && brainReady;
 }
+bool holdDictationReleasedToDraft(qint64 heldMilliseconds, bool captureActive) {
+    // Short taps leave the microphone running until To draft / Send / Cancel.
+    // Held input transcribes into the editable composer on release, never sends.
+    // The hold length does not limit the length of a recording.
+    return captureActive && heldMilliseconds >= 450;
+}
 bool allowedLocalSpeechEndpoint(const QString &raw) {
     const QUrl url(raw);
     return url.isValid() && url.scheme() == "http" &&

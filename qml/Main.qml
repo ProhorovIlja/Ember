@@ -24,6 +24,10 @@ ApplicationWindow {
     property string localEditPreview: ""
     property string offlineSetupReport: ""
     property bool preserveOlderScroll: false
+    // Purely foreground button-gesture state: no recording is triggered by
+    // a clock, app startup, a scheduled task or a background watcher.
+    property bool dictationHoldArmed: false
+    property double dictationPressStartedAt: 0
     Dialog {
         id: offlineSetupDialog
         parent: Overlay.overlay
@@ -1430,15 +1434,45 @@ ApplicationWindow {
                                         }
                                         Item { Layout.fillWidth: true }
                                         PillButton {
-                                            text: "Start dictation"
-                                            implicitWidth: 131
+                                            id: dictationGesture
+                                            text: window.dictationHoldArmed ? "Release to draft" : "Tap / hold to dictate"
+                                            implicitWidth: 177
                                             implicitHeight: 38
-                                            visible: !ember.dictationActive && !ember.dictationTranscribing
-                                            enabled: !ember.busy && !ember.listening
-                                            onClicked: ember.startDictation()
+                                            // Keep the button alive and enabled for the
+                                            // matching release, even after C++ enters
+                                            // its recording state and updates bindings.
+                                            visible: (!ember.dictationActive &&
+                                                      !ember.dictationTranscribing) ||
+                                                     window.dictationHoldArmed
+                                            enabled: (!ember.busy && !ember.listening) ||
+                                                     window.dictationHoldArmed
+                                            onPressed: {
+                                                if (ember.busy || ember.listening ||
+                                                    ember.dictationTranscribing) return
+                                                window.dictationHoldArmed = true
+                                                window.dictationPressStartedAt = Date.now()
+                                                ember.startDictation()
+                                                if (!ember.dictationActive)
+                                                    window.dictationHoldArmed = false
+                                            }
+                                            onReleased: {
+                                                if (!window.dictationHoldArmed) return
+                                                const elapsed = Date.now() -
+                                                    window.dictationPressStartedAt
+                                                const toDraft =
+                                                    ember.shouldTranscribeHeldDictation(elapsed)
+                                                window.dictationHoldArmed = false
+                                                if (toDraft) ember.finishDictation(false)
+                                            }
+                                            onCanceled: {
+                                                if (window.dictationHoldArmed &&
+                                                    ember.dictationActive)
+                                                    ember.cancelDictation()
+                                                window.dictationHoldArmed = false
+                                            }
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
-                                            ToolTip.text: "Record RU/EN locally without starting the text model. Speak as long as needed, then Cancel, To draft or Transcribe & send."
+                                            ToolTip.text: "Tap to begin RU/EN recording and use To draft / Transcribe & send when ready. Hold for at least 0.45s and release to transcribe into an editable draft automatically. Drag outside to cancel. Never sends merely on release."
                                         }
                                         Text {
                                             visible: ember.dictationActive || ember.dictationTranscribing
@@ -1644,6 +1678,8 @@ ApplicationWindow {
                                                 text: "Browse"
                                                 implicitWidth: 93
                                                 implicitHeight: 36
+                                                enabled: !ember.busy && !ember.listening &&
+                                                         !ember.dictationTranscribing
                                                 onClicked: ember.choosePath(modelData.key)
                                             }
                                         }
@@ -1673,6 +1709,8 @@ ApplicationWindow {
                                                 implicitHeight: 38
                                                 model: ["Auto-detect · RU / EN", "English", "Russian"]
                                                 currentIndex: ember.recognitionLanguage
+                                                enabled: !ember.listening && !ember.busy &&
+                                                         !ember.dictationTranscribing
                                                 onActivated: ember.recognitionLanguage = currentIndex
                                                 font.pixelSize: 12
                                                 contentItem: Text {
