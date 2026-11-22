@@ -5,6 +5,7 @@
 #include "LocalTextImport.h"
 #include "LocalRepoSearch.h"
 #include "PublicGitHub.h"
+#include "GitHubCredential.h"
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
@@ -721,6 +722,29 @@ private slots:
                                                    {}, QByteArray(256*1024+1, 'x'));
         QVERIFY(!tooLarge.ok());
         QVERIFY(!parsePublicResponse("owner/repo", View::Overview, {}, "not json").ok());
+    }
+    void connectedGitHubCredentialNeverUsesPlaintextSettings() {
+        using namespace EmberCredential;
+        QVERIFY(!validToken(QByteArray("short")));
+        QVERIFY(!validToken(QByteArray("abc\r\nAuthorization: evil")));
+        QVERIFY(validToken(QByteArray("github_pat_safe_test_123456789012345")));
+        QVERIFY(!saveGitHubToken("bad", "Ember.Local.GitHub.ReadOnly"));
+        QVERIFY(!saveGitHubToken("github_pat_safe_test_123456789012345",
+                                "OtherApplication"));
+#ifdef Q_OS_WIN
+        const QString target = QString("Ember.Local.GitHub.Test.%1")
+            .arg(QCoreApplication::applicationPid());
+        QVERIFY(deleteGitHubToken(target));
+        const QByteArray secret("github_pat_mock_987654321abcdef987654321");
+        QVERIFY2(saveGitHubToken(secret, target),
+                 "Windows Credential Manager could not save a test credential");
+        QByteArray retrieved;
+        QVERIFY(readGitHubToken(retrieved, target));
+        QCOMPARE(retrieved, secret);
+        retrieved.fill('\0');
+        QVERIFY(deleteGitHubToken(target));
+        QVERIFY(!readGitHubToken(retrieved, target));
+#endif
     }
     void historicalReferencesNeverBecomeSystemCommands() {
         const QString previous =

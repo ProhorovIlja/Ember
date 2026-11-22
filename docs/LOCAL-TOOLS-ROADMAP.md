@@ -48,6 +48,23 @@ Private repositories, authentication, issue details, diff/commit writing,
 Drive and general web search are **not implemented**. GitHub access itself
 requires an Internet connection and may be unavailable in some regions.
 
+## Implemented fourth step: optional private GitHub read with Windows credentials
+
+Within **GitHub · Read**, choose **Connect / replace GitHub read token** and
+enter a GitHub fine-grained personal access token configured with the minimum
+repository **read** permissions required for your selected private resources:
+Contents (read-only), Issues (read-only), Pull requests (read-only). Ember
+stores the token in Windows Credential Manager as a user-scoped generic
+credential, never in INI, SQLite or a Git repo. Users can disconnect it from
+the same dialog. Choose a **Connected** read operation to attach the token
+to an HTTPS GET sent exclusively to validated `api.github.com` endpoints.
+Selecting **Public** never uses the token. The app has no write API calls,
+does not automatically access a repo, and never shares the token with the
+local model. Read results still require review before entering the draft.
+This is manual PAT integration, NOT a GitHub OAuth login, nor Google Drive
+access. No browser login, VPN or external packaged account service needed,
+but GitHub connectivity itself is required.
+
 ## Next integrations — NOT YET IMPLEMENTED
 
 1. **Local codebase retrieval/indexing:** expand the implemented one-shot
@@ -58,11 +75,10 @@ requires an Internet connection and may be unavailable in some regions.
    HTTP client, content-length / MIME / timeout limits, direct URL citations,
    injected page text treated as untrusted data; network off means clear
    offline error, not a fabricated search result.
-3. **Authenticated GitHub:** extend public read-only access with a user
-   connected fine-grained token with narrow repository permissions, stored
-   via Windows Credential Manager/DPAPI rather than plaintext settings.
-   Read private issues/PRs/files only after account consent. Editing
-   files, commits or PRs requires a visible diff and explicit confirmation.
+3. **Authenticated GitHub write operations:** private read-only access
+   is now available with a user-connected fine-grained PAT protected by
+   Windows Credential Manager. Separate write permissions and visible
+   diff/approval for future file changes, commits and PRs are not implemented.
    Do not let a web page or model prompt invent permissions.
 4. **Google Drive:** registered Desktop OAuth application, minimum
    necessary Drive scopes, system-browser consent (the authorization step

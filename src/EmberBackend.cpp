@@ -2,6 +2,7 @@
 #include "LocalTextImport.h"
 #include "LocalRepoSearch.h"
 #include "PublicGitHub.h"
+#include "GitHubCredential.h"
 #include <QInputDialog>
 #include <QLineEdit>
 
@@ -1183,17 +1184,49 @@ void EmberBackend::inspectPublicGitHub() {
         return;
     }
     bool accepted = false;
-    const QString repository = QInputDialog::getText(
-        nullptr, "Public GitHub repository", "Owner/repository (public):",
-        QLineEdit::Normal, "ProhorovIlja/Ember", &accepted).trimmed();
-    if (!accepted) return;
-    const QStringList choices{"Overview", "Open issues", "Open pull requests", "Source file"};
+    const QStringList choices{
+        "Public: Overview", "Public: Open issues",
+        "Public: Open pull requests", "Public: Source file",
+        "Connected: Overview", "Connected: Open issues",
+        "Connected: Open pull requests", "Connected: Source file",
+        "Connect / replace GitHub read token", "Disconnect GitHub read token"
+    };
     const QString choice = QInputDialog::getItem(
-        nullptr, "Public GitHub read-only", "Inspect:", choices, 0, false, &accepted);
+        nullptr, "GitHub · Explicit read-only access", "Choose operation:",
+        choices, 0, false, &accepted);
     if (!accepted) return;
     const int index = choices.indexOf(choice);
     if (index < 0) return;
-    const auto view = static_cast<EmberGitHub::View>(index);
+    if (index == 8) {
+        QString secret = QInputDialog::getText(
+            nullptr, "Connect GitHub personal access token",
+            "Enter a fine-grained GitHub token with ONLY read permissions "
+            "(Contents / Issues / Pull requests). Saved to Windows Credential Manager:",
+            QLineEdit::Password, {}, &accepted);
+        if (!accepted) { secret.fill(QChar(0)); return; }
+        QByteArray token = secret.toLatin1();
+        secret.fill(QChar(0));
+        const bool stored = EmberCredential::saveGitHubToken(token);
+        token.fill('\0');
+        setStatus(stored
+            ? "GitHub credential stored in Windows Credential Manager. "
+              "Use Connected to read private repositories. No network request was made."
+            : "GitHub token invalid or Windows Credential Manager unavailable. "
+              "Nothing was stored.");
+        return;
+    }
+    if (index == 9) {
+        const bool removed = EmberCredential::deleteGitHubToken();
+        setStatus(removed ? "Connected GitHub credential cleared from Windows."
+                          : "Could not clear GitHub credential from Windows.");
+        return;
+    }
+    const bool authenticated = index >= 4;
+    const QString repository = QInputDialog::getText(
+        nullptr, "GitHub repository", "Owner/repository:",
+        QLineEdit::Normal, "ProhorovIlja/Ember", &accepted).trimmed();
+    if (!accepted) return;
+    const auto view = static_cast<EmberGitHub::View>(index % 4);
     QString filePath;
     if (view == EmberGitHub::View::File) {
         filePath = QInputDialog::getText(
@@ -1207,6 +1240,15 @@ void EmberBackend::inspectPublicGitHub() {
         return;
     }
     QNetworkRequest request(endpoint);
+    if (authenticated) {
+        QByteArray token;
+        if (!EmberCredential::readGitHubToken(token)) {
+            setStatus("No connected GitHub read token. Select Connect first.");
+            return;
+        }
+        request.setRawHeader("Authorization", QByteArray("Bearer ") + token);
+        token.fill('\0');
+    }
     request.setTransferTimeout(12000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
@@ -1217,7 +1259,9 @@ void EmberBackend::inspectPublicGitHub() {
     m_publicGitHubOversize = false;
     QNetworkReply *reply = m_publicGitHubNetwork.get(request);
     m_publicGitHubReply = reply;
-    setStatus("Reading explicitly selected public GitHub metadata (no credentials)...");
+    setStatus(authenticated
+        ? "Reading explicitly selected GitHub repository using Windows credential..."
+        : "Reading explicitly selected public GitHub metadata (no credentials)...");
     connect(reply, &QIODevice::readyRead, this, [this, reply]() {
         if (m_publicGitHubReply != reply) return;
         constexpr qsizetype limit = 256 * 1024;
@@ -1260,7 +1304,7 @@ void EmberBackend::inspectPublicGitHub() {
         // inserted into composer ONLY after the user confirms. Never
         // automatically send an external page's contents to the local LLM.
         emit publicGitHubExcerptReady(preview.text);
-        setStatus("Public GitHub preview ready. Review before inserting into chat.");
+        setStatus("GitHub read-only preview ready. Review before inserting into chat.");
     });
 }
 QString EmberBackend::searchLocalCodeFolder(const QString &existingDraft) {

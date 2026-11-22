@@ -112,3 +112,12 @@ This is an explicit one-shot network read from `api.github.com`, with no
 token, redirects, mutation or background requests. Review the untrusted
 preview before inserting it into the offline LLM's editable prompt. Private
 GitHub account access and Google Drive remain future gated integrations.
+
+
+For private GitHub repositories, **GitHub · Read** also supports a manually
+connected fine-grained GitHub PAT with read-only permissions. The token is
+stored in Windows Credential Manager, never in portable chat/settings or
+the repository, and is sent only on an explicitly selected **Connected**
+GitHub read to the official HTTPS API. **Public** reads use no credentials.
+The application has no GitHub write actions or automatic scans. This is not
+an OAuth account sign-in; Google Drive authentication is not implemented.
