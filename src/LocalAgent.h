@@ -15,6 +15,8 @@ struct Decision {
     QString tool;
     QString callId;
     QString query;
+    QString oldText;
+    QString newText;
     QString path;
     QString view;
     int startLine = 1;
@@ -23,9 +25,11 @@ struct Decision {
     bool ok() const { return kind != Kind::Error; }
 };
 QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
-                         Scope scope = Scope::LocalProject);
+                         Scope scope = Scope::LocalProject,
+                         bool mayProposeEdit = false);
 Decision parseModelResponse(const QByteArray &json,
-                            Scope scope = Scope::LocalProject);
+                            Scope scope = Scope::LocalProject,
+                            bool mayProposeEdit = false);
 QJsonObject assistantToolMessage(const Decision &decision);
 QJsonObject toolResultMessage(const Decision &decision, const QString &result);
 // Does NOT read outside the user-selected root. All file traversal uses

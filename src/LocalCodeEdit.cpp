@@ -182,6 +182,57 @@ EditPlan planExactReplace(const QString &selectedPath,
              QString::fromUtf8(contextAfter));
     return result;
 }
+EditPlan planWithinProject(const QString &selectedRoot,
+                           const QString &relativePath,
+                           const QString &exactOldText,
+                           const QString &newText) {
+    const QFileInfo rootInfo(selectedRoot);
+    if (!rootInfo.exists() || !rootInfo.isDir() ||
+        rootInfo.isSymLink() || rootInfo.isJunction())
+        return {{}, {}, "Project root must be an actual directory."};
+    const QString canonicalRoot = rootInfo.canonicalFilePath();
+    if (canonicalRoot.isEmpty() || relativePath.isEmpty() ||
+        relativePath.size() > 240 || relativePath.startsWith('/') ||
+        relativePath.endsWith('/') || relativePath.contains('\\') ||
+        relativePath.contains(':') || relativePath.contains("//") ||
+        relativePath.contains('\n') || relativePath.contains('\r') ||
+        relativePath.contains(QChar::Null))
+        return {{}, {}, "Invalid repository-relative source path."};
+    static const QSet<QString> skipDirs{
+        ".git", ".hg", ".svn", ".idea", ".vs", ".vscode",
+        "venv", ".venv", "node_modules", "__pycache__", "cache",
+        "build", "dist", "bin", "obj", "target", "vendor"
+    };
+    const QStringList components = relativePath.split('/');
+    QDir parent(canonicalRoot);
+    for (int index = 0; index < components.size(); ++index) {
+        const QString component = components.at(index);
+        if (component.isEmpty() || component == "." || component == ".." ||
+            component.startsWith('.') ||
+            (index + 1 < components.size() &&
+             skipDirs.contains(component.toLower())))
+            return {{}, {}, "Hidden, dependency or traversal source path denied."};
+        const QFileInfo segment(parent.filePath(component));
+        if (!segment.exists() || segment.isSymLink() || segment.isJunction() ||
+            (index + 1 < components.size() && !segment.isDir()))
+            return {{}, {}, "Missing or linked project file component."};
+        if (index + 1 < components.size()) parent.setPath(segment.absoluteFilePath());
+    }
+    const QFileInfo target(parent.filePath(components.last()));
+    if (!target.isFile() || !safeFile(target))
+        return {{}, {}, "Target is not an approved editable text file."};
+    const QString actual = QDir::fromNativeSeparators(target.canonicalFilePath());
+    const QString canonical = QDir::fromNativeSeparators(canonicalRoot);
+#ifdef Q_OS_WIN
+    const Qt::CaseSensitivity pathCase = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity pathCase = Qt::CaseSensitive;
+#endif
+    if (!actual.startsWith(canonical.endsWith('/') ? canonical : canonical + '/',
+                           pathCase))
+        return {{}, {}, "Proposed file is outside the approved project."};
+    return planExactReplace(actual, exactOldText, newText);
+}
 EditResult applyApprovedEdit(const EditPlan &plan,
                              const QString &backupDirectory) {
     EditResult result;

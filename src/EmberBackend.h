@@ -160,6 +160,7 @@ public:
     Q_INVOKABLE QString chooseLocalTextFile(const QString &existingDraft);
     Q_INVOKABLE QString searchLocalCodeFolder(const QString &existingDraft);
     Q_INVOKABLE bool researchLocalProject(const QString &goal);
+    Q_INVOKABLE bool proposeLocalProjectFix(const QString &goal);
     Q_INVOKABLE bool researchGitHubRepository(const QString &goal);
     Q_INVOKABLE QString stageLocalCodeEdit();
     Q_INVOKABLE bool applyStagedLocalCodeEdit();
@@ -227,6 +228,7 @@ signals:
     void wikipediaExcerptReady(const QString &text);
     void driveExcerptReady(const QString &text);
     void localAgentResultReady(const QString &text);
+    void localAgentEditReady(const QString &preview);
 private:
     void setStatus(const QString &text);
     void setBusy(bool value);
@@ -241,6 +243,7 @@ private:
     void transcribeNextChunk();
     void completeTranscription();
     void failTranscription(const QString &reason);
+    bool beginLocalProjectAgent(const QString &goal, bool mayProposeEdit);
     void requestLocalAgentStep();
     void requestAgentGitHubRead(const EmberAgent::Decision &decision);
     void endLocalAgent(const QString &error = {}, const QString &result = {});
@@ -360,6 +363,8 @@ private:
     EmberAgent::Scope m_agentScope = EmberAgent::Scope::LocalProject;
     QString m_agentRoot, m_agentRepository, m_agentGoal, m_agentTrace;
     bool m_agentAuthenticatedGitHub = false;
+    bool m_agentMayProposeEdit = false;
+    bool m_agentStagedEdit = false;
     int m_agentCalls = 0;
     QPointer<QNetworkReply> m_speechReply;
     QPointer<QNetworkReply> m_nativeAsrReply;

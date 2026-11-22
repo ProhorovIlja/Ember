@@ -141,6 +141,10 @@ ApplicationWindow {
             window.externalReferencePreview = excerpt
             externalReferenceDialog.open()
         }
+        function onLocalAgentEditReady(preview) {
+            window.localEditPreview = preview
+            localCodeEditDialog.open()
+        }
     }
 
     Dialog {
@@ -1264,6 +1268,19 @@ ApplicationWindow {
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
                                             ToolTip.text: "Select one local project root. The local model may map, search and inspect bounded source excerpts up to three times. No writes, shell, Git or Internet."
+                                        }
+                                        PillButton {
+                                            text: "Propose fix"
+                                            implicitWidth: 120
+                                            implicitHeight: 31
+                                            enabled: ember.brainReady && !ember.busy &&
+                                                     !ember.listening &&
+                                                     composer.text.trim().length > 0 &&
+                                                     composer.text.length <= 2048
+                                            onClicked: ember.proposeLocalProjectFix(composer.text)
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Choose a local source project. The model can inspect and stage one exact patch, never write automatically; a full review and backup are mandatory."
                                         }
                                         PillButton {
                                             text: "GitHub agent"

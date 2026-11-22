@@ -32,6 +32,13 @@ struct EditResult {
 EditPlan planExactReplace(const QString &selectedPath,
                           const QString &exactOldText,
                           const QString &newText);
+// Model-submitted path MUST resolve strictly inside one user-selected
+// canonical project root. Every component is checked (no links/traversal).
+// This only stages an immutable proposal; it does not write to the source.
+EditPlan planWithinProject(const QString &selectedRoot,
+                           const QString &relativePath,
+                           const QString &exactOldText,
+                           const QString &newText);
 EditResult applyApprovedEdit(const EditPlan &plan,
                              const QString &backupDirectory);
 }

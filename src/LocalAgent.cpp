@@ -33,13 +33,15 @@ QJsonObject functionDef(const QString &name, const QString &description,
     };
 }
 }
-QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining, Scope scope) {
+QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
+                         Scope scope, bool mayProposeEdit) {
     QJsonObject request{
         {"model", "ember"},
         {"messages", messages},
         {"stream", false},
         {"temperature", 0.25},
-        {"max_tokens", callsRemaining > 0 ? 900 : 1500},
+        {"max_tokens", callsRemaining > 0 && mayProposeEdit ? 2400 :
+                            (callsRemaining > 0 ? 900 : 1500)},
         {"parallel_tool_calls", false}
     };
     if (callsRemaining > 0) {
@@ -96,6 +98,25 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining, Scope s
                         {"minimum", 1}, {"maximum", 100000}}}
                 }, QJsonArray{"path"})
         });
+        if (mayProposeEdit) {
+            QJsonArray tools = request.value("tools").toArray();
+            tools.append(functionDef("propose_patch",
+                "Stage ONE exact old/new UTF-8 snippet replacement in ONE "
+                "existing source file beneath the selected project root. "
+                "NO write occurs: mandatory complete diff review and "
+                "separate user approval before any actual file change. "
+                "Use after reading the precise existing code. "
+                "Submit the exact existing bytes as old_text.",
+                QJsonObject{
+                    {"path", QJsonObject{{"type", "string"},
+                        {"description", "One project-relative source path."}}},
+                    {"old_text", QJsonObject{{"type", "string"},
+                        {"description", "Exact source snippet (not a regex)."}}},
+                    {"new_text", QJsonObject{{"type", "string"},
+                        {"description", "One replacement text snippet."}}}
+                }, QJsonArray{"path", "old_text", "new_text"}));
+            request.insert("tools", tools);
+        }
         }
         request.insert("tool_choice", "auto");
     } else {
@@ -105,7 +126,8 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining, Scope s
     }
     return request;
 }
-Decision parseModelResponse(const QByteArray &json, Scope scope) {
+Decision parseModelResponse(const QByteArray &json,
+                            Scope scope, bool mayProposeEdit) {
     Decision answer;
     if (json.isEmpty() || json.size() > 65536) {
         answer.error = "Local model response is empty or exceeds 64 KiB.";
@@ -148,7 +170,8 @@ Decision parseModelResponse(const QByteArray &json, Scope scope) {
             (scope == Scope::GitHubRepository
                  ? (tool != "github_read" && tool != "github_detail")
                  : (tool != "project_map" && tool != "search_text" &&
-                    tool != "read_source"))) {
+                    tool != "read_source" &&
+                    !(mayProposeEdit && tool == "propose_patch")))) {
             answer.error = "Denied an unknown, privileged or invalid model tool call.";
             return answer;
         }
@@ -165,7 +188,27 @@ Decision parseModelResponse(const QByteArray &json, Scope scope) {
             return answer;
         }
         const QJsonObject args = parsed.object();
-        if (tool == "github_detail") {
+        if (tool == "propose_patch") {
+            if (args.size() != 3 || !args.value("path").isString() ||
+                !args.value("old_text").isString() ||
+                !args.value("new_text").isString()) {
+                answer.error = "propose_patch needs path, old_text and new_text.";
+                return answer;
+            }
+            answer.path = args.value("path").toString();
+            answer.oldText = args.value("old_text").toString();
+            answer.newText = args.value("new_text").toString();
+            if (answer.path.isEmpty() || answer.path.size() > 240 ||
+                answer.oldText.isEmpty() || answer.oldText.size() > 8000 ||
+                answer.newText.size() > 12000 ||
+                answer.oldText == answer.newText ||
+                answer.path.contains(QChar::Null) ||
+                answer.oldText.contains(QChar::Null) ||
+                answer.newText.contains(QChar::Null)) {
+                answer.error = "Model's source edit is unsafe, empty or too large.";
+                return answer;
+            }
+        } else if (tool == "github_detail") {
             static const QSet<QString> kinds{"issue", "pull", "run_jobs"};
             const double id = args.value("number").toDouble();
             if (args.size() != 2 ||
@@ -288,7 +331,11 @@ QJsonObject assistantToolMessage(const Decision &decision) {
                 : decision.tool == "github_detail"
                     ? QJsonObject{{"kind", decision.view},
                                   {"number", double(decision.number)}}
-                    : QJsonObject{{"path", decision.path},
+                    : decision.tool == "propose_patch"
+                        ? QJsonObject{{"path", decision.path},
+                                      {"old_text", decision.oldText},
+                                      {"new_text", decision.newText}}
+                        : QJsonObject{{"path", decision.path},
                               {"start_line", decision.startLine}};
     return QJsonObject{
         {"role", "assistant"}, {"content", QJsonValue::Null},

@@ -1055,6 +1055,105 @@ private slots:
         QVERIFY(archive.messages(session, 100, 340).isEmpty());
         QCOMPARE(archive.totalMessages(session), qint64(340));
     }
+    void localModelCanOnlyStageOneScopedReviewablePatch() {
+        using namespace EmberAgent;
+        const QJsonArray prompt{
+            QJsonObject{{"role", "user"}, {"content", "Repair one C++ bug"}}
+        };
+        QCOMPARE(modelRequest(prompt, 3, Scope::LocalProject, true)
+                    .value("tools").toArray().size(), 4);
+        QCOMPARE(modelRequest(prompt, 3, Scope::LocalProject, false)
+                    .value("tools").toArray().size(), 3);
+        QCOMPARE(modelRequest(prompt, 3, Scope::GitHubRepository, true)
+                    .value("tools").toArray().size(), 2);
+        const auto tools = modelRequest(
+            prompt, 3, Scope::LocalProject, true).value("tools").toArray();
+        QCOMPARE(tools.last().toObject().value("function").toObject()
+                     .value("name").toString(), QString("propose_patch"));
+        QVERIFY(!modelRequest(prompt, 0, Scope::LocalProject, true)
+                    .contains("tools"));
+        const auto message = [](const QJsonObject &arguments) {
+            const QJsonObject call{
+                {"id", "call_proposal"}, {"type", "function"},
+                {"function", QJsonObject{
+                    {"name", "propose_patch"},
+                    {"arguments", QString::fromUtf8(
+                        QJsonDocument(arguments).toJson(QJsonDocument::Compact))}
+                }}
+            };
+            return QJsonDocument(QJsonObject{
+                {"choices", QJsonArray{QJsonObject{
+                    {"finish_reason", "tool_calls"},
+                    {"message", QJsonObject{
+                        {"role", "assistant"}, {"content", QJsonValue::Null},
+                        {"tool_calls", QJsonArray{call}}
+                    }}
+                }}}
+            }).toJson();
+        };
+        const QJsonObject args{
+            {"path", "src/main.cpp"},
+            {"old_text", "const int result=1;"},
+            {"new_text", "const int result=2;"}
+        };
+        const auto accepted = parseModelResponse(
+            message(args), Scope::LocalProject, true);
+        QVERIFY2(accepted.ok(), qPrintable(accepted.error));
+        QCOMPARE(accepted.tool, QString("propose_patch"));
+        QCOMPARE(accepted.path, QString("src/main.cpp"));
+        QCOMPARE(accepted.oldText, QString("const int result=1;"));
+        QVERIFY(!parseModelResponse(
+            message(args), Scope::LocalProject, false).ok());
+        QVERIFY(!parseModelResponse(
+            message(args), Scope::GitHubRepository, true).ok());
+        QVERIFY(!parseModelResponse(message(QJsonObject{
+            {"path", "src/main.cpp"}, {"old_text", "X"},
+            {"new_text", "Y"}, {"command", "cmd /c whoami"}
+        }), Scope::LocalProject, true).ok());
+        QVERIFY(!parseModelResponse(message(QJsonObject{
+            {"path", "src/main.cpp"}, {"old_text", "same"},
+            {"new_text", "same"}
+        }), Scope::LocalProject, true).ok());
+        QCOMPARE(assistantToolMessage(accepted)
+                    .value("tool_calls").toArray().size(), 1);
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        QVERIFY(QDir(temp.path()).mkpath("src"));
+        QFile source(QDir(temp.path()).filePath("src/main.cpp"));
+        QVERIFY(source.open(QIODevice::WriteOnly));
+        const QByteArray original(
+            "void run() {\n  const int result=1;\n}\n");
+        QCOMPARE(source.write(original), qint64(original.size()));
+        source.close();
+        const auto plan = EmberLocalEdit::planWithinProject(
+            temp.path(), accepted.path, accepted.oldText, accepted.newText);
+        QVERIFY2(plan.ok(), qPrintable(plan.error));
+        QVERIFY(plan.displayPreview.contains("const int result=1;"));
+        QVERIFY(plan.displayPreview.contains("const int result=2;"));
+        QVERIFY(source.open(QIODevice::ReadOnly));
+        QCOMPARE(source.readAll(), original);
+        source.close();
+        QVERIFY(!EmberLocalEdit::planWithinProject(
+            temp.path(), "../escape.cpp", accepted.oldText,
+            accepted.newText).ok());
+        QVERIFY(!EmberLocalEdit::planWithinProject(
+            temp.path(), "src/../../escape.cpp", accepted.oldText,
+            accepted.newText).ok());
+        QVERIFY(!EmberLocalEdit::planWithinProject(
+            temp.path(), "src/.env", accepted.oldText,
+            accepted.newText).ok());
+        QVERIFY(!EmberLocalEdit::planWithinProject(
+            temp.path(), "src/missing.cpp", accepted.oldText,
+            accepted.newText).ok());
+        const QString backupDir = QDir(temp.path()).filePath("private-backups");
+        const auto applied = EmberLocalEdit::applyApprovedEdit(plan, backupDir);
+        QVERIFY2(applied.ok(), qPrintable(applied.error));
+        QVERIFY(QFileInfo::exists(applied.backupPath));
+        QVERIFY(source.open(QIODevice::ReadOnly));
+        QVERIFY(source.readAll().contains("const int result=2;"));
+        source.close();
+        QVERIFY(!EmberLocalEdit::applyApprovedEdit(plan, backupDir).ok());
+    }
     void localAgentToolContractIsTypedAndStrictlyReadOnly() {
         using namespace EmberAgent;
         const QJsonArray history{
