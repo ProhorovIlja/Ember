@@ -33,6 +33,23 @@ HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {
     f"{letter}{number}" for letter in ("COM", "LPT") for number in range(1, 10)
 }
+# Installer and ZIP64 payloads must never contain previously recorded chats,
+# microphone scratch, local credentials, tokens or development secrets.
+PRIVATE_PARTS = {"data", "cache", ".git", ".ssh", ".aws", ".env",
+                 "qml-smoke-report.txt", "ember.ini", "credentials.json",
+                 "id_rsa", "id_ed25519"}
+PRIVATE_SUFFIXES = (".sqlite", ".sqlite3", ".pem", ".key", ".p12", ".pfx")
+
+
+def is_link_or_junction(path):
+    return path.is_symlink() or (
+        hasattr(path, "is_junction") and path.is_junction())
+
+
+def private_payload_path(relative):
+    parts = [part.casefold() for part in PurePosixPath(relative).parts]
+    return any(part in PRIVATE_PARTS or part.startswith(".env.") or
+               part.endswith(PRIVATE_SUFFIXES) for part in parts)
 
 
 def safe_path(value):
@@ -58,8 +75,8 @@ def local_file(root, relative):
     target = base
     for part in path.parts:
         target = target / part
-        if target.is_symlink():
-            raise ValueError(f"Asset symlink rejected: {relative}")
+        if is_link_or_junction(target):
+            raise ValueError(f"Asset reparse-point link rejected: {relative}")
     if not target.is_file() or not target.resolve().is_relative_to(base):
         raise ValueError(f"Missing or escaped file: {relative}")
     return target
@@ -138,19 +155,21 @@ def present_files(root):
     files = []
     for prefix in ROOTS:
         folder = base / prefix
-        if folder.is_symlink():
-            raise ValueError(f"Root directory symlink rejected: {prefix}")
+        if is_link_or_junction(folder):
+            raise ValueError(f"Root directory link/junction rejected: {prefix}")
         if not folder.exists():
             continue
         for path in folder.rglob("*"):
-            if path.is_symlink():
-                raise ValueError(f"Asset symlink rejected: {path}")
+            if is_link_or_junction(path):
+                raise ValueError(f"Asset symlink/junction rejected: {path}")
             if path.is_dir():
                 continue
             if not path.is_file():
                 raise ValueError(f"Non-file asset rejected: {path}")
             name = path.relative_to(base).as_posix()
             safe_path(name)
+            if private_payload_path(name):
+                raise ValueError("Private or secret file inside offline asset payload")
             files.append(name)
             if len(files) > MAX_FILES:
                 raise ValueError("Too many model/engine files")
@@ -307,10 +326,11 @@ def assemble(staged_root, manifest, application, output):
     forbidden = {"data", "cache", "engines", "models", "licenses",
                  "offline-assets.json", "qml-smoke-report.txt", ".env", ".git"}
     for candidate in app.rglob("*"):
-        if candidate.is_symlink():
-            raise ValueError(f"Application symlink rejected: {candidate}")
-        if candidate.relative_to(app).parts[0].casefold() in forbidden:
-            raise ValueError("Deployed Qt app contains user data or untracked models")
+        if is_link_or_junction(candidate):
+            raise ValueError(f"Application link/junction rejected: {candidate}")
+        relative = candidate.relative_to(app)
+        if relative.parts[0].casefold() in forbidden or private_payload_path(relative.as_posix()):
+            raise ValueError("Deployed Qt app contains private data, secrets or untracked models")
         if not (candidate.is_file() or candidate.is_dir()):
             raise ValueError("Unexpected native application file type")
     out = Path(output)
@@ -489,6 +509,23 @@ def self_test():
                              app, root / "complete")
         assert (assembled / "Ember.exe").is_file()
         assert verify(assembled, assembled / "offline-assets.json", approved=True) == 7
+        # A stray private file anywhere in the clean application tree is
+        # forbidden even if its directory is not named data/ or cache/.
+        for relative in ("nested/credentials.json", "logs/session.pem",
+                         "qml-smoke-report.txt", ".env"):
+            secret = app / relative
+            secret.parent.mkdir(parents=True, exist_ok=True)
+            secret.write_bytes(b"PRIVATE")
+            try:
+                assemble(root / "stage", root / "stage" / "offline-assets.json",
+                         app, root / ("reject-secret-" +
+                                      relative.replace("/", "-")))
+                raise AssertionError("Deployed private file passed: " + relative)
+            except ValueError:
+                pass
+            secret.unlink()
+            if secret.parent != app:
+                secret.parent.rmdir()
         (app / "data").mkdir()
         (app / "data" / "ember-chats.sqlite").write_bytes(b"SECRET")
         try:

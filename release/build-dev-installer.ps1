@@ -32,9 +32,26 @@ if (!(Test-Path (Join-Path $payload 'LICENSE'))) { throw 'License file missing.'
 # Inno's recursive [Files] section copies the entire payload. Refuse a
 # previously executed app directory rather than accidentally publish chats,
 # model prompts, microphones or session backups in a release installer.
-foreach ($private in @('data', 'cache', 'qml-smoke-report.txt', '.env', '.git')) {
-    if (Test-Path -LiteralPath (Join-Path $payload $private)) {
-        throw "Installer input contains private or smoke-test data: $private"
+$payloadItem = Get-Item -LiteralPath $payload -Force
+if (($payloadItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw 'Installer payload root must not be a link or junction.'
+}
+# Inno's wildcard [Files] includes nested Qt files and all hidden files.
+# Reject reparse-point links and secrets recursively before invoking ISCC.
+foreach ($item in Get-ChildItem -LiteralPath $payload -Recurse -Force) {
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Installer payload contains a symlink or junction.'
+    }
+    $relative = $item.FullName.Substring($payload.Length).TrimStart([char]'\', [char]'/')
+    foreach ($segment in ($relative -split '[\\/]')) {
+        $lower = $segment.ToLowerInvariant()
+        if ($lower -in @('data', 'cache', '.git', '.ssh', '.aws', '.env',
+                          'qml-smoke-report.txt', 'ember.ini', 'credentials.json',
+                          'id_rsa', 'id_ed25519') -or
+            $lower.StartsWith('.env.') -or
+            $lower -match '\.(sqlite|sqlite3|pem|key|p12|pfx)$') {
+            throw 'Installer payload contains private data or credentials.'
+        }
     }
 }
 if ($RequireOfflineBundle) {
@@ -54,11 +71,8 @@ if (!$compiler) {
     if ($cmd) { $compiler = $cmd.Source }
 }
 if (!$compiler) {
-    choco install innosetup -y --no-progress
-    if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
-    $compiler = $compilerCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    throw 'Inno Setup 6 ISCC.exe not found. Install a trusted compiler manually before offline packaging; no automatic dependency downloads.'
 }
-if (!$compiler) { throw 'Inno Setup 6 ISCC.exe not found.' }
 $iss = Join-Path $PSScriptRoot 'ember.iss'
 & $compiler "/DAppPayload=$payload" "/DAppOutput=$output" "/DBuildVersion=$Version" "/DBuildNumericVersion=$numericVersion" $iss
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }

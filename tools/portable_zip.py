@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import tempfile
 import zipfile
-from offline_bundle import verify
+from offline_bundle import verify, is_link_or_junction, private_payload_path
 
 
 def archive(root, output):
@@ -21,21 +21,16 @@ def archive(root, output):
             raise ValueError(f"Missing complete native app: {required}")
     files = []
     for p in folder.rglob("*"):
-        if p.is_symlink():
-            raise ValueError("Symlink in offline portable payload")
+        if is_link_or_junction(p):
+            raise ValueError("Link or junction in offline portable payload")
         if p.is_dir():
             continue
         if not p.is_file():
             raise ValueError("Non-regular portable asset")
         relative = p.relative_to(folder).as_posix()
-        # Reject diagnostic output and sensitive single files regardless of
-        # placement: model bundles can otherwise ship CI credentials/logs.
-        parts = tuple(part.casefold() for part in p.relative_to(folder).parts)
-        if (parts[0] in ("data", "cache", ".git", ".ssh", ".env") or
-                any(part in ("qml-smoke-report.txt", ".env", "id_rsa",
-                             "id_ed25519", "credentials.json") or
-                    part.endswith((".sqlite", ".sqlite3", ".pem", ".key",
-                                   ".p12", ".pfx")) for part in parts)):
+        # One shared policy applies to app files, staged models, and ZIP64;
+        # refuse secret paths at any depth, not just the root directory.
+        if private_payload_path(relative):
             raise ValueError("Sensitive data or smoke diagnostic in portable ZIP")
         files.append((relative, p))
     files.sort(key=lambda pair: pair[0].casefold())
