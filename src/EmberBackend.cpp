@@ -1150,7 +1150,9 @@ void EmberBackend::pollBrain() {
     QNetworkReply *check = m_network.get(request);
     connect(check, &QNetworkReply::finished, this, [this, check, session]() {
         const bool ok = check->error() == QNetworkReply::NoError &&
-            check->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200;
+            check->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
+            EmberCore::validManagedHealthResponse(
+                check->read(4097), check->rawHeader("Content-Type"));
         check->deleteLater();
         if (ok && session == m_brainSession &&
             m_brain.state() == QProcess::Running &&
@@ -1158,7 +1160,9 @@ void EmberBackend::pollBrain() {
                 43821, quint64(m_brain.processId()))) {
             m_healthTimer.stop();
             setBrainReady(true);
-            setStatus("Local brain online · RTX acceleration requested.");
+            setStatus(m_brainGpuLayers == 0
+                ? "Local brain ready · CPU inference selected."
+                : "Local brain ready · GPU offload requested.");
         }
     });
 }
@@ -1337,7 +1341,9 @@ void EmberBackend::pollSpeechServer() {
     QNetworkReply *reply = m_network.get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply, session] {
         const bool ok = reply->error() == QNetworkReply::NoError &&
-            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200;
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
+            EmberCore::validManagedHealthResponse(
+                reply->read(4097), reply->rawHeader("Content-Type"));
         reply->deleteLater();
         if (ok && session == m_speechServerSession &&
             m_speechServer.state() == QProcess::Running &&
