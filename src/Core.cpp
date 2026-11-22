@@ -57,6 +57,18 @@ bool discardPrivateVoiceScratch(QFile &microphone, const QString &folder) {
     }
     return success;
 }
+bool validManagedHealthResponse(const QByteArray &body,
+                                const QByteArray &contentType) {
+    if (body.isEmpty() || body.size() > 4096 ||
+        !contentType.trimmed().toLower().startsWith("application/json"))
+        return false;
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(body, &error);
+    return error.error == QJsonParseError::NoError && document.isObject() &&
+           document.object().value(QStringLiteral("status")).isString() &&
+           document.object().value(QStringLiteral("status")).toString() ==
+               QStringLiteral("ok");
+}
 QString nativeSpeechDeviceArg(int deviceIndex) {
     if (deviceIndex == 0) return QStringLiteral("auto");
     if (deviceIndex == 1) return QStringLiteral("gpu");
