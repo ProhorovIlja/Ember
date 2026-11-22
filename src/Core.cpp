@@ -523,8 +523,11 @@ QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source) {
     return pcmToWav(pcm, 16000);
 }
 
-ChatGenerationProfile chatGenerationProfile(int mode, bool voice) {
+ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep) {
     if (voice) return {512, 0.65};
+    // Deep mode is a user-controlled local compute/latency trade-off. Models
+    // with hidden reasoning need extra tokens before visible answers appear.
+    if (deep) return {4096, 0.60};
     switch (mode) {
     case 1: return {2048, 0.92}; // long collaborative fiction
     case 2: return {2048, 0.35}; // diagnostic and troubleshooting
@@ -534,7 +537,8 @@ ChatGenerationProfile chatGenerationProfile(int mode, bool voice) {
 }
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                         const QString &user, int maxTokens, double temperature,
-                        const QString &historicalExcerpts) {
+                        const QString &historicalExcerpts,
+                        bool enableThinking) {
     QJsonArray messages;
     const QString retrieved = historicalExcerpts.left(1550).trimmed();
     // Historical dialogue is quoted as user-level data, never promoted to
@@ -579,10 +583,17 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
         messages.append(QJsonObject{{"role", "assistant"}, {"content", turn.assistant}});
     }
     messages.append(QJsonObject{{"role", "user"}, {"content", currentUser}});
-    return QJsonObject{{"model", "ember"}, {"messages", messages},
-                       {"max_tokens", std::clamp(maxTokens, 64, 2048)},
-                       {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
-                       {"stream", false}};
+    QJsonObject request{{"model", "ember"}, {"messages", messages},
+                        {"max_tokens", std::clamp(maxTokens, 64, 4096)},
+                        {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
+                        {"stream", false}};
+    if (enableThinking) {
+        // Explicit opt-in for compatible local llama.cpp/Qwen3 templates.
+        // Hidden reasoning stays excluded from the persisted/displayed chat.
+        request.insert("chat_template_kwargs",
+                       QJsonObject{{"enable_thinking", true}});
+    }
+    return request;
 }
 // A shared offline speech adapter deliberately has no configurable remote
 // host and rejects redirects in the network client. Qwen3, Chatterbox and

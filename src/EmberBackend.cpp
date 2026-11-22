@@ -177,6 +177,7 @@ EmberBackend::EmberBackend(QObject *parent)
     m_imageItems = m_images->list();
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_chatMode = qBound(0, m_settings.value("chat/mode", 0).toInt(), 3);
+    m_deepReasoning = m_settings.value("chat/deepReasoning", false).toBool();
     m_recognitionLanguage = qBound(0,
         m_settings.value("asr/language", 0).toInt(), 2);
     m_recognitionEngine = qBound(0,
@@ -544,6 +545,21 @@ void EmberBackend::setChatMode(int mode) {
     m_settings.setValue("chat/mode", mode);
     m_settings.sync();
     emit configurationChanged();
+}
+void EmberBackend::setDeepReasoning(bool enabled) {
+    if (m_deepReasoning == enabled) return;
+    if (m_busy) {
+        setStatus("Finish the current local model reply before changing reasoning mode.");
+        return;
+    }
+    m_deepReasoning = enabled;
+    m_settings.setValue("chat/deepReasoning", enabled);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(enabled
+        ? "Deep local reasoning enabled. Supports compatible Qwen3 chat templates; "
+          "may take longer and use more GPU time."
+        : "Standard local replies enabled. Deep model output budget disabled.");
 }
 void EmberBackend::setPersona(const QString &persona) {
     if (persona == m_persona || persona.trimmed().isEmpty() || persona.size() > 4096) return;
@@ -1286,10 +1302,11 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
     }
     const QString recalled = m_store && m_store->ready() && !m_sessionId.isEmpty()
         ? m_store->historicalExcerpts(m_sessionId, text) : QString();
-    const auto generation = EmberCore::chatGenerationProfile(m_chatMode, voice);
+    const bool deep = !voice && m_deepReasoning;
+    const auto generation = EmberCore::chatGenerationProfile(m_chatMode, voice, deep);
     QJsonObject payload = EmberCore::chatRequest(
         effectivePersona, m_history, text,
-        generation.maxTokens, generation.temperature, recalled);
+        generation.maxTokens, generation.temperature, recalled, deep);
     if (!selected.isEmpty() &&
         !EmberCore::attachLocalVisionData(payload, imageData)) {
         // Leave the composer attachment and both SQLite/UI histories intact.

@@ -819,6 +819,16 @@ ApplicationWindow {
                                     }
                                 }
                                 PillButton {
+                                    text: ember.deepReasoning ? "Deep · On" : "Deep · Off"
+                                    implicitWidth: 102
+                                    implicitHeight: 36
+                                    enabled: !ember.busy && !ember.listening
+                                    onClicked: ember.setDeepReasoning(!ember.deepReasoning)
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 700
+                                    ToolTip.text: "Opt in to longer local thinking on compatible Qwen3 GGUF models. Uses extra tokens and GPU time, not ChatGPT usage."
+                                }
+                                PillButton {
                                     text: window.width < 1100 ? "Stop" : "Stop reply"
                                     implicitWidth: window.width < 1100 ? 74 : 119
                                     implicitHeight: 36

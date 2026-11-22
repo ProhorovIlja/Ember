@@ -230,3 +230,16 @@ copies only local already-downloaded files with SHA-256 validation,
 refuses replacements and never downloads or starts models. The code and
 CI smoke tests do **not** guarantee a real model works until the target
 Windows 10 machine runs its GGUF and completes full chat acceptance.
+
+
+## Optional Deep reasoning for local text
+
+The Conversation toolbar's `Deep · On` explicitly sets the request-local
+`chat_template_kwargs.enable_thinking=true` and 4,096 maximum new tokens.
+This is intended for a compatible Qwen3/llama.cpp GGUF; other model
+templates or older llama.cpp builds may reject or ignore the flag. Use
+`Deep · Off` if a local server errors, and start with actual Windows
+GGUF tests before assuming a specific model works. Unlike ChatGPT's
+cloud High setting, this simply spends local inference time and model
+tokens; the existing 8,192-token context budget must still accommodate
+the whole prompt and reply. There is no guaranteed equivalence to GPT-6 High.

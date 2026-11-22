@@ -91,3 +91,16 @@ Chat now also supports **Find in folder**: one user-approved local
 directory, literal read-only search, bounded paths/bytes/results and
 source line numbers placed into the visible composer. No autonomous
 repository scanning or hidden code execution is performed.
+
+
+### Optional deeper local reasoning
+
+Text Chat includes a deliberate **Deep · On/Off** control, disabled by default.
+Deep uses a larger 4,096-token local output budget and explicitly requests
+`chat_template_kwargs.enable_thinking=true` for GGUF models using a compatible
+Qwen3/llama.cpp chat template; hidden reasoning is not shown or archived.
+The feature can use substantially more GPU time and may leave less of the
+default 8,192-token context available for a large pasted prompt. It does
+not transform a small model into GPT-6 High or guarantee that non-Qwen
+models accept the template setting. Voice generation remains short. This
+option is separate from, and never consumes, ChatGPT cloud usage limits.

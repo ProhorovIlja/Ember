@@ -32,10 +32,11 @@ qint64 speechAwareAsrFreshBytes(const QByteArray &candidate,
 // Offline 16 kHz mono conversion for common Windows capture devices.
 QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source);
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, const QString &user, int maxTokens = 1024, double temperature = 0.8,
-                        const QString &historicalExcerpts = {});
+                        const QString &historicalExcerpts = {},
+                        bool enableThinking = false);
 // Text-first: long and precise technical replies, creative fiction separately.
 struct ChatGenerationProfile { int maxTokens; double temperature; };
-ChatGenerationProfile chatGenerationProfile(int mode, bool voice);
+ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep = false);
 // Windows: prove the IPv4 127.0.0.1 listener belongs to the exact managed
 // QProcess PID. HTTP 200 on /health alone is not authentication. Returns
 // false when the listener is absent, wildcard-bound or cannot be inspected.
