@@ -58,6 +58,11 @@ bool ownedLoopbackTcpListener(quint16 port, quint64 processId);
 // Require the actual bounded JSON health contract, not HTTP 200 alone.
 // Accept application/json with an optional charset for llama.cpp/speech.cpp.
 bool validManagedHealthResponse(const QByteArray &body, const QByteArray &contentType);
+// speech.cpp /v1/models must contain the selected Qwen3 TTS / ASR task(s),
+// sizes, languages and speaker. A healthy HTTP port alone is not sufficient.
+bool validNativeSpeechInventory(const QByteArray &body, const QByteArray &contentType,
+                                const QString &ttsAlias, const QString &asrAlias,
+                                const QString &selectedVoice);
 bool allowedLocalEndpoint(const QString &url);
 // Dictation may send only after the user selects Send, ASR finishes,
 // recording was intact, and the local model is available.
