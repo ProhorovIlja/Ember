@@ -124,3 +124,21 @@ Use a single quantized LLM on GPU when feasible, plus CPU or low-memory
 speech models; load multimodal modules on demand. Memory and context-window
 limits must be measured on target hardware. The existing native Qt front
 end remains independent of any cloud API.
+
+
+## Initial native Google Drive read-only OAuth workflow
+
+A dedicated Qt `EmberDrive::Client` implements Google Desktop OAuth through
+the operating system's default browser and IPv4 loopback callback, with
+random PKCE S256 verifier, CSRF state and exact redirect/host checks. It
+asks only for `drive.metadata.readonly`; no file contents or modification
+scopes are requested. Long-lived refresh credentials are saved using the
+Windows Credential Manager, never plaintext INI or SQLite. It supports
+explicit user-triggered metadata listing of one folder (20 entries max),
+account-email verification through Drive about, and local disconnect.
+Token exchanges go only to oauth2.googleapis.com; API metadata GETs go
+only to www.googleapis.com. There is no scheduled sync, polling or
+credential transmission to the local LLM. A Desktop OAuth application ID
+created in Google Cloud and corresponding Google consent are necessary.
+Do not claim the workflow is complete until native UI wiring, CI and
+actual account sign-in are tested.

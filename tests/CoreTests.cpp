@@ -7,6 +7,7 @@
 #include "PublicGitHub.h"
 #include "GitHubCredential.h"
 #include "WikipediaSearch.h"
+#include "DriveRead.h"
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
@@ -803,6 +804,64 @@ private slots:
         QVERIFY(!hostile.text.contains("<img"));
         QVERIFY(!hostile.text.contains("Source: https://evil.example"));
         QVERIFY(hostile.text.contains("Source: https://en.wikipedia.org/wiki/"));
+    }
+    void googleDriveNativePkceAndReadOnlyFolderContract() {
+        using namespace EmberDrive;
+        const QString clientId =
+            "123456789012-abcdefghijklmnopqrstuvwxyz.apps.googleusercontent.com";
+        QVERIFY(validDesktopClientId(clientId));
+        QVERIFY(!validDesktopClientId("https://attacker.example"));
+        const QByteArray verifier(43, 'a');
+        const QByteArray state(43, 'b');
+        const QUrl auth = authorizationUrl(clientId, 43839, verifier, state);
+        QVERIFY(auth.isValid());
+        QCOMPARE(auth.host(), QString("accounts.google.com"));
+        const QUrlQuery authParams(auth);
+        QCOMPARE(authParams.queryItemValue("code_challenge_method"), QString("S256"));
+        QCOMPARE(authParams.queryItemValue("redirect_uri"),
+                 QString("http://127.0.0.1:43839"));
+        QCOMPARE(authParams.queryItemValue("scope"),
+                 QString::fromLatin1(kScope));
+        QCOMPARE(authParams.queryItemValue("code_challenge"),
+                 QString::fromLatin1(pkceChallenge(verifier)));
+        QVERIFY(authorizationUrl(clientId, 0, verifier, state).isEmpty());
+        QVERIFY(authorizationUrl(clientId, 43839, "short", state).isEmpty());
+        const QUrl folder = folderListUrl("root");
+        QVERIFY(folder.isValid());
+        QCOMPARE(folder.host(), QString("www.googleapis.com"));
+        QVERIFY(folder.toString().contains("drive/v3/files"));
+        QVERIFY(folderListUrl("../hidden").isEmpty());
+        QVERIFY(folderListUrl("evil?redirect=bad").isEmpty());
+        const QJsonArray entries{
+            QJsonObject{{"id", "abcDEF012345"}, {"name", "Ember notes"},
+                        {"mimeType", "application/vnd.google-apps.document"},
+                        {"modifiedTime", "2026-11-22T00:00:00Z"}}
+        };
+        const QByteArray payload = QJsonDocument(
+            QJsonObject{{"files", entries}}).toJson();
+        const auto preview = parseFolder("root", payload);
+        QVERIFY2(preview.ok(), qPrintable(preview.error));
+        QCOMPARE(preview.count, 1);
+        QVERIFY(preview.text.contains("Ember notes"));
+        QVERIFY(preview.text.contains("https://drive.google.com/open?id=abcDEF012345"));
+        QVERIFY(!parseFolder("root", "not json").ok());
+        QVERIFY(!parseFolder("../danger", payload).ok());
+        QVERIFY(!validSecret("invalid\nauthorization"));
+        QVERIFY(validSecret("1//0gValidRefreshExampleTest0123456"));
+#ifdef Q_OS_WIN
+        const QString target = QString("Ember.Local.GoogleDrive.Test.%1")
+            .arg(QCoreApplication::applicationPid());
+        QVERIFY(deleteRefreshToken(target));
+        const QByteArray secret("1//0gMockRefreshToken1234567890");
+        QVERIFY(saveRefreshToken(secret, target));
+        QByteArray recovered;
+        QVERIFY(readRefreshToken(recovered, target));
+        QCOMPARE(recovered, secret);
+        recovered.fill('\0');
+        QVERIFY(deleteRefreshToken(target));
+        QVERIFY(!readRefreshToken(recovered, target));
+        QVERIFY(!saveRefreshToken(secret, "ForeignAppCredentials"));
+#endif
     }
     void historicalReferencesNeverBecomeSystemCommands() {
         const QString previous =
