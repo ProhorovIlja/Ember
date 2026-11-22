@@ -85,6 +85,75 @@ private slots:
         QCOMPARE(speech.value("SPEECH_NO_UPDATE_CHECK"), QString("1"));
         QVERIFY(!speech.contains("HF_TOKEN"));
     }
+    void validatesRealNativeQwenModelInventoryBeforeReady() {
+        using EmberCore::validNativeSpeechInventory;
+        const auto model = [](const QString &task, const QString &family,
+                              const QString &size) {
+            const QJsonObject info{
+                {"task", task}, {"architecture", family}, {"size_label", size},
+                {"languages", QJsonArray{"en", "ru"}},
+                {"voices", QJsonArray{
+                    QJsonObject{{"name", "vivian"}, {"language", "en"}},
+                    QJsonObject{{"name", "serena"}, {"language", "en"}}
+                }}
+            };
+            return QJsonObject{{"id", task + "-local-gguf"},
+                               {"object", "model"}, {"speech", info}};
+        };
+        const auto inventory = [](const QJsonArray &items) {
+            return QJsonDocument(QJsonObject{
+                {"object", "list"}, {"data", items}
+            }).toJson(QJsonDocument::Compact);
+        };
+        const QJsonObject tts = model("synthesis", "qwen3-tts", "0.6B");
+        const QJsonObject asr = model("recognition", "qwen3-asr", "1.7B");
+        const QByteArray both = inventory(QJsonArray{tts, asr});
+        const QByteArray ttsOnly = inventory(QJsonArray{tts});
+        const QByteArray asrOnly = inventory(QJsonArray{asr});
+        auto valid = [&](const QByteArray &body, const QString &ttsAlias,
+                         const QString &asrAlias, const QString &voice = "vivian") {
+            return validNativeSpeechInventory(
+                body, "application/json; charset=utf-8",
+                ttsAlias, asrAlias, voice);
+        };
+        QVERIFY(valid(both, "qwen3-tts-0.6b", "qwen3-asr-1.7b"));
+        QVERIFY(valid(ttsOnly, "qwen3-tts-0.6b", ""));
+        QVERIFY(valid(asrOnly, "", "qwen3-asr-1.7b"));
+        QVERIFY(!valid(ttsOnly, "qwen3-tts-0.6b", "qwen3-asr-1.7b"));
+        QVERIFY(!valid(asrOnly, "qwen3-tts-0.6b", "qwen3-asr-1.7b"));
+        QVERIFY(!valid(ttsOnly, "qwen3-tts-1.7b", ""));
+        QVERIFY(!valid(asrOnly, "", "qwen3-asr-0.6b"));
+        QVERIFY(!valid(ttsOnly, "qwen3-tts-0.6b", "", "unknown-voice"));
+        QVERIFY(!valid(ttsOnly, "qwen3-tts-0.6b", "", "Vivian"));
+        QVERIFY(!valid(both, "", ""));
+        QVERIFY(!valid(both, "qwen3-tts-0.6b", ""));
+        QVERIFY(!valid(ttsOnly, "qwen3-tts-custom", ""));
+        QVERIFY(!valid(ttsOnly, "qwen3-tts-0.6b", "",
+                       QString(81, 'a')));
+        QJsonObject wrong = tts;
+        QJsonObject wrongInfo = wrong.value("speech").toObject();
+        wrongInfo.insert("architecture", "irodori-tts");
+        wrong.insert("speech", wrongInfo);
+        QVERIFY(!valid(inventory(QJsonArray{wrong}), "qwen3-tts-0.6b", ""));
+        wrongInfo = asr.value("speech").toObject();
+        wrongInfo.insert("languages", QJsonArray{"en"});
+        wrong = asr;
+        wrong.insert("speech", wrongInfo);
+        QVERIFY(!valid(inventory(QJsonArray{tts, wrong}),
+                       "qwen3-tts-0.6b", "qwen3-asr-1.7b"));
+        wrongInfo = tts.value("speech").toObject();
+        wrongInfo.insert("voices", QJsonArray{});
+        wrong = tts;
+        wrong.insert("speech", wrongInfo);
+        QVERIFY(!valid(inventory(QJsonArray{wrong}), "qwen3-tts-0.6b", ""));
+        QVERIFY(!valid(inventory(QJsonArray{tts, tts}), "qwen3-tts-0.6b", ""));
+        QVERIFY(!valid(inventory(QJsonArray{}), "qwen3-tts-0.6b", ""));
+        QVERIFY(!valid("{}", "qwen3-tts-0.6b", ""));
+        QVERIFY(!valid("not json", "qwen3-tts-0.6b", ""));
+        QVERIFY(!valid(QByteArray(65537, 'x'), "qwen3-tts-0.6b", ""));
+        QVERIFY(!validNativeSpeechInventory(
+            ttsOnly, "text/html", "qwen3-tts-0.6b", "", "vivian"));
+    }
     void rejectsInvalidNativeModelHealthResponses() {
         using EmberCore::validManagedHealthResponse;
         QVERIFY(validManagedHealthResponse(
