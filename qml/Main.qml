@@ -322,9 +322,21 @@ ApplicationWindow {
         function onDictationReady(text) {
             if (!text || text.length === 0) return
             window.page = 1
-            const needsSpace = composer.text.length > 0 &&
-                               !/\s$/.test(composer.text)
-            composer.insert(composer.cursorPosition, (needsSpace ? " " : "") + text)
+            // Dictation may be inserted in the middle of an existing story,
+            // code prompt or paragraph; inspect BOTH insertion boundaries.
+            // Long transcriptions are preserved even if they exceed the
+            // separate per-message limit of the local LLM.
+            const at = composer.cursorPosition
+            const before = at > 0 ? composer.text.charAt(at - 1) : ""
+            const after = at < composer.text.length ?
+                          composer.text.charAt(at) : ""
+            const leading = before.length > 0 && !/\s/.test(before) &&
+                            !/^\s/.test(text) ? " " : ""
+            const trailing = after.length > 0 && !/\s/.test(after) &&
+                             !/\s$/.test(text) ? " " : ""
+            const insertion = leading + text + trailing
+            composer.insert(at, insertion)
+            composer.cursorPosition = at + insertion.length
             composer.forceActiveFocus()
         }
         function onDictationAutoSendReady() {
@@ -1421,7 +1433,16 @@ ApplicationWindow {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 8
-                                        Text { text: "Ctrl + Enter · send"; color: "#8097A7"; font.pixelSize: 11 }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: composer.text.trim().length > 8192
+                                                  ? "Draft too long to send · split into 8,192-character messages"
+                                                  : "Ctrl + Enter · send"
+                                            color: composer.text.trim().length > 8192
+                                                   ? "#E9B3A4" : "#8097A7"
+                                            font.pixelSize: 11
+                                            elide: Text.ElideRight
+                                        }
                                         PillButton {
                                             text: "Google Drive"
                                             implicitWidth: 118
@@ -1432,7 +1453,6 @@ ApplicationWindow {
                                             ToolTip.delay: 700
                                             ToolTip.text: "Manual read-only Google consent, folder listing and selected text/Docs excerpts. No automatic sync or writes."
                                         }
-                                        Item { Layout.fillWidth: true }
                                         PillButton {
                                             id: dictationGesture
                                             text: window.dictationHoldArmed ? "Release to draft" : "Tap / hold to dictate"
@@ -1516,6 +1536,8 @@ ApplicationWindow {
                                             implicitWidth: 146
                                             implicitHeight: 38
                                             enabled: ember.brainReady && !ember.busy &&
+                                                     !ember.listening &&
+                                                     composer.text.trim().length <= 8192 &&
                                                      (composer.text.trim().length > 0 ||
                                                       ember.pendingImageUrl.length > 0)
                                             onClicked: window.submitComposer()
