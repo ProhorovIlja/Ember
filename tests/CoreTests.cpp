@@ -749,17 +749,30 @@ private slots:
     }
     void wikipediaSearchIsBoundedCitedAndOnlyUserRequested() {
         using namespace EmberWikipedia;
-        QVERIFY(searchUrl("Earth", "en").isValid());
+        const QUrl en = searchUrl("Earth", "en");
+        QVERIFY(en.isValid());
+        QCOMPARE(en.host(), QString("en.wikipedia.org"));
+        QCOMPARE(en.scheme(), QString("https"));
         QVERIFY(searchUrl(QString::fromUtf8("солнечная система"), "ru").isValid());
-        QVERIFY(searchUrl("Earth", "en").host() == "en.wikipedia.org");
-        QCOMPARE(searchUrl("Earth", "en").scheme(), QString("https"));
         QVERIFY(searchUrl("Earth\nHost: bad", "en").isEmpty());
         QVERIFY(searchUrl("Earth", "de").isEmpty());
         QVERIFY(searchUrl("", "en").isEmpty());
-        const QByteArray response = R"({"pages":[{"key":"Earth","title":"Earth",
-            "description":"The third planet",
-            "excerpt":"Earth is the <span class=\"searchmatch\">third</span> planet &amp; home."},
-            {"key":"Mars","title":"Mars","excerpt":"Other <b>planet</b>."}]})";
+
+        // Build JSON structurally. Raw JSON strings containing markup or URLs
+        // can confuse some Qt 6.8 moc lexer versions on Windows.
+        const QJsonArray pages{
+            QJsonObject{
+                {"key", "Earth"}, {"title", "Earth"},
+                {"description", "The third planet"},
+                {"excerpt", "Earth is the <span class=\"searchmatch\">third</span> planet &amp; home."}
+            },
+            QJsonObject{
+                {"key", "Mars"}, {"title", "Mars"},
+                {"excerpt", "Other <b>planet</b>."}
+            }
+        };
+        const QByteArray response = QJsonDocument(
+            QJsonObject{{"pages", pages}}).toJson();
         const auto found = parseSearch("planet", "en", response);
         QVERIFY2(found.ok(), qPrintable(found.error));
         QCOMPARE(found.count, 2);
@@ -769,17 +782,23 @@ private slots:
         QVERIFY(!found.text.contains("<span"));
         QVERIFY(found.text.contains("NOT full verified articles"));
         const auto noHits = parseSearch(
-            "planet", "en", R"({"pages":[]})");
+            "planet", "en",
+            QJsonDocument(QJsonObject{{"pages", QJsonArray{}}}).toJson());
         QVERIFY(noHits.ok());
         QCOMPARE(noHits.count, 0);
         QVERIFY(noHits.text.contains("No matching article snippets"));
-        QVERIFY(!parseSearch("planet", "en", R"({"wrong":[]})").ok());
+        QVERIFY(!parseSearch("planet", "en",
+            QJsonDocument(QJsonObject{{"wrong", QJsonArray{}}}).toJson()).ok());
         QVERIFY(!parseSearch("planet", "en", "invalid json").ok());
         QVERIFY(!parseSearch("planet", "en",
             QByteArray(128*1024+1, 'x')).ok());
-        const auto hostile = parseSearch("planet", "en",
-            R"({"pages":[{"key":"https://evil.example/","title":"Hostile",
-                 "description":"untrusted","excerpt":"<img src='bad' />secret"}]})");
+        const QByteArray hostileJson = QJsonDocument(
+            QJsonObject{{"pages", QJsonArray{QJsonObject{
+                {"key", "https://evil.example/"}, {"title", "Hostile"},
+                {"description", "untrusted"},
+                {"excerpt", "<img src='bad' />secret"}
+            }}}}).toJson();
+        const auto hostile = parseSearch("planet", "en", hostileJson);
         QVERIFY(hostile.ok());
         QVERIFY(!hostile.text.contains("<img"));
         QVERIFY(!hostile.text.contains("Source: https://evil.example"));
