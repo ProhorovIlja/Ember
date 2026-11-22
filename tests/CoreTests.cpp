@@ -713,6 +713,39 @@ private slots:
         QCOMPARE(chatRequest("No network", {}, "Hi", 99999)
                      .value("max_tokens").toInt(), 2048);
     }
+    void fitsActualConfiguredContextsWithoutDiscardingCurrentRuEnText() {
+        using EmberCore::chatRequest;
+        const auto tiny = chatRequest("You are Ember.", {}, "Hello", 2048,
+                                      0.73, {}, false, 8192, 4096);
+        QVERIFY(!tiny.isEmpty());
+        QCOMPARE(tiny.value("max_tokens").toInt(), 2048);
+        const auto longRus = QString(4000, QChar(0x0436));
+        const auto reject = chatRequest("You are Ember.", {}, longRus,
+                                        2048, 0.73, {}, false, 8192, 4096);
+        QVERIFY(reject.isEmpty()); // never silently truncate Russian input
+        const auto fitsLarger = chatRequest("You are Ember.", {}, longRus,
+                                            8192, 0.73, {}, false, 8192, 16384);
+        QVERIFY(!fitsLarger.isEmpty());
+        QCOMPARE(fitsLarger.value("messages").toArray().last()
+                 .toObject().value("content").toString(), longRus);
+        QVERIFY(fitsLarger.value("max_tokens").toInt() >= 64);
+        QVERIFY(fitsLarger.value("max_tokens").toInt() < 8192);
+        // An oversized history must be trimmed, not the current user.
+        QList<EmberCore::Turn> history;
+        for (int i = 0; i < 30; ++i)
+            history.append({QString(1200, QChar(0x042F)),
+                            QString(1400, QChar('X'))});
+        const auto compact = chatRequest("You are Ember.", history,
+                                         "Keep this entire instruction.",
+                                         2048, 0.73, {}, false, 8192, 4096);
+        QVERIFY(!compact.isEmpty());
+        const auto messages = compact.value("messages").toArray();
+        QCOMPARE(messages.last().toObject().value("content").toString(),
+                 QString("Keep this entire instruction."));
+        QVERIFY(messages.size() < 12);
+        QCOMPARE(chatRequest("You are Ember.", {}, "Hi", 2048, 0.73, {},
+                             false, 8192, 0).value("max_tokens").toInt(), 2048);
+    }
     void textFirstProfilesAllowUsefulCodeAndDiagnosticResponses() {
         const auto everyday = EmberCore::chatGenerationProfile(0, false);
         const auto story = EmberCore::chatGenerationProfile(1, false);

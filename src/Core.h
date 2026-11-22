@@ -34,7 +34,8 @@ QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source);
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, const QString &user, int maxTokens = 1024, double temperature = 0.8,
                         const QString &historicalExcerpts = {},
                         bool enableThinking = false,
-                        int maxOutputCap = 0);
+                        int maxOutputCap = 0,
+                        int finiteContextTokens = 0);
 // Bounded per-request output tokens; keeps half the active finite context
 // available for the prompt/history, even with a larger user-selected budget.
 int chatOutputBudget(int requestedTokens, int contextTokens, bool voice);

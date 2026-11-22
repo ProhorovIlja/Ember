@@ -563,7 +563,8 @@ ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep) {
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                         const QString &user, int maxTokens, double temperature,
                         const QString &historicalExcerpts,
-                        bool enableThinking, int maxOutputCap) {
+                        bool enableThinking, int maxOutputCap,
+                        int finiteContextTokens) {
     QJsonArray messages;
     const QString retrieved = historicalExcerpts.left(1550).trimmed();
     // Historical dialogue is quoted as user-level data, never promoted to
@@ -585,23 +586,58 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
     const QString currentUser = user.left(8192);
     int remainingChars = std::max(0, int(12000 - persona.left(4096).size()
                                         - currentUser.size() - quote.size()));
+    const int cap = maxOutputCap > 0 ? std::clamp(maxOutputCap, 64, 8192)
+                                    : (enableThinking ? 4096 : 2048);
+    int outputTokens = std::clamp(maxTokens, 64, cap);
+    int remainingBytes = std::numeric_limits<int>::max();
+    // A model configured for a short context cannot safely use the same
+    // 12,000-character history heuristic as a 32K model. UTF-8 byte count
+    // provides a conservative PROXY, not an exact model-specific tokenizer.
+    // Preserve the user's current prompt completely; old messages are
+    // discarded first and only the OUTPUT budget is reduced if needed.
+    if (finiteContextTokens == 4096 || finiteContextTokens == 8192 ||
+        finiteContextTokens == 16384 || finiteContextTokens == 32768) {
+        const int fixedBytes = int(persona.left(4096).toUtf8().size() +
+            currentUser.toUtf8().size() + quote.toUtf8().size()) + 256;
+        // Reserve overhead for the chat template and a reasonable margin.
+        const int fixedTokens = (fixedBytes + 1) / 2 + 384;
+        if (fixedTokens + 64 >= finiteContextTokens)
+            return {}; // never truncate the current user input to make it fit
+        outputTokens = std::min(outputTokens, finiteContextTokens - fixedTokens);
+        remainingBytes = std::max(0, 2 *
+            (finiteContextTokens - outputTokens - fixedTokens));
+    }
     QList<Turn> selected;
     for (int i = history.size() - 1; i >= 0 && selected.size() < 24; --i) {
         const auto &turn = history.at(i);
         const QString oldUser = turn.user.left(4096);
         QString oldAssistant = turn.assistant.right(8192);
         const int cost = oldUser.size() + oldAssistant.size() + 96;
-        if (cost > remainingChars) {
-            // Preserve the last assistant continuation when it is too large,
-            // instead of silently dropping the entire immediately prior turn.
-            if (selected.isEmpty() && remainingChars > oldUser.size() + 384) {
-                oldAssistant = oldAssistant.right(remainingChars - oldUser.size() - 96);
-                selected.prepend(Turn{oldUser, oldAssistant});
+        const int costBytes = int(oldUser.toUtf8().size() +
+                                  oldAssistant.toUtf8().size()) + 192;
+        if (cost > remainingChars || costBytes > remainingBytes) {
+            // Preserve a useful suffix of the most recent assistant reply
+            // when possible; never cut the current user prompt. UTF-8 is
+            // counted on whole QString data to avoid splitting input bytes.
+            const int assistantCharRoom = remainingChars - oldUser.size() - 96;
+            const int assistantByteRoom =
+                remainingBytes - int(oldUser.toUtf8().size()) - 192;
+            if (selected.isEmpty() && assistantCharRoom > 384 &&
+                assistantByteRoom > 384) {
+                oldAssistant = oldAssistant.right(assistantCharRoom);
+                // The assistant tail is at most 8192 QChars. Tightening it
+                // by full characters is bounded and never touches the prompt.
+                while (!oldAssistant.isEmpty() &&
+                       oldAssistant.toUtf8().size() > assistantByteRoom)
+                    oldAssistant.remove(0, std::max(1, oldAssistant.size() / 4));
+                if (!oldAssistant.isEmpty())
+                    selected.prepend(Turn{oldUser, oldAssistant});
             }
             break;
         }
         selected.prepend(Turn{oldUser, oldAssistant});
         remainingChars -= cost;
+        remainingBytes -= costBytes;
     }
     for (const auto &turn : selected) {
         messages.append(QJsonObject{{"role", "user"}, {"content", turn.user}});
@@ -609,9 +645,7 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
     }
     messages.append(QJsonObject{{"role", "user"}, {"content", currentUser}});
     QJsonObject request{{"model", "ember"}, {"messages", messages},
-                        {"max_tokens", std::clamp(maxTokens, 64,
-                            maxOutputCap > 0 ? std::clamp(maxOutputCap, 64, 8192)
-                                             : (enableThinking ? 4096 : 2048))},
+                        {"max_tokens", outputTokens},
                         {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
                         {"stream", false}};
     if (enableThinking) {

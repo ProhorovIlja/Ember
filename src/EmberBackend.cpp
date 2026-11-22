@@ -2681,7 +2681,15 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
         requestedOutput, m_brainContextTokens, voice);
     QJsonObject payload = EmberCore::chatRequest(
         effectivePersona, m_history, text, boundedOutput,
-        generation.temperature, recalled, deep, 8192);
+        generation.temperature, recalled, deep, 8192, m_brainContextTokens);
+    if (payload.isEmpty()) {
+        // Keep the draft in the composer and do NOT commit a ghost prompt.
+        // A smaller context may be insufficient even with no old turns.
+        setStatus("The current RU/EN message and system instructions exceed "
+                  "this local model context. Increase context in Settings "
+                  "or split the draft; no text was sent or truncated.");
+        return false;
+    }
     if (!selected.isEmpty() &&
         !EmberCore::attachLocalVisionData(payload, imageData)) {
         // Leave the composer attachment and both SQLite/UI histories intact.
