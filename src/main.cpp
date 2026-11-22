@@ -107,8 +107,11 @@ int main(int argc, char *argv[]) {
             root->setProperty("page", 2);
             backend.setVoiceEngine(1);
             backend.setRecognitionEngine(1);
+            backend.setSpeechDevice(2); // configuration-only; never start CPU inference
             if (!root->findChild<QObject *>("emberNativeTtsPicker") ||
                 !root->findChild<QObject *>("emberNativeAsrPicker") ||
+                !root->findChild<QObject *>("emberSpeechAutoDevice") ||
+                backend.speechDevice() != 2 ||
                 !backend.inspectOfflineSetup().contains("Native speech.cpp")) {
                 qmlDiagnostics.append(
                     "Native offline TTS/ASR model picker or readiness check missing");
