@@ -16,6 +16,7 @@ from pathlib import Path
 from asr_benchmark import MODELS, transcribe
 from asr_corpus import evaluate
 from localhost_owner import require_owned_speech_listener
+from private_worker_env import private_worker_environment
 
 
 def whisper_adapter(executable, model, vad=None, *, runner=subprocess.run,
@@ -54,7 +55,8 @@ def whisper_adapter(executable, model, vad=None, *, runner=subprocess.run,
                               stdin=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL,
-                              timeout=timeout_seconds, check=False)
+                              timeout=timeout_seconds, check=False,
+                              env=private_worker_environment())
             except subprocess.TimeoutExpired:
                 raise RuntimeError("Local Whisper transcription timed out") from None
             except OSError:
@@ -126,6 +128,8 @@ def comparison_report(manifest, qwen_model, whisper_recognize, *,
 def self_test():
     import wave
     from asr_benchmark import silent_wav
+    from private_worker_env import self_test as verify_private_env
+    verify_private_env()
     with tempfile.TemporaryDirectory() as work:
         root = Path(work)
         exe = root / "whisper-cli.exe"  # fake file; runner below is injected
@@ -148,13 +152,17 @@ def self_test():
         ]}), encoding="utf-8")
         created = []
 
-        def fake_run(args, *, cwd, stdin, stdout, stderr, timeout, check):
+        def fake_run(args, *, cwd, stdin, stdout, stderr, timeout, check, env):
             assert args[0] == str(exe.resolve())
             assert args[1:3] == ["-m", str(model.resolve())]
             assert args[3] == "-f" and args[5] == "-l"
             assert args[-3:] == ["--vad", "-vm", str(vad.resolve())]
             assert stdin == stdout == stderr == subprocess.DEVNULL
             assert not check and timeout == 200
+            assert env["SPEECH_NO_UPDATE_CHECK"] == "1"
+            assert env["HF_HUB_OFFLINE"] == "1"
+            assert not any("TOKEN" in key.upper() or "API_KEY" in key.upper()
+                           for key in env)
             src = Path(args[4])
             assert src.exists()
             with wave.open(str(src), "rb") as reader:
