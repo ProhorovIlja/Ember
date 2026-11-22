@@ -146,6 +146,34 @@ private slots:
         input.whisperExe = root.filePath("missing.exe");
         QVERIFY(!inspect(input).dictationFilesReady);
     }
+    void whisperCliReceivesBoundedPerConversationTerminologyWithoutShell() {
+        using EmberCore::whisperCliArguments;
+        const QString model = QStringLiteral("D:/Game Files/Ember/models/stt/ggml-base.bin");
+        const QString wav = QStringLiteral("D:/Game Files/Ember/cache/microphone.wav");
+        const QString result = QStringLiteral("D:/Game Files/Ember/cache/recognition");
+        const QStringList plain = whisperCliArguments(model, wav, result, 0, {}, {});
+        QCOMPARE(plain, QStringList({
+            "-m", model, "-f", wav, "-l", "auto",
+            "-otxt", "-of", result, "-np"}));
+        QVERIFY(!plain.contains("--prompt"));
+        QVERIFY(!plain.contains("--vad"));
+        const auto hinted = whisperCliArguments(
+            model, wav, result, 2, QString::fromUtf8("  Герман\n Илья  C++   Yharnam  "),
+            "D:/Silero model/vad.bin");
+        QCOMPARE(hinted.mid(0, 10), QStringList({
+            "-m", model, "-f", wav, "-l", "ru",
+            "-otxt", "-of", result, "-np"}));
+        QCOMPARE(hinted.mid(10), QStringList({
+            "--vad", "-vm", "D:/Silero model/vad.bin",
+            "--prompt", QString::fromUtf8("Герман Илья C++ Yharnam")}));
+        const QString longHints = QString(600, QChar('Q'));
+        const auto bounded = whisperCliArguments(model, wav, result, 1, longHints, {});
+        QCOMPARE(bounded.last().size(), qsizetype(400));
+        QVERIFY(!bounded.last().contains('\n'));
+        QVERIFY(whisperCliArguments({}, wav, result, 1, "a", {}).isEmpty());
+        QVERIFY(whisperCliArguments(model, wav, result, 99, "a", {}).isEmpty());
+        QVERIFY(whisperCliArguments(model, {}, result, 1, "a", {}).isEmpty());
+    }
     void holdToDraftRequiresRealRecordingAndNeverCountsAsSendApproval() {
         using EmberCore::holdDictationReleasedToDraft;
         QVERIFY(!holdDictationReleasedToDraft(-1, true));

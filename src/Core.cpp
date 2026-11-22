@@ -667,6 +667,23 @@ QString compactAsrHints(const QString &hints) {
     // Never interpret recognized text or hint content as program commands.
     return hints.simplified().left(400);
 }
+QStringList whisperCliArguments(const QString &model, const QString &wav,
+                                const QString &outputPrefix, int languageChoice,
+                                const QString &hints,
+                                const QString &optionalVadModel) {
+    const QString language = recognitionLanguageTag(languageChoice);
+    if (model.isEmpty() || wav.isEmpty() || outputPrefix.isEmpty() ||
+        language.isEmpty()) return {};
+    QStringList arguments{"-m", model, "-f", wav, "-l", language,
+                          "-otxt", "-of", outputPrefix, "-np"};
+    if (!optionalVadModel.isEmpty())
+        arguments << "--vad" << "-vm" << optionalVadModel;
+    // whisper.cpp CLI supports --prompt as an initial decoding prompt;
+    // this is a per-user vocabulary hint, not a command or a system prompt.
+    const QString terms = compactAsrHints(hints);
+    if (!terms.isEmpty()) arguments << "--prompt" << terms;
+    return arguments;
+}
 QString decodeLocalAsrUtf8(const QByteArray &raw, bool *valid) {
     if (valid) *valid = false;
     if (raw.size() > 64 * 1024) return {};

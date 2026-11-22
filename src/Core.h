@@ -58,6 +58,12 @@ bool allowedLocalAsrEndpoint(const QString &url);
 QString nativeAsrModel(int recognitionEngine);
 QString recognitionLanguageTag(int languageChoice);
 QString compactAsrHints(const QString &hints);
+// No shell is involved: returns an explicit QProcess argv array. Applies
+// optional user-entered, conversation-local terminology to Whisper CLI.
+QStringList whisperCliArguments(const QString &model, const QString &wav,
+                                const QString &outputPrefix, int languageChoice,
+                                const QString &hints,
+                                const QString &optionalVadModel);
 // Whisper CLI files and native ASR HTTP bodies must be well-formed UTF-8.
 // An empty, valid transcript means silence; malformed bytes must fail closed.
 QString decodeLocalAsrUtf8(const QByteArray &raw, bool *valid = nullptr);

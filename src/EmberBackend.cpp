@@ -3230,14 +3230,18 @@ void EmberBackend::transcribe() {
     }
     m_whisper.setWorkingDirectory(QFileInfo(configPath("asrExe")).absolutePath());
     m_whisper.setProgram(configPath("asrExe"));
-    QStringList arguments{"-m", configPath("asrModel"), "-f", workFile("microphone.wav"),
-                          "-l", EmberCore::recognitionLanguageTag(m_recognitionLanguage),
-                          "-otxt", "-of", workFile("recognition"), "-np"};
-    // Current whisper.cpp supports an optional GGML Silero VAD model.
-    // The setting is opt-in by installing its tiny weights; legacy Whisper
-    // engines and users without the model keep the previous invocation.
-    if (isRegularFile(configPath("asrVadModel")))
-        arguments << "--vad" << "-vm" << configPath("asrVadModel");
+    // Keep model paths as QProcess arguments, not shell text. User-entered
+    // terminology improves proper-noun recognition in both native Qwen-ASR
+    // and Whisper; each remains optional and strictly bounded.
+    const QString vad = isRegularFile(configPath("asrVadModel"))
+        ? configPath("asrVadModel") : QString();
+    const QStringList arguments = EmberCore::whisperCliArguments(
+        configPath("asrModel"), workFile("microphone.wav"),
+        workFile("recognition"), m_recognitionLanguage, m_recognitionHints, vad);
+    if (arguments.isEmpty()) {
+        failTranscription("Invalid offline Whisper language or file arguments.");
+        return;
+    }
     m_whisper.setArguments(arguments);
     m_cliAsrActive = true;
     setBusy(true);
