@@ -53,3 +53,12 @@ The Chat composer provides **hold-to-dictate** with offline Whisper recognition 
 Local text generation now consumes OpenAI/llama.cpp `text/event-stream` responses incrementally, checks malformed or oversized events, updates the chat UI in bounded batches and preserves interrupted partial text. Model reasoning received as a separate `reasoning_content` field or as streamed `<think>…</think>` markup is excluded from displayed assistant replies, voice playback, and saved SQLite chat history. Split tag prefixes remain withheld until the next SSE fragment resolves them. The native incremental filter now retains only a short partial tag (at most seven characters) rather than accumulating the model's hidden reasoning or rescanning the full reply after every token. A `finish_reason: length` response is explicitly marked incomplete rather than silently treated as a finished story or answer. A visible, user-triggered **Continue answer** action now appears for that specific incomplete reply; it submits an explicit local continuation request while leaving any unsent composer draft intact, rather than silently restarting or auto-spending GPU time. This is token streaming for **text**, not duplex audio or a measured first-phoneme improvement. The initial LLM context is configured for 8,192 tokens and generation for up to 2,048 tokens when writing long stories; performance depends on the chosen weights, quantization and actual RTX 4070 measurements.
 
 The visual direction is **AMOLED black, restrained electric-blue accents, an original blue-flame emblem, and native Qt Quick**. Basic Windows/QML smoke tests do not constitute pixel-level visual QA on the target GPU or at multiple DPI settings.
+
+**Local server identity protection:** Managed llama.cpp and speech.cpp
+connections require a Windows kernel TCP listener owned by the exact
+process Ember launched, bound specifically to 127.0.0.1. A fake local
+health response cannot by itself mark a model ready or receive private
+text/audio. External compatible localhost TTS remains possible through
+an explicit **Trust external local TTS** toggle, disabled by default;
+such a server can see the text sent for speech. This is PID-based
+defense-in-depth, not protection against fully privileged local malware.
