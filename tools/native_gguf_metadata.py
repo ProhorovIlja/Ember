@@ -211,8 +211,9 @@ def model_identity(path, alias, *, selected_voice=None):
         if not english_female_voices:
             raise InvalidSpeechGGUF(
                 "Stable Ember voice needs an English female speaker in the model")
-        if selected_voice is not None and selected_voice not in english_voices:
-            raise InvalidSpeechGGUF("Selected voice is not English in this GGUF")
+        if selected_voice is not None and selected_voice not in english_female_voices:
+            raise InvalidSpeechGGUF(
+                "Selected voice is not an English female speaker in this GGUF")
     rate = meta.get("speech.sample_rate")
     if not isinstance(rate, int) or isinstance(rate, bool) or not 8000 <= rate <= 96000:
         raise InvalidSpeechGGUF("Invalid native speech audio sample rate")
@@ -297,6 +298,16 @@ def self_test():
                 except InvalidSpeechGGUF:
                     pass
             if task == "synthesis":
+                file.write_bytes(_fixture_gguf(
+                    family, size, task, genders=("male", "female")))
+                assert model_identity(file, alias, selected_voice="serena")[
+                    "english_female_speakers"] == ["serena"]
+                try:
+                    model_identity(file, alias, selected_voice="vivian")
+                    raise AssertionError("English male speaker accepted")
+                except InvalidSpeechGGUF:
+                    pass
+                file.write_bytes(_fixture_gguf(family, size, task))
                 for wrong_voice in ("sohee", "unavailable"):
                     try:
                         model_identity(file, alias, selected_voice=wrong_voice)
