@@ -462,6 +462,68 @@ private slots:
         QCOMPARE(EmberCore::safeMarkdownHtml(QStringLiteral("plain & <script>")),
                  QStringLiteral("<div style=\"color:#EEF3F9\">plain &amp; &lt;script&gt;<br/></div>"));
     }
+    void longMultilingualCodeRepliesRenderPersistAndRestoreWithoutLoss() {
+        // 8192 output tokens can stream as much as 65,536 visible UTF-16
+        // characters. Every stage must preserve the tail, including fenced
+        // code and RU/EN text, rather than silently hiding or losing it.
+        const QString pattern = QString::fromUtf8(
+            "Ярнам: исследование. A hunter writes code: "
+            "if (health < 3) { dodge(); }\\n");
+        const QString suffix = QStringLiteral(
+            "\\n```\\nFINAL_LINE_64K_<img src='https://never-load.invalid/x'>");
+        QString reply = QStringLiteral("```cpp\\n");
+        while (reply.size() < 65536)
+            reply += pattern;
+        reply = reply.left(65536 - suffix.size()) + suffix;
+        QCOMPARE(reply.size(), qsizetype(65536));
+
+        const QString rendered = EmberCore::safeMarkdownHtml(reply);
+        QVERIFY(rendered.contains(QStringLiteral("FINAL_LINE_64K_")));
+        QVERIFY(rendered.contains(QStringLiteral("&lt;img")));
+        QVERIFY(!rendered.contains(QStringLiteral("<img")));
+        QVERIFY(!EmberCore::safeMarkdownHtml(
+            reply + QStringLiteral("NOT_VISIBLE_PAST_64K"))
+                .contains(QStringLiteral("NOT_VISIBLE_PAST_64K")));
+
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        QString originalSession;
+        {
+            SessionStore store(temp.filePath("source.sqlite"));
+            QVERIFY2(store.ready(), qPrintable(store.error()));
+            originalSession = store.createSession();
+            QVERIFY(store.append(originalSession, "you",
+                                 "Continue the bilingual code story."));
+            QVERIFY(store.append(originalSession, "ember", reply));
+            QVERIFY(!store.append(originalSession, "ember",
+                                  reply + QLatin1Char('X')));
+            QCOMPARE(store.totalMessages(originalSession), qint64(2));
+            QCOMPARE(store.messages(originalSession).last().toMap()
+                     .value("body").toString(), reply);
+
+            const QString markdown = temp.filePath("export.md");
+            QVERIFY(store.exportMarkdown(originalSession, markdown));
+            QFile doc(markdown);
+            QVERIFY(doc.open(QIODevice::ReadOnly));
+            QVERIFY(QString::fromUtf8(doc.readAll())
+                    .contains(QStringLiteral("FINAL_LINE_64K_")));
+
+            QVERIFY(store.exportCompactBackup(temp.filePath("backup.emberbackup")));
+        }
+        SessionStore restored(temp.filePath("restored.sqlite"));
+        QVERIFY2(restored.ready(), qPrintable(restored.error()));
+        QVERIFY(restored.restoreCompactBackup(temp.filePath("backup.emberbackup")));
+        const auto restoredSessions = restored.sessions();
+        QCOMPARE(restoredSessions.size(), 1);
+        const QString restoredId = restoredSessions.first().toMap()
+            .value("id").toString();
+        QVERIFY(!restoredId.isEmpty());
+        QVERIFY(restoredId != originalSession);
+        QCOMPARE(restored.messages(restoredId).size(), 2);
+        QCOMPARE(restored.messages(restoredId).last().toMap()
+                 .value("body").toString(), reply);
+    }
+
     void measuresCaptureEnergyAcrossWindowsPcmFormats() {
         QAudioFormat format;
         format.setSampleRate(16000);
