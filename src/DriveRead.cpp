@@ -114,9 +114,9 @@ bool validOAuthCallback(const QByteArray &headers, quint16 port,
         if (item.first == "code") ++codes;
     }
     if (states != 1 || codes != 1 ||
-        query.queryItemValue("state") != QString::fromLatin1(expectedState))
+        query.queryItemValue("state", QUrl::FullyDecoded) != QString::fromLatin1(expectedState))
         return false;
-    const QString result = query.queryItemValue("code");
+    const QString result = query.queryItemValue("code", QUrl::FullyDecoded);
     if (result.size() < 8 || result.size() > 2048)
         return false;
     for (const QChar c : result)
