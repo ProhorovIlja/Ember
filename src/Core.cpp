@@ -75,7 +75,29 @@ QString nativeSpeechDeviceArg(int deviceIndex) {
     if (deviceIndex == 2) return QStringLiteral("cpu");
     return {};
 }
+QProcessEnvironment sanitizedChildProcessEnvironment(QProcessEnvironment inherited) {
+    // The Windows shell can carry API keys even when the user only asks for
+    // offline inference. No model/voice/test child needs those secrets.
+    for (const QString &key : inherited.keys()) {
+        const QString upper = key.toUpper();
+        if (upper.contains(QStringLiteral("TOKEN")) ||
+            upper.contains(QStringLiteral("SECRET")) ||
+            upper.contains(QStringLiteral("PASSWORD")) ||
+            upper.contains(QStringLiteral("CREDENTIAL")) ||
+            upper.contains(QStringLiteral("API_KEY")) ||
+            upper.contains(QStringLiteral("PRIVATE_KEY")) ||
+            upper.startsWith(QStringLiteral("AWS_")) ||
+            upper.startsWith(QStringLiteral("GITHUB_")) ||
+            upper.startsWith(QStringLiteral("OPENAI_")) ||
+            upper.startsWith(QStringLiteral("GOOGLE_")) ||
+            upper.startsWith(QStringLiteral("AZURE_"))) {
+            inherited.remove(key);
+        }
+    }
+    return inherited;
+}
 QProcessEnvironment speechProcessEnvironment(QProcessEnvironment inherited) {
+    inherited = sanitizedChildProcessEnvironment(inherited);
     // Upstream docs/install.md: a terminal speech.cpp invocation otherwise
     // checks for a newer release, independent of the selected GGUF being
     // purely local. Never ask for Internet contact during model startup.
