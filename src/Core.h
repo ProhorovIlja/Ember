@@ -55,6 +55,9 @@ ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep = fa
 // QProcess PID. HTTP 200 on /health alone is not authentication. Returns
 // false when the listener is absent, wildcard-bound or cannot be inspected.
 bool ownedLoopbackTcpListener(quint16 port, quint64 processId);
+// Require the actual bounded JSON health contract, not HTTP 200 alone.
+// Accept application/json with an optional charset for llama.cpp/speech.cpp.
+bool validManagedHealthResponse(const QByteArray &body, const QByteArray &contentType);
 bool allowedLocalEndpoint(const QString &url);
 // Dictation may send only after the user selects Send, ASR finishes,
 // recording was intact, and the local model is available.
