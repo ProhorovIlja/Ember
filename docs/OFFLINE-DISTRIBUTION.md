@@ -244,3 +244,30 @@ Passing it is not proof of enjoyable English voice, real audio-device
 playback, microphone accuracy, multi-process RTX 4070 VRAM sufficiency,
 external network isolation of a third-party executable, or a finished app.
 Human blind listening and clean Windows 10 acceptance remain mandatory.
+
+
+### Native worker trust and readiness, 22 November 2026
+
+The managed `llama-server` and `speech.cpp` processes are now marked Ready
+only if all conditions hold: the exact Windows loopback listener still
+belongs to the launched process ID; an HTTP 200 `/health` response contains
+no more than 4096 bytes; its media type is `application/json`; and the parsed
+JSON object contains the literal string `"status":"ok"`. An HTTP 200 with
+HTML, malformed JSON or a loading/error status never means Ready. This
+matches the documented `/health` protocol of both upstream projects.
+
+Native llama.cpp, whisper.cpp, sherpa-onnx Kokoro, speech.cpp and the explicit
+local project test subprocesses now receive an environment with inherited
+credential-like variables removed (API keys, tokens, secrets, passwords and
+cloud-provider credential prefixes). Windows PATH, SystemRoot and GPU/Vulkan
+driver settings are preserved. The one-shot Python offline and comparison
+tools use the same credential-removal policy and additionally set
+`SPEECH_NO_UPDATE_CHECK=1`, `HF_HUB_OFFLINE=1` and
+`TRANSFORMERS_OFFLINE=1`.
+
+These controls reduce accidental exposure to native third-party executables.
+They do **not** authenticate downloaded EXE/DLLs, prove GGUF weight integrity,
+block every possible outbound socket, isolate the process at the OS level,
+secure untrusted arbitrary repositories or replace a disconnected-PC
+acceptance test. Opt-in model catalog downloads in the native UI remain
+independent of the strict one-shot Python offline acceptance scripts.
