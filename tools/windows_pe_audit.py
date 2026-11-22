@@ -12,6 +12,7 @@ installer must still be smoke-tested on a clean disconnected target.
 """
 import argparse
 import json
+import mmap
 import re
 import struct
 import tempfile
@@ -40,7 +41,7 @@ usp10.dll uxtheme.dll version.dll winhttp.dll wininet.dll winmm.dll
 windowscodecs.dll winspool.drv wlanapi.dll ws2_32.dll wsock32.dll
 """.split())
 DLL_RE = re.compile(r"^[a-z0-9_.+-]{2,128}\.(?:dll|drv|exe)$")
-MAX_BINARY = 512 * 1024 * 1024
+MAX_BINARY = 4 * 1024 * 1024 * 1024
 MAX_NODES = 6000
 
 
@@ -61,7 +62,14 @@ def pe_imports(path):
     file = Path(path)
     if file.stat().st_size > MAX_BINARY:
         raise InvalidPE("PE executable or library exceeds the static scan limit")
-    blob = file.read_bytes()
+    # mmap avoids copying multi-hundred-megabyte NVIDIA/CUDA DLLs into
+    # process RAM. Only the PE headers and tiny import-name regions are read.
+    with file.open("rb") as source:
+        with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as blob:
+            return _parse_mapped_pe(blob)
+
+
+def _parse_mapped_pe(blob):
     if len(blob) < 0x200 or blob[:2] != b"MZ":
         raise InvalidPE("Not a complete Windows PE executable")
     pe = _u32(blob, 0x3C)
@@ -163,7 +171,11 @@ def is_system(name):
 
 def audit_tree(root):
     """Inspect every PE in a portable folder; return metrics + missing imports."""
-    root = Path(root).resolve(strict=True)
+    supplied = Path(root)
+    if supplied.is_symlink() or (
+            hasattr(supplied, "is_junction") and supplied.is_junction()):
+        raise ValueError("Portable installation root must not be a link")
+    root = supplied.resolve(strict=True)
     if not root.is_dir() or root.is_symlink():
         raise ValueError("Portable installation root must be a real directory")
     children = list(root.rglob("*"))
