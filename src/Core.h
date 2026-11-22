@@ -39,6 +39,10 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, cons
 // Bounded per-request output tokens; keeps half the active finite context
 // available for the prompt/history, even with a larger user-selected budget.
 int chatOutputBudget(int requestedTokens, int contextTokens, bool voice);
+// Bound streamed visible characters in proportion to the ACTUAL model output
+// token cap, not an unrelated hard-coded 16K QChar limit. This remains a
+// defensive finite cap, not an assertion about any model's tokenization.
+int chatVisibleCharacterLimit(int outputTokens, bool voice);
 // Text-first: long and precise technical replies, creative fiction separately.
 struct ChatGenerationProfile { int maxTokens; double temperature; };
 ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep = false);
