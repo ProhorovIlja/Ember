@@ -880,7 +880,7 @@ void EmberBackend::startBrain() {
     QStringList launch{"--model", model, "--alias", "ember",
                        "--host", "127.0.0.1", "--port", "43821",
                        "--ctx-size", "8192", "--n-gpu-layers", "99",
-                       "--parallel", "1"};
+                       "--parallel", "1", "--jinja"};
     const QString projector = configPath("visionProj");
     m_brainVisionMode = isRegularFile(projector);
     if (m_brainVisionMode) launch << "--mmproj" << projector;
