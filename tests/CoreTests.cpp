@@ -406,7 +406,7 @@ private slots:
         const QByteArray packed = gallery.verifiedBytes(id);
         QVERIFY(!packed.isEmpty());
         QVERIFY(packed.size() <= 5 * 1024 * 1024);
-        QVERIFY(packed.startsWith("\\x89PNG\\r\\n\\x1a\\n"));
+        QVERIFY(packed.startsWith(QByteArray::fromHex("89504e470d0a1a0a")));
         const QImage stored(gallery.filePath(id));
         QVERIFY(!stored.isNull());
         QVERIFY(stored.hasAlphaChannel());
