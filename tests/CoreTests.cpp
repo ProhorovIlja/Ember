@@ -1104,21 +1104,23 @@ private slots:
         QVERIFY(!prepare(root.filePath("isolated"), Preset::Cargo).ok());
         QVERIFY(!prepare(root.filePath("isolated"), Preset::PythonUnittest).ok());
     }
-    void localModelCanOnlyStageOneScopedReviewablePatch() {
+    void localModelStagesOnlyReviewedScopedSourcePatches() {
         using namespace EmberAgent;
         const QJsonArray prompt{
             QJsonObject{{"role", "user"}, {"content", "Repair one C++ bug"}}
         };
         QCOMPARE(modelRequest(prompt, 3, Scope::LocalProject, true)
-                    .value("tools").toArray().size(), 4);
+                    .value("tools").toArray().size(), 5);
         QCOMPARE(modelRequest(prompt, 3, Scope::LocalProject, false)
                     .value("tools").toArray().size(), 3);
         QCOMPARE(modelRequest(prompt, 3, Scope::GitHubRepository, true)
                     .value("tools").toArray().size(), 2);
         const auto tools = modelRequest(
             prompt, 3, Scope::LocalProject, true).value("tools").toArray();
-        QCOMPARE(tools.last().toObject().value("function").toObject()
+        QCOMPARE(tools.at(3).toObject().value("function").toObject()
                      .value("name").toString(), QString("propose_patch"));
+        QCOMPARE(tools.last().toObject().value("function").toObject()
+                     .value("name").toString(), QString("propose_patch_batch"));
         QVERIFY(!modelRequest(prompt, 0, Scope::LocalProject, true)
                     .contains("tools"));
         const auto message = [](const QJsonObject &arguments) {
