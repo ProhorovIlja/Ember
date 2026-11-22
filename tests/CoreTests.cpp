@@ -662,6 +662,29 @@ private slots:
         QCOMPARE(absent.matches, 0);
         QVERIFY(absent.draft.contains("No matching lines found"));
     }
+    void localModelSuggestionOnlyCreatesSingleManualEditProposal() {
+        using namespace EmberLocalEdit;
+        const QString answer = QString::fromUtf8(
+            "Proposed fix:\n```\n<<<<<<< SEARCH\n"
+            "int ошибкa = 1;\n=======\n"
+            "int ошибкa = 2;\n>>>>>>> REPLACE\n```\n"
+            "This is only a suggestion.");
+        const auto block = parseSingleSearchReplaceBlock(answer);
+        QVERIFY2(block.ok(), qPrintable(block.error));
+        QCOMPARE(block.oldText, QString::fromUtf8("int ошибкa = 1;"));
+        QCOMPARE(block.newText, QString::fromUtf8("int ошибкa = 2;"));
+        QVERIFY(!parseSingleSearchReplaceBlock("no change here").ok());
+        QVERIFY(!parseSingleSearchReplaceBlock(
+            "<<<<<<< SEARCH\nfoo\n=======\nbar\n>>>>>>> REPLACE\n"
+            "<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE").ok());
+        QVERIFY(!parseSingleSearchReplaceBlock(
+            "<<<<<<< SEARCH\nfoo\n=======\nfoo\n>>>>>>> REPLACE").ok());
+        QVERIFY(!parseSingleSearchReplaceBlock(
+            "<<<<<<< SEARCH\n\n=======\nbar\n>>>>>>> REPLACE").ok());
+        QVERIFY(!parseSingleSearchReplaceBlock(
+            "<<<<<<< SEARCH\nfoo\n=======\nbar").ok());
+        QVERIFY(!parseSingleSearchReplaceBlock(QString(200001, 'x')).ok());
+    }
     void localSourceEditRequiresExactMatchApprovalAndKeepsBackup() {
         using namespace EmberLocalEdit;
         QTemporaryDir temporary;

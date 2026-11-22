@@ -1452,14 +1452,35 @@ QString EmberBackend::stageLocalCodeEdit() {
         "*.cmake *.diff *.patch);;All files (*)");
     if (filePath.isEmpty()) return {};
     bool accepted = false;
-    const QString oldText = QInputDialog::getMultiLineText(
-        nullptr, "Find exact source", "Exact existing text to replace:",
-        {}, &accepted);
+    QString oldText, newText;
+    const QStringList modes{
+        "Use SEARCH / REPLACE from last Ember answer",
+        "Enter exact source edit manually"
+    };
+    const int selected = m_lastReply.contains("<<<<<<< SEARCH") ? 0 : 1;
+    const QString mode = QInputDialog::getItem(
+        nullptr, "Local code edit source", "Edit proposal:",
+        modes, selected, false, &accepted);
     if (!accepted) return {};
-    const QString newText = QInputDialog::getMultiLineText(
-        nullptr, "Proposed replacement", "Replacement text (may be empty):",
-        {}, &accepted);
-    if (!accepted) return {};
+    if (mode == modes.at(0)) {
+        const auto suggestion =
+            EmberLocalEdit::parseSingleSearchReplaceBlock(m_lastReply);
+        if (!suggestion.ok()) {
+            setStatus(suggestion.error);
+            return {};
+        }
+        oldText = suggestion.oldText;
+        newText = suggestion.newText;
+    } else {
+        oldText = QInputDialog::getMultiLineText(
+            nullptr, "Find exact source", "Exact existing text to replace:",
+            {}, &accepted);
+        if (!accepted) return {};
+        newText = QInputDialog::getMultiLineText(
+            nullptr, "Proposed replacement", "Replacement text (may be empty):",
+            {}, &accepted);
+        if (!accepted) return {};
+    }
     auto plan = EmberLocalEdit::planExactReplace(filePath, oldText, newText);
     if (!plan.ok()) {
         setStatus(plan.error);

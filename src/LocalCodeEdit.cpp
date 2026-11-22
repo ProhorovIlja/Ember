@@ -64,6 +64,44 @@ bool exactSnapshot(const EditPlan &plan, QByteArray &current) {
            current == plan.originalBytes;
 }
 }
+SearchReplaceBlock parseSingleSearchReplaceBlock(const QString &modelReply) {
+    SearchReplaceBlock result;
+    if (modelReply.isEmpty() || modelReply.size() > 200000) {
+        result.error = "Model answer is empty or too large for edit parsing.";
+        return result;
+    }
+    QString text = modelReply;
+    text.replace("\r\n", "\n");
+    const QString begin = QStringLiteral("<<<<<<< SEARCH\n");
+    const QString divider = QStringLiteral("\n=======\n");
+    const QString end = QStringLiteral("\n>>>>>>> REPLACE");
+    const qsizetype start = text.indexOf(begin);
+    const qsizetype middle = start < 0 ? -1 :
+        text.indexOf(divider, start + begin.size());
+    const qsizetype finish = middle < 0 ? -1 :
+        text.indexOf(end, middle + divider.size());
+    if (start < 0 || middle < 0 || finish < 0 ||
+        text.indexOf(begin, start + begin.size()) >= 0 ||
+        text.indexOf(divider, middle + divider.size()) >= 0 ||
+        text.indexOf(end, finish + end.size()) >= 0) {
+        result.error = "Expected exactly one SEARCH / REPLACE block. "
+                       "Ask Ember for a single edit, or use manual mode.";
+        return result;
+    }
+    result.oldText = text.mid(start + begin.size(),
+                              middle - (start + begin.size()));
+    result.newText = text.mid(middle + divider.size(),
+                              finish - (middle + divider.size()));
+    if (result.oldText.isEmpty() || result.oldText.size() > kMaximumFindChars ||
+        result.newText.size() > kMaximumReplaceChars ||
+        result.oldText == result.newText ||
+        result.oldText.contains(QChar::Null) ||
+        result.newText.contains(QChar::Null)) {
+        result.error = "Model edit has empty, identical, malformed, or oversized text.";
+        return result;
+    }
+    return result;
+}
 EditPlan planExactReplace(const QString &selectedPath,
                           const QString &exactOldText,
                           const QString &newText) {

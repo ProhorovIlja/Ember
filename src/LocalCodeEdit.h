@@ -14,6 +14,16 @@ struct EditPlan {
     QByteArray proposedBytes;
     bool ok() const { return error.isEmpty(); }
 };
+struct SearchReplaceBlock {
+    QString oldText;
+    QString newText;
+    QString error;
+    bool ok() const { return error.isEmpty(); }
+};
+// Extract exactly one explicitly delimited edit suggestion from a model reply.
+// Treat the model output as untrusted. The file path always comes from a
+// separate native file picker and approval dialog.
+SearchReplaceBlock parseSingleSearchReplaceBlock(const QString &modelReply);
 struct EditResult {
     QString backupPath;
     QString error;
