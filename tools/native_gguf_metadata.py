@@ -293,7 +293,7 @@ def self_test():
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis", duplicated_key=True),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis", truncated=True),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis").replace(
-                b"0.7.0", b"0.99.0", 1),
+                b"0.7.0", b"9.7.0", 1),
             _fixture_gguf("qwen3-asr", "1.7B", "recognition", langs=("en",)),
             b"GGUF" + struct.pack("<IQQ", 3, 0, 1) + bytes(1024 * 1024),
         ):
