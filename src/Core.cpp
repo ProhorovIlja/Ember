@@ -121,7 +121,9 @@ bool validNativeSpeechInventory(const QByteArray &body,
         }
         for (const auto &item : info.value(QStringLiteral("voices")).toArray()) {
             if (item.isObject() &&
-                item.toObject().value(QStringLiteral("name")).toString() == selectedVoice)
+                item.toObject().value(QStringLiteral("name")).toString() == selectedVoice &&
+                item.toObject().value(QStringLiteral("language")).toString() ==
+                    QStringLiteral("en"))
                 hasVoice = true;
         }
         if (task == QStringLiteral("synthesis")) {
