@@ -1193,6 +1193,64 @@ StreamResult consumeChatStream(QByteArray &buffer, const QByteArray &incoming) {
     }
     return result;
 }
+StreamResult consumeChatStream(SseEventState &state, const QByteArray &incoming) {
+    StreamResult result;
+    if (incoming.size() > 128 * 1024 ||
+        state.buffer.size() + incoming.size() > 256 * 1024) {
+        result.error = true;
+        state.reset();
+        return result;
+    }
+    state.buffer.append(incoming);
+    for (;;) {
+        // Recognize LF, CRLF and CR, including CRLF split across reads.
+        // Resume where the prior packet stopped rather than rescanning JSON.
+        qsizetype consumed = -1;
+        qsizetype at = state.scanAt;
+        for (; at < state.buffer.size();) {
+            const char ch = state.buffer.at(at);
+            if (ch != '\r' && ch != '\n') { ++at; continue; }
+            if (ch == '\r' && at + 1 == state.buffer.size() &&
+                at != state.lineStart) break;
+            const qsizetype step = ch == '\r' && at + 1 < state.buffer.size() &&
+                state.buffer.at(at + 1) == '\n' ? 2 : 1;
+            if (at == state.lineStart) {
+                consumed = at + step;
+                break;
+            }
+            at += step;
+            state.lineStart = at;
+        }
+        if (consumed < 0) {
+            state.scanAt = at;
+            break;
+        }
+        // The existing bounded parser owns SSE grammar and strict JSON.
+        // Decode one fully framed event, in <=128 KiB input pieces.
+        const QByteArray frame = state.buffer.left(consumed);
+        state.buffer.remove(0, consumed);
+        state.scanAt = state.lineStart = 0;
+        QByteArray decodeBuffer;
+        for (qsizetype offset = 0; offset < frame.size(); offset += 128 * 1024) {
+            const auto piece = consumeChatStream(
+                decodeBuffer, frame.mid(offset, 128 * 1024));
+            result.text += piece.text;
+            result.truncated = result.truncated || piece.truncated;
+            if (piece.done || piece.error) {
+                result.done = piece.done;
+                result.error = piece.error;
+                state.reset();
+                return result;
+            }
+        }
+        if (!decodeBuffer.isEmpty()) {
+            result.error = true;
+            state.reset();
+            return result;
+        }
+    }
+    return result;
+}
 bool allowedLocalEndpoint(const QString &raw) {
     const QUrl url(raw);
     return url.isValid() && url.scheme() == "http" && url.host() == "127.0.0.1" &&

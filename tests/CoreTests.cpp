@@ -754,6 +754,34 @@ private slots:
         QCOMPARE(lastVisible, QString("Public answer."));
         QVERIFY(buffer.isEmpty());
     }
+    void incrementalSseDecodesLongOneByteFragments() {
+        const QJsonObject hiddenDelta{{"reasoning_content", QString(90000, 'x')}};
+        const QJsonObject hiddenChoice{{"delta", hiddenDelta}};
+        const QJsonObject hiddenEnvelope{{"choices", QJsonArray{hiddenChoice}}};
+        const QJsonObject visibleDelta{{"content", "Привет."}};
+        const QJsonObject visibleChoice{{"delta", visibleDelta}};
+        const QJsonObject visibleEnvelope{{"choices", QJsonArray{visibleChoice}}};
+        const QByteArray wire = QByteArray("event: message\r\ndata: ") +
+            QJsonDocument(hiddenEnvelope).toJson(QJsonDocument::Compact) +
+            QByteArray("\r\n\r\ndata: ") +
+            QJsonDocument(visibleEnvelope).toJson(QJsonDocument::Compact) +
+            QByteArray("\n\ndata: [DONE]\r\n\r\n");
+        EmberCore::SseEventState state;
+        QString visible;
+        bool done = false;
+        for (qsizetype i = 0; i < wire.size(); ++i) {
+            const auto part = EmberCore::consumeChatStream(state, wire.mid(i, 1));
+            QVERIFY(!part.error);
+            visible += part.text;
+            done |= part.done;
+            if (i > 128 && i < 88000 && i % 4096 == 0)
+                QVERIFY(state.scanAt >= state.buffer.size() - 2);
+        }
+        QCOMPARE(visible, QString::fromUtf8("Привет."));
+        QVERIFY(done);
+        QVERIFY(state.buffer.isEmpty());
+        QCOMPARE(state.scanAt, qsizetype(0));
+    }
     void llamaStreamTokenLimitNeverMasqueradesAsCompletedReply() {
         QByteArray pending;
         // Build JSON in small typed steps: nested brace elision in Qt's

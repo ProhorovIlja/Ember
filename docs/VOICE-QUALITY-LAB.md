@@ -852,3 +852,14 @@ streams still stop speech, rather than accepting partial transport as a
 genuine token cap. Regression covers complete sentences, unsent tail,
 status-only archive text and cancellation policy. Voice quality and exact
 first sound still require target Windows 10 listening tests.
+
+### November 22 — incremental bounded SSE framing
+
+Production now keeps a cursor across incomplete SSE event fragments, avoiding
+quadratic repeated scans of a long JSON frame when a local LLM delivers tiny
+network packets. A completed event is fed only once into the existing strict
+SSE/JSON parser, preserving LF, CRLF, CR, multiline data, [DONE], the
+128 KiB per-read/256 KiB buffered caps and hidden reasoning isolation.
+Compatibility with the existing QByteArray parser remains unchanged. QtTest
+covers a 90 KiB hidden-reasoning event split into one-byte packets, followed
+by Cyrillic output and [DONE]. Physical latency still requires benchmarking.

@@ -1282,7 +1282,7 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
     setBusy(true);
     setStatus(voice ? "Reasoning in English for a spoken reply…"
                     : "Streaming a private local text reply…");
-    m_chatStreamBuffer.clear();
+    m_chatStreamState.reset();
     m_visibleStream = {};
     m_chatStreamText.clear();
     m_chatStreamDone = m_chatStreamInvalid = m_chatPreviewActive = false;
@@ -1303,7 +1303,7 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
     auto receive = [this, reply]() {
         if (m_reply != reply || m_chatStreamDone || m_chatStreamInvalid) return;
         const auto received = reply->readAll();
-        const auto tokens = EmberCore::consumeChatStream(m_chatStreamBuffer, received);
+        const auto tokens = EmberCore::consumeChatStream(m_chatStreamState, received);
         if (tokens.error) {
             m_chatStreamInvalid = true;
             reply->abort();
@@ -1421,7 +1421,7 @@ void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
         }
         rebuildConversationHistory();
     }
-    m_chatStreamBuffer.clear();
+    m_chatStreamState.reset();
     m_visibleStream = {}; // never carry partial markers across chat turns
     m_chatPreviewActive = false;
     m_chatStreamDone = m_chatStreamInvalid = m_chatStreamTruncated = false;

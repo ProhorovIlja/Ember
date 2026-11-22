@@ -146,4 +146,12 @@ struct StreamResult {
     bool done = false, error = false, truncated = false;
 };
 StreamResult consumeChatStream(QByteArray &buffer, const QByteArray &incoming);
+// O(total received bytes) SSE framing for tiny TCP fragments.
+struct SseEventState {
+    QByteArray buffer;
+    qsizetype scanAt = 0;
+    qsizetype lineStart = 0;
+    void reset() { buffer.clear(); scanAt = lineStart = 0; }
+};
+StreamResult consumeChatStream(SseEventState &state, const QByteArray &incoming);
 }

@@ -244,7 +244,7 @@ private:
     QString m_sessionId, m_dictatedText, m_continuityNotes, m_recognitionHints;
     QString m_chatStreamText, m_chatStreamSession;
     EmberCore::VisibleAssistantStream m_visibleStream;
-    QByteArray m_chatStreamBuffer;
+    EmberCore::SseEventState m_chatStreamState;
     bool m_chatStreamDone = false, m_chatStreamInvalid = false;
     bool m_chatStreamTruncated = false;
     bool m_lastReplyIncomplete = false;
