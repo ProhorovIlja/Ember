@@ -113,6 +113,11 @@ jobs:
           windeployqt --release --qmldir qml $exe
           if (!(Test-Path $exe)) { throw 'Native EXE missing' }
           if (!(Test-Path 'build/Release/Qt6Core.dll')) { throw 'Dynamic Qt deployment missing' }
+      - name: Stage Microsoft-signed app-local CRT and trim unused Qt plugins
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File release/stage-msvc-applocal.ps1 -PayloadDirectory build/Release -PruneDevelopmentTools
+          if ($LASTEXITCODE -ne 0) { throw 'Local Microsoft CRT staging or Qt plugin trim failed.' }
       - name: Audit deployed Windows x64 DLL closure without executing binaries
         shell: pwsh
         run: |
