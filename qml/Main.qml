@@ -2429,7 +2429,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: 9
                                             Text {
-                                                text: "Female presets"
+                                                text: "English female presets"
                                                 color: "#9AB8CF"
                                                 font.pixelSize: 11
                                                 Layout.fillWidth: true
@@ -2438,20 +2438,24 @@ ApplicationWindow {
                                                 text: "Vivian · bright"
                                                 implicitWidth: 146
                                                 implicitHeight: 32
-                                                enabled: !ember.busy && !ember.speaking
+                                                enabled: !ember.busy && !ember.speaking &&
+                                                         (!ember.speechServerReady ||
+                                                          ember.nativeEnglishVoices.indexOf("vivian") >= 0)
                                                 onClicked: {
                                                     ember.localVoice = "vivian"
-                                                    externalVoice.text = "vivian"
+                                                    externalVoice.text = ember.localVoice
                                                 }
                                             }
                                             PillButton {
                                                 text: "Serena · warm"
                                                 implicitWidth: 144
                                                 implicitHeight: 32
-                                                enabled: !ember.busy && !ember.speaking
+                                                enabled: !ember.busy && !ember.speaking &&
+                                                         (!ember.speechServerReady ||
+                                                          ember.nativeEnglishVoices.indexOf("serena") >= 0)
                                                 onClicked: {
                                                     ember.localVoice = "serena"
-                                                    externalVoice.text = "serena"
+                                                    externalVoice.text = ember.localVoice
                                                 }
                                             }
                                         }
