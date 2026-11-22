@@ -392,8 +392,11 @@ EmberBackend::EmberBackend(QObject *parent)
     connect(&m_speechServer, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
         m_speechHealthTimer.stop();
         setSpeechServerReady(false);
+        m_speechInventoryPending = false;
         const bool startupTimedOut = m_speechStartupTimedOut;
+        const bool inventoryInvalid = m_speechInventoryInvalid;
         m_speechStartupTimedOut = false;
+        m_speechInventoryInvalid = false;
         emit speechServerChanged();
         if (m_nativeAsrReply) {
             auto reply = m_nativeAsrReply;
@@ -404,11 +407,15 @@ EmberBackend::EmberBackend(QObject *parent)
         if (m_speechSequence && m_voiceEngine == 1)
             stopSpeechOnError("The managed native speech engine exited during synthesis.");
         else
-            setStatus(startupTimedOut
-                ? "Native speech model startup timed out after three minutes; "
-                  "the process was stopped. Check model files, GPU memory and "
-                  "whether catalog downloads were disabled."
-                : "Managed native speech engine stopped.");
+            setStatus(inventoryInvalid
+                ? "Native speech model inventory mismatch: expected Qwen3 "
+                  "TTS/ASR model size, English/Russian languages or selected "
+                  "speaker was missing. Check GGUF files and voice setting."
+                : startupTimedOut
+                    ? "Native speech model startup timed out after three minutes; "
+                      "the process was stopped. Check model files, GPU memory and "
+                      "whether catalog downloads were disabled."
+                    : "Managed native speech engine stopped.");
     });
     connect(&m_speechServer, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         m_speechHealthTimer.stop();
@@ -1292,6 +1299,8 @@ void EmberBackend::startSpeechServer() {
     m_speechAsrPathMode = asrPath;
     ++m_speechServerSession;
     m_speechStartupTimedOut = false;
+    m_speechInventoryPending = false;
+    m_speechInventoryInvalid = false;
     setSpeechServerReady(false);
     m_speechServer.setWorkingDirectory(QFileInfo(binary).absolutePath());
     // Even explicit local GGUF file loading can trigger speech.cpp's
@@ -1318,6 +1327,8 @@ void EmberBackend::startSpeechServer() {
 void EmberBackend::stopSpeechServer() {
     ++m_speechServerSession;
     m_speechStartupTimedOut = false;
+    m_speechInventoryPending = false;
+    m_speechInventoryInvalid = false;
     m_speechHealthTimer.stop();
     setSpeechServerReady(false);
     if (m_speechSequence && m_voiceEngine == 1)
@@ -1336,7 +1347,8 @@ void EmberBackend::stopSpeechServer() {
     setStatus("Managed speech engine stopped; local text chat remains available.");
 }
 void EmberBackend::pollSpeechServer() {
-    if (m_speechServer.state() == QProcess::NotRunning || m_speechServerReady)
+    if (m_speechServer.state() == QProcess::NotRunning ||
+        m_speechServerReady || m_speechInventoryPending)
         return;
     if (m_speechServerElapsed.isValid() &&
         m_speechServerElapsed.elapsed() > 180000) {
@@ -1364,14 +1376,54 @@ void EmberBackend::pollSpeechServer() {
             EmberCore::validManagedHealthResponse(
                 reply->read(4097), reply->rawHeader("Content-Type"));
         reply->deleteLater();
-        if (ok && session == m_speechServerSession &&
-            m_speechServer.state() == QProcess::Running &&
-            EmberCore::ownedLoopbackTcpListener(
-                43822, quint64(m_speechServer.processId()))) {
+        if (!ok || session != m_speechServerSession ||
+            m_speechServer.state() != QProcess::Running ||
+            !EmberCore::ownedLoopbackTcpListener(
+                43822, quint64(m_speechServer.processId())))
+            return;
+        // A healthy speech.cpp port can still hold the wrong GGUF, no TTS,
+        // no ASR, or a model lacking the selected speaker. Do not show Ready
+        // until the documented OpenAI model inventory proves all requested
+        // tasks, architectures and language/voice capabilities.
+        m_speechInventoryPending = true;
+        QNetworkRequest models{QUrl("http://127.0.0.1:43822/v1/models")};
+        models.setTransferTimeout(2500);
+        models.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                            QNetworkRequest::ManualRedirectPolicy);
+        auto *inventory = m_network.get(models);
+        connect(inventory, &QNetworkReply::finished, this,
+                [this, inventory, session] {
+            const bool responseOk = inventory->error() == QNetworkReply::NoError &&
+                inventory->attribute(QNetworkRequest::HttpStatusCodeAttribute)
+                    .toInt() == 200;
+            const QByteArray contentType = inventory->rawHeader("Content-Type");
+            const QByteArray body = responseOk ? inventory->read(65537) : QByteArray();
+            inventory->deleteLater();
+            if (session != m_speechServerSession) return;
+            m_speechInventoryPending = false;
+            if (m_speechServer.state() != QProcess::Running ||
+                !EmberCore::ownedLoopbackTcpListener(
+                    43822, quint64(m_speechServer.processId())))
+                return;
+            if (!responseOk) return; // a transient response can be retried
+            const bool expected = EmberCore::validNativeSpeechInventory(
+                body, contentType,
+                m_voiceEngine == 1 ? m_localModel : QString(),
+                m_recognitionEngine > 0
+                    ? EmberCore::nativeAsrModel(m_recognitionEngine) : QString(),
+                m_localVoice);
+            if (!expected) {
+                m_speechInventoryInvalid = true;
+                m_speechHealthTimer.stop();
+                m_speechServer.kill(); // fail closed, no silent model fallback
+                return;
+            }
             m_speechHealthTimer.stop();
             setSpeechServerReady(true);
-            setStatus("Native local speech model ready on 127.0.0.1:43822.");
-        }
+            setStatus("Native Qwen3 models verified: selected TTS/ASR tasks, "
+                      "English/Russian support and speaker are available.");
+        });
+
     });
 }
 void EmberBackend::stopBrain() {
