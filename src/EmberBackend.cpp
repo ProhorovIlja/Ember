@@ -720,16 +720,33 @@ void EmberBackend::setVoiceId(int index) {
 void EmberBackend::setVoiceEngine(int index) {
     if (index < 0 || index > 1 || m_voiceEngine == index) return;
     if (m_busy || m_speaking || m_listening) cancelWork();
-    if (index == 0 && m_speechServer.state() != QProcess::NotRunning)
-        stopSpeechServer(); // release Vulkan/CPU resources when choosing Kokoro
+    const bool managedServiceWasRunning =
+        m_speechServer.state() != QProcess::NotRunning;
+    // The process captures its TTS/ASR model list at launch. Switching to
+    // native TTS while an ASR-only server is running must NOT leave a stale
+    // Ready signal (which would cause a 404 when speech is requested).
+    // Likewise, switching to Kokoro must unload the old native TTS model.
+    if (managedServiceWasRunning)
+        stopSpeechServer();
     m_voiceEngine = index;
     m_settings.setValue("voice/engine", index);
     m_settings.sync();
     ++m_configurationRevision;
     emit configurationChanged();
+    if (managedServiceWasRunning &&
+        (index == 1 || m_recognitionEngine > 0)) {
+        // Deliberately do NOT silently relaunch or download models when the
+        // user changes a Settings choice. Restart requires an explicit press.
+        setStatus(index == 1
+            ? "Native voice selected. Press Start native speech to load the "
+              "new TTS and any selected ASR model."
+            : "Kokoro selected. Press Start native speech to resume Qwen3-ASR "
+              "without loading the previous TTS model.");
+        return;
+    }
     setStatus(index == 0
-        ? "Offline Kokoro selected. The next reply uses installed model files."
-        : "Local speech service selected. Start a compatible server on 127.0.0.1:43822.");
+        ? "Offline Kokoro selected. The former native TTS service was stopped."
+        : "Native voice selected. Press Start native speech to load its model.");
 }
 void EmberBackend::setSpeechDevice(int index) {
     if (index < 0 || index > 2 || m_speechDevice == index) return;
