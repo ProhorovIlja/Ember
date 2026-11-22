@@ -2202,7 +2202,7 @@ ApplicationWindow {
                                         Layout.preferredHeight: 43
                                         model: [
                                             "Kokoro · local CLI",
-                                            "Qwen3 / Chatterbox · local API"
+                                            "Qwen3-TTS · native speech.cpp"
                                         ]
                                         currentIndex: ember.voiceEngine
                                         enabled: !ember.busy && !ember.listening && !ember.speaking
