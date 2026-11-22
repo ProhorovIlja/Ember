@@ -200,3 +200,8 @@ Compatibility requirement: start `llama-server` with `--jinja` to enable OpenAI-
 ### Agent source-inspection tool
 
 The read-only investigator also offers typed `read_source(path,start_line)` to retrieve up to 65 numbered lines from one user-root-contained UTF-8 source file (128 KiB on-disk cap). It validates every path segment, rejects traversal, symlinks and junctions, hidden/secret/dependency paths, binary/non-UTF8 data and unsafe file types; canonical root containment is enforced again after resolution. This enables a three-step map/search/read workflow without shell execution or code writes. User approval of the root is necessary; this is not a universal secret classifier.
+
+
+### Larger source files within fixed resource limits
+
+The local investigator scans text files up to 256 KiB each, while the existing per-search safety limits remain 4 MiB total, 600 source files, 3,000 directory entries, and 20 displayed matches. `read_source` supports UTF-8 files up to 512 KiB on disk but returns no more than 65 numbered source lines, about 4.7K characters locally, and a 2.5K-character model tool result. This allows examining Ember's own large C++ files, without loading the entire file into the active LLM context. It is not a universal large-repository semantic index.

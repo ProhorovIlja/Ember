@@ -10,7 +10,8 @@ namespace {
 constexpr int kMaxChars = 8192;
 constexpr int kMaxEntries = 3000;
 constexpr int kMaxFileCount = 600;
-constexpr int kMaxFileBytes = 16384;
+constexpr int kMaxFileBytes = 256 * 1024;
+constexpr qint64 kMaxReadSourceBytes = 512LL * 1024;
 constexpr qint64 kMaxTotalBytes = 4LL * 1024 * 1024;
 constexpr int kMaxMatches = 20;
 const QSet<QString> kExtensions{
@@ -260,8 +261,8 @@ SearchResult readProjectFile(const QString &selectedRoot,
         if (i + 1 < parts.size()) parent.setPath(part.absoluteFilePath());
     }
     const QFileInfo info(QDir(root).filePath(relativePath));
-    if (!info.isFile() || !info.isReadable() || info.size() > 131072)
-        return {{}, "Source is not a readable text file within 128 KiB."};
+    if (!info.isFile() || !info.isReadable() || info.size() > kMaxReadSourceBytes)
+        return {{}, "Source is not a readable text file within 512 KiB."};
     const QString resolved = canonical(info.absoluteFilePath());
     const QString prefix = root.endsWith('/') ? root : root + '/';
 #ifdef Q_OS_WIN
@@ -274,9 +275,9 @@ SearchResult readProjectFile(const QString &selectedRoot,
     QFile file(resolved);
     if (!file.open(QIODevice::ReadOnly))
         return {{}, "Source could not be opened."};
-    QByteArray bytes = file.read(131073);
+    QByteArray bytes = file.read(kMaxReadSourceBytes + 1);
     if (file.error() != QFileDevice::NoError ||
-        bytes.size() > 131072 || bytes.contains('\0'))
+        bytes.size() > kMaxReadSourceBytes || bytes.contains('\0'))
         return {{}, "Source was too large, damaged or binary."};
     if (bytes.startsWith("\xEF\xBB\xBF")) bytes = bytes.mid(3);
     const QString decoded = QString::fromUtf8(bytes);

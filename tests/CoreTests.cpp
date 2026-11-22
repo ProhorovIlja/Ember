@@ -687,6 +687,42 @@ private slots:
             "<<<<<<< SEARCH\nfoo\n=======\nbar").ok());
         QVERIFY(!parseSingleSearchReplaceBlock(QString(200001, 'x')).ok());
     }
+    void largeSourceFilesStaySearchableUnderGlobalBudgets() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QDir root(temporary.path());
+        QVERIFY(root.mkpath("src"));
+        QFile file(root.filePath("src/large.cpp"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QByteArray input(24 * 1024, 'x');
+        input += "\n// LARGE_SOURCE_BUG_MARKER\n";
+        QCOMPARE(file.write(input), qint64(input.size()));
+        file.close();
+        const auto found = EmberLocalSearch::searchDirectory(
+            root.path(), "LARGE_SOURCE_BUG_MARKER", {});
+        QVERIFY2(found.ok(), qPrintable(found.error));
+        QCOMPARE(found.matches, 1);
+        QVERIFY(found.draft.contains("src/large.cpp:2"));
+        const auto snippet = EmberLocalSearch::readProjectFile(
+            root.path(), "src/large.cpp", 2);
+        QVERIFY(snippet.ok());
+        QVERIFY(snippet.draft.contains("2: // LARGE_SOURCE_BUG_MARKER"));
+        QFile largeFile(root.filePath("src/larger.cpp"));
+        QVERIFY(largeFile.open(QIODevice::WriteOnly));
+        QByteArray large;
+        for (int i = 1; i <= 1500; ++i)
+            large += QByteArray("line_") + QByteArray::number(i) +
+                     QByteArray(140, 'x') + "\n";
+        QVERIFY(large.size() > 128 * 1024);
+        QVERIFY(large.size() < 512 * 1024);
+        QCOMPARE(largeFile.write(large), qint64(large.size()));
+        largeFile.close();
+        const auto later = EmberLocalSearch::readProjectFile(
+            root.path(), "src/larger.cpp", 1250);
+        QVERIFY2(later.ok(), qPrintable(later.error));
+        QVERIFY(later.draft.contains("1250: line_1250"));
+        QVERIFY(later.draft.size() <= 4900);
+    }
     void localSourceExcerptIsBoundedAndNeverTraverses() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
