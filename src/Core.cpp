@@ -60,7 +60,8 @@ bool discardPrivateVoiceScratch(QFile &microphone, const QString &folder) {
 bool validManagedHealthResponse(const QByteArray &body,
                                 const QByteArray &contentType) {
     if (body.isEmpty() || body.size() > 4096 ||
-        !contentType.trimmed().toLower().startsWith("application/json"))
+        contentType.trimmed().toLower().split(';').first().trimmed() !=
+            QByteArrayLiteral("application/json"))
         return false;
     QJsonParseError error;
     const QJsonDocument document = QJsonDocument::fromJson(body, &error);
