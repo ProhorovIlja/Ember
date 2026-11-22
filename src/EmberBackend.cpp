@@ -1776,7 +1776,9 @@ bool EmberBackend::beginLocalProjectAgent(const QString &goal,
         QJsonObject{{"role", "system"}, {"content",
             "You are Ember's local read-only source investigator. "
             "You may call project_map(), search_text(query) and "
-            "read_source(path, start_line) tools, up to three calls. "
+            "read_source(path, start_line) tools. In Investigate mode "
+            "at most three calls are allowed. In Propose fix mode up to "
+            "three inspection calls and ONE final patch proposal are allowed. "
             "If the user enabled Propose fix, you may also call "
             "propose_patch(path,old_text,new_text) ONCE for a precise "
             "one-file change, only after reading the existing source. "
@@ -1813,8 +1815,9 @@ void EmberBackend::requestLocalAgentStep() {
         endLocalAgent("Managed local model listener changed; investigation stopped.");
         return;
     }
+    const int maxCalls = m_agentMayProposeEdit ? 4 : 3;
     const auto payload = EmberAgent::modelRequest(
-        m_agentMessages, std::max(0, 3 - m_agentCalls),
+        m_agentMessages, std::max(0, maxCalls - m_agentCalls),
         m_agentScope, m_agentMayProposeEdit);
     QNetworkRequest request{QUrl(url)};
     request.setTransferTimeout(60000);
@@ -1849,8 +1852,9 @@ void EmberBackend::requestLocalAgentStep() {
             endLocalAgent({}, decision.text);
             return;
         }
-        if (m_agentCalls >= 3) {
-            endLocalAgent("Local model requested a tool after the three-call limit.");
+        const int maxCalls = m_agentMayProposeEdit ? 4 : 3;
+        if (m_agentCalls >= maxCalls) {
+            endLocalAgent("Local model requested a tool beyond the task call budget.");
             return;
         }
         if (m_agentScope == EmberAgent::Scope::GitHubRepository) {
@@ -1889,7 +1893,7 @@ void EmberBackend::requestLocalAgentStep() {
                           "Finish with an explanation of the proposed fix."));
             // Once a proposal is staged, require a FINAL answer. The model
             // cannot make further tool calls or propose another change.
-            m_agentCalls = 3;
+            m_agentCalls = maxCalls;
             requestLocalAgentStep();
             return;
         }
@@ -1905,7 +1909,8 @@ void EmberBackend::requestLocalAgentStep() {
         m_agentMessages.append(EmberAgent::toolResultMessage(decision, outcome));
         ++m_agentCalls;
         setStatus("Local agent: " + QString::number(m_agentCalls) +
-                  "/3 read-only tool calls completed...");
+                  "/" + QString::number(maxCalls) +
+                  " bounded tool calls completed...");
         requestLocalAgentStep();
     });
 }
