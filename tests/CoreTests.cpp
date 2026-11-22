@@ -576,6 +576,36 @@ private slots:
         QCOMPARE(parts.last().toObject().value("content").toString().size(), 4000);
     }
 
+    void validatesNativeAndWhisperTranscriptsWithoutUtf8Corruption() {
+        bool valid = false;
+        const QByteArray russian = QString::fromUtf8(
+            "Привет, мир. В Ярнаме идёт дождь.").toUtf8();
+        QCOMPARE(EmberCore::decodeLocalAsrUtf8(russian, &valid),
+                 QString::fromUtf8("Привет, мир. В Ярнаме идёт дождь."));
+        QVERIFY(valid);
+        const QByteArray bom = QByteArray::fromHex("efbbbf") + russian;
+        QCOMPARE(EmberCore::decodeLocalAsrUtf8(bom, &valid),
+                 QString::fromUtf8("Привет, мир. В Ярнаме идёт дождь."));
+        QVERIFY(valid);
+        QCOMPARE(EmberCore::decodeLocalAsrUtf8("  English words.\r\n", &valid),
+                 QString("English words."));
+        QVERIFY(valid);
+        QCOMPARE(EmberCore::decodeLocalAsrUtf8({}, &valid), QString());
+        QVERIFY(valid); // genuine silence is not an ASR error
+
+        QVERIFY(EmberCore::decodeLocalAsrUtf8(
+            QByteArray::fromHex("d0"), &valid).isEmpty());
+        QVERIFY(!valid); // truncated Cyrillic multibyte code point
+        QVERIFY(EmberCore::decodeLocalAsrUtf8(
+            QByteArray::fromHex("c0af"), &valid).isEmpty());
+        QVERIFY(!valid); // noncanonical / overlong UTF-8
+        QVERIFY(EmberCore::decodeLocalAsrUtf8(
+            QByteArray("spoken") + QByteArray(1, '\0') + "hidden", &valid).isEmpty());
+        QVERIFY(!valid);
+        QVERIFY(EmberCore::decodeLocalAsrUtf8(
+            QByteArray(65537, 'x'), &valid).isEmpty());
+        QVERIFY(!valid);
+    }
     void assemblesCyrillicServerTokensAcrossByteBoundaries() {
         QByteArray pending;
         // Use literal UTF-8 bytes and actual event separators; source may be

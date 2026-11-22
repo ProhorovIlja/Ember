@@ -43,6 +43,9 @@ bool allowedLocalAsrEndpoint(const QString &url);
 QString nativeAsrModel(int recognitionEngine);
 QString recognitionLanguageTag(int languageChoice);
 QString compactAsrHints(const QString &hints);
+// Whisper CLI files and native ASR HTTP bodies must be well-formed UTF-8.
+// An empty, valid transcript means silence; malformed bytes must fail closed.
+QString decodeLocalAsrUtf8(const QByteArray &raw, bool *valid = nullptr);
 QJsonObject speechRequest(const QString &model, const QString &voice, const QString &text);
 QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice,
                                       const QString &text, int deliveryStyle = 0);

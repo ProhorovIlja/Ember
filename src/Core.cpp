@@ -609,6 +609,25 @@ QString compactAsrHints(const QString &hints) {
     // Never interpret recognized text or hint content as program commands.
     return hints.simplified().left(400);
 }
+QString decodeLocalAsrUtf8(const QByteArray &raw, bool *valid) {
+    if (valid) *valid = false;
+    if (raw.size() > 64 * 1024) return {};
+    // The CLI file and HTTP text/plain response are untrusted inputs. Never
+    // archive replacement characters from invalid bytes or embedded controls.
+    for (const char ch : raw) {
+        const auto byte = static_cast<quint8>(ch);
+        if (byte == 0 || (byte < 0x20 && byte != '\t' &&
+                          byte != '\r' && byte != '\n')) return {};
+    }
+    QByteArray bytes = raw;
+    if (bytes.startsWith("\xEF\xBB\xBF")) bytes.remove(0, 3);
+    const QString text = QString::fromUtf8(bytes);
+    // UTF-8 round-trip is lossless only for valid, canonical byte sequences.
+    // QByteArray includes its actual length, so no truncated C strings.
+    if (text.toUtf8() != bytes) return {};
+    if (valid) *valid = true;
+    return text.trimmed();
+}
 QJsonObject speechRequest(const QString &model, const QString &voice,
                           const QString &text) {
     return QJsonObject{

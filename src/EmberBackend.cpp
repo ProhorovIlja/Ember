@@ -378,11 +378,26 @@ EmberBackend::EmberBackend(QObject *parent)
                     return;
                 }
                 QFile file(workFile("recognition.txt"));
-                if (!file.open(QIODevice::ReadOnly) || file.size() > 65536) {
+                if (!file.open(QIODevice::ReadOnly)) {
                     failTranscription("Speech recognition produced no readable transcript.");
                     return;
                 }
-                const QString part = QString::fromUtf8(file.readAll()).trimmed();
+                const qint64 expected = file.size();
+                if (expected < 0 || expected > 65536) {
+                    file.close();
+                    failTranscription("Speech recognition exceeded the local text quota.");
+                    return;
+                }
+                const QByteArray raw = file.readAll();
+                // Critical on Windows: close this read handle BEFORE the next
+                // whisper-cli segment deletes/recreates recognition.txt.
+                file.close();
+                bool validUtf8 = false;
+                const QString part = EmberCore::decodeLocalAsrUtf8(raw, &validUtf8);
+                if (raw.size() != expected || !validUtf8) {
+                    failTranscription("Whisper returned truncated or invalid UTF-8 text.");
+                    return;
+                }
                 if (!part.isEmpty()) m_transcriptionSegments.append(part);
                 if (m_transcriptionOffset < m_transcriptionSize) {
                     transcribeNextChunk();
@@ -1720,7 +1735,13 @@ void EmberBackend::transcribe() {
         failTranscription("Offline Whisper files are missing from this installation.");
         return;
     }
-    QFile::remove(workFile("recognition.txt"));
+    // A stale transcript must never be mistaken for this chunk's output.
+    // In particular, Windows can reject deleting an open previous output.
+    const QString oldTextPath = workFile("recognition.txt");
+    if (QFileInfo::exists(oldTextPath) && !QFile::remove(oldTextPath)) {
+        failTranscription("Could not clear the previous Whisper transcript file.");
+        return;
+    }
     m_whisper.setWorkingDirectory(QFileInfo(configPath("asrExe")).absolutePath());
     m_whisper.setProgram(configPath("asrExe"));
     QStringList arguments{"-m", configPath("asrModel"), "-f", workFile("microphone.wav"),
@@ -1797,7 +1818,11 @@ void EmberBackend::transcribeViaNativeServer() {
             [this, reply](qint64 bytes, qint64) {
                 if (m_nativeAsrReply == reply && bytes > 65536) reply->abort();
             });
-    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, wav] {
+        // QHttpMultiPart still owns this file until deleteLater executes.
+        // Release its Windows handle before replacing microphone.wav for the
+        // next 25-second ASR segment, even after cancellation.
+        wav->close();
         if (m_nativeAsrReply != reply) {
             reply->deleteLater();
             return; // cancelled or superseded
@@ -1814,7 +1839,12 @@ void EmberBackend::transcribeViaNativeServer() {
             failTranscription("Native Qwen3-ASR failed, hit its token limit, or returned invalid text.");
             return;
         }
-        const QString segment = QString::fromUtf8(raw).trimmed();
+        bool validUtf8 = false;
+        const QString segment = EmberCore::decodeLocalAsrUtf8(raw, &validUtf8);
+        if (!validUtf8) {
+            failTranscription("Native Qwen3-ASR returned invalid UTF-8 text.");
+            return;
+        }
         if (!segment.isEmpty()) m_transcriptionSegments.append(segment);
         if (m_transcriptionOffset < m_transcriptionSize)
             transcribeNextChunk();

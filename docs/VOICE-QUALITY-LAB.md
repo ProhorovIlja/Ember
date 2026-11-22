@@ -820,3 +820,11 @@ additional hardening gate.
 ### November 22: robust native chat SSE frame parsing
 
 The native llama.cpp-compatible chat stream now accepts LF, CRLF and CR SSE line endings (including mixed delimiters and packet-split CRLF), concatenates multiple `data:` fields within one event as required by the event-stream format, ignores comment/event-only heartbeats and retains strict JSON parsing and 256 KiB buffering limits. Byte-fragmented Cyrillic and `[DONE]` behavior remain covered by tests. This repairs protocol-level interoperability; it is not evidence of human voice naturalness or GPU performance.
+
+### November 22 — long-dictation Windows file-handle safety and UTF-8 validation
+
+Long-form dictation processes 25-second overlapping segments, repeatedly using private `recognition.txt` and `microphone.wav`. A completed Whisper process was followed by another segment while the preceding `QFile recognition.txt` reader was still open inside the same callback. On Windows, this can prevent deleting/recreating the file, leaving a stale transcript or breaking the next segment. The reader is now fully read and explicitly closed before the next segment begins; failure to delete stale text aborts rather than silently using it.
+
+Native Qwen3-ASR multipart requests similarly retained a live `QFile microphone.wav` through `QNetworkReply::deleteLater()`. The finished callback now closes this upload file before `transcribeNextChunk()` can overwrite it, including cancel/supersession. Both Whisper and Qwen3 paths now require canonical valid UTF-8 (with optional leading BOM, preserving Cyrillic); malformed text or embedded control bytes fail with partial-dictation recovery only, never automatic submission. A valid empty transcript continues to mean silence. New Qt regressions cover English, Russian, BOM, malformed and oversized inputs.
+
+Verification still requires physical Windows 10 device tests and real RU/EN ASR model runs: record >50 seconds of mixed speech, include multiple 25-second seams, unplug and reconnect the microphone, and repeat for Whisper.cpp and native speech.cpp/Qwen3-ASR. CI mock tests do not measure recognition accuracy or guarantee behavior of third-party binaries.
