@@ -25,6 +25,7 @@ KEEP_KEYS = {
     "speech.task", "speech.layout", "speech.requires",
     "speech.sample_rate", "speech.voices",
     "speech.voice_languages", "speech.voice_genders",
+    "speech.voice_descriptions",
 }
 # GGUFValueType from gguf-py: unsigned/signed scalar and UTF-8 string values,
 # plus homogeneous arrays. The arrays contain metadata, not model tensors.
@@ -178,26 +179,38 @@ def model_identity(path, alias, *, selected_voice=None):
     if not isinstance(languages, list) or "en" not in languages:
         raise InvalidSpeechGGUF("Speech model does not declare English support")
     english_voices = []
+    english_female_voices = []
     if task == "recognition":
         if "ru" not in languages:
             raise InvalidSpeechGGUF("Ember RU/EN ASR needs both model languages")
     else:
         voices = meta.get("speech.voices")
         voice_langs = meta.get("speech.voice_languages")
+        genders = meta.get("speech.voice_genders")
+        descriptions = meta.get("speech.voice_descriptions")
         if (not isinstance(voices, list) or not isinstance(voice_langs, list) or
-                not 1 <= len(voices) <= 128 or len(voices) != len(voice_langs)):
-            raise InvalidSpeechGGUF("TTS GGUF is missing paired voice/language metadata")
-        for voice, lang in zip(voices, voice_langs):
+                not isinstance(genders, list) or
+                not isinstance(descriptions, list) or
+                not 1 <= len(voices) <= 128 or len(voices) != len(voice_langs) or
+                len(voices) != len(genders) or len(voices) != len(descriptions)):
+            raise InvalidSpeechGGUF(
+                "TTS GGUF is missing paired voice/language/gender/description metadata")
+        for voice, lang, gender, desc in zip(voices, voice_langs, genders, descriptions):
             if (not isinstance(voice, str) or
                     not 1 <= len(voice) <= 80 or
                     not all(ch.isascii() and (ch.isalnum() or ch in "_-")
                             for ch in voice) or
-                    not isinstance(lang, str)):
+                    not isinstance(lang, str) or lang not in languages or
+                    gender not in ("female", "male") or
+                    not isinstance(desc, str) or not 1 <= len(desc) <= 1024):
                 raise InvalidSpeechGGUF("Malformed native voice identity metadata")
             if lang == "en" and voice not in english_voices:
                 english_voices.append(voice)
-        if not english_voices:
-            raise InvalidSpeechGGUF("Qwen3-TTS GGUF has no English speaker")
+            if lang == "en" and gender == "female" and voice not in english_female_voices:
+                english_female_voices.append(voice)
+        if not english_female_voices:
+            raise InvalidSpeechGGUF(
+                "Stable Ember voice needs an English female speaker in the model")
         if selected_voice is not None and selected_voice not in english_voices:
             raise InvalidSpeechGGUF("Selected voice is not English in this GGUF")
     rate = meta.get("speech.sample_rate")
@@ -207,6 +220,7 @@ def model_identity(path, alias, *, selected_voice=None):
         "architecture": family, "size_label": size[:-1].upper() + "B",
         "task": task, "languages": sorted(set(languages)),
         "english_speakers": english_voices,
+        "english_female_speakers": english_female_voices,
         "sample_rate_hz": rate, "minimum_speechcpp": required,
         "verified_structure_only": True,
     }
@@ -214,6 +228,7 @@ def model_identity(path, alias, *, selected_voice=None):
 
 def _fixture_gguf(family, size, task, *, langs=("en", "ru"),
                   voices=("vivian", "serena"), voice_langs=("en", "en"),
+                  genders=("female", "female"),
                   duplicated_key=False, truncated=False):
     """Synthetic padded GGUF fixture: no real model weights or inference."""
     def string(s):
@@ -229,6 +244,8 @@ def _fixture_gguf(family, size, task, *, langs=("en", "ru"),
         ("general.languages", 9, list(langs)),
         ("speech.voices", 9, list(voices)),
         ("speech.voice_languages", 9, list(voice_langs)),
+        ("speech.voice_genders", 9, list(genders)),
+        ("speech.voice_descriptions", 9, ["Synthetic speaker"] * len(voices)),
         ("ignored.large.tensor.metadata", 9, ["ignored"] * 3),
     ]
     if duplicated_key:
@@ -263,6 +280,9 @@ def self_test():
                 selected_voice="vivian" if task == "synthesis" else None)
             assert detail["architecture"] == family
             assert detail["minimum_speechcpp"] == "0.7.0"
+            assert (detail["english_female_speakers"] == ["vivian", "serena"]
+                    if task == "synthesis" else
+                    detail["english_female_speakers"] == [])
             assert (detail["english_speakers"] == ["vivian", "serena"]
                     if task == "synthesis" else
                     detail["english_speakers"] == [])
@@ -290,6 +310,10 @@ def self_test():
                           voices=("ono_anna",), voice_langs=("ja",)),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
                           voices=("a", "b"), voice_langs=("en",)),
+            _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
+                          genders=("male", "male")),
+            _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
+                          genders=("female",)),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis", duplicated_key=True),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis", truncated=True),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis").replace(
