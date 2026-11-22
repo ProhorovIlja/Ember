@@ -258,15 +258,23 @@ static QString escapedInlineMarkdown(const QString &source) {
             // CommonMark does not treat underscores *inside* identifiers
             // (some_variable_name, FINAL_LINE_64K_) as italics. The old
             // one-shot indexOf hid exact code/filename text in the rich view.
-            if (underscore && i > 0 && i + marker.size() < source.size() &&
+            // An underscore directly followed by whitespace/end-of-line
+            // cannot open emphasis. Otherwise a trailing name_ can consume
+            // a much later _word_ delimiter and hide a filename suffix.
+            if (underscore &&
+                (i + marker.size() >= source.size() ||
+                 source.at(i + marker.size()).isSpace()))
+                continue;
+            if (underscore && i > 0 &&
                 source.at(i - 1).isLetterOrNumber() &&
                 source.at(i + marker.size()).isLetterOrNumber())
                 continue;
             qsizetype end = source.indexOf(marker, i + marker.size());
             while (underscore && end > 0 &&
-                   end + marker.size() < source.size() &&
-                   source.at(end - 1).isLetterOrNumber() &&
-                   source.at(end + marker.size()).isLetterOrNumber()) {
+                   (source.at(end - 1).isSpace() ||
+                    (end + marker.size() < source.size() &&
+                     source.at(end - 1).isLetterOrNumber() &&
+                     source.at(end + marker.size()).isLetterOrNumber()))) {
                 end = source.indexOf(marker, end + marker.size());
             }
             if (end <= i + marker.size()) continue;
