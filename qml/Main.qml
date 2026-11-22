@@ -280,6 +280,9 @@ ApplicationWindow {
             composer.insert(composer.cursorPosition, (needsSpace ? " " : "") + text)
             composer.forceActiveFocus()
         }
+        function onDictationAutoSendReady() {
+            window.submitComposer()
+        }
     }
 
     function submitComposer() {
@@ -1276,18 +1279,33 @@ ApplicationWindow {
                                         }
                                         Item { Layout.fillWidth: true }
                                         PillButton {
-                                            text: ember.dictationActive ? "● Dictating…" :
-                                                  ember.speaking ? "Interrupt & dictate" : "Hold to dictate"
-                                            implicitWidth: ember.speaking ? 174 : 145
+                                            text: ember.dictationActive ? "Stop recording" : "Dictate · edit"
+                                            implicitWidth: 127
                                             implicitHeight: 38
                                             enabled: (!ember.busy || ember.speaking) &&
                                                      (!ember.listening || ember.dictationActive)
-                                            onPressed: ember.startDictation()
-                                            onReleased: ember.stopDictation()
-                                            onCanceled: ember.stopDictation()
+                                            onClicked: {
+                                                if (ember.dictationActive) ember.stopDictation()
+                                                else ember.startDictation()
+                                            }
                                             ToolTip.visible: hovered && !ember.dictationActive
                                             ToolTip.delay: 800
-                                            ToolTip.text: "Hold, speak English or Russian, then release. The transcript appears in your composer."
+                                            ToolTip.text: "Click to record, click again to stop. RU/EN speech becomes editable text; no fixed 30-second cutoff."
+                                        }
+                                        PillButton {
+                                            text: ember.dictationActive ? "Stop & transcribe" : "Dictate · send"
+                                            implicitWidth: 145
+                                            implicitHeight: 38
+                                            enabled: ember.brainReady &&
+                                                     (!ember.busy || ember.speaking) &&
+                                                     (!ember.listening || ember.dictationActive)
+                                            onClicked: {
+                                                if (ember.dictationActive) ember.stopDictation()
+                                                else ember.startDictationForSend()
+                                            }
+                                            ToolTip.visible: hovered && !ember.dictationActive
+                                            ToolTip.delay: 800
+                                            ToolTip.text: "Click to start/stop. Intact completed speech is sent to the managed local model; partial recovery remains editable only."
                                         }
                                         PillButton {
                                             text: ember.busy ? "Working…" : "Send message"

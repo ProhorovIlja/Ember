@@ -1938,7 +1938,19 @@ QString EmberBackend::formatReply(const QString &text) const {
     return EmberCore::safeMarkdownHtml(text);
 }
 void EmberBackend::startRecording() { startCapture(false); }
-void EmberBackend::startDictation() { startCapture(true); }
+void EmberBackend::startDictation() {
+    m_dictationAutoSend = false;
+    startCapture(true);
+}
+void EmberBackend::startDictationForSend() {
+    m_dictationAutoSend = false;
+    if (!m_brainReady) {
+        setStatus("Start the local brain before dictation with immediate send.");
+        return;
+    }
+    startCapture(true);
+    m_dictationAutoSend = m_listening && m_captureDictation;
+}
 void EmberBackend::stopDictation() {
     if (m_listening && m_captureDictation) stopRecording();
 }
@@ -2349,9 +2361,13 @@ void EmberBackend::completeTranscription() {
     m_transcript = text;
     emit transcriptChanged();
     if (dictate) {
+        const bool sendOnCompletion = m_dictationAutoSend && !captureInterrupted;
+        m_dictationAutoSend = false;
         m_dictatedText = text;
         emit dictationChanged();
         emit dictationReady(text);
+        // Interrupted/partially recovered dictation NEVER sends automatically.
+        if (sendOnCompletion) emit dictationAutoSendReady();
         setStatus(captureInterrupted
             ? "Microphone was interrupted. Recovered recorded text into the "
               "editable composer; check the potentially missing ending."

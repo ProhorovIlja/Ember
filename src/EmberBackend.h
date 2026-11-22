@@ -167,6 +167,7 @@ public:
     Q_INVOKABLE QString formatReply(const QString &text) const;
     Q_INVOKABLE void startRecording();
     Q_INVOKABLE void startDictation();
+    Q_INVOKABLE void startDictationForSend();
     Q_INVOKABLE void setAutoEndOnSilence(bool enabled);
     Q_INVOKABLE void stopDictation();
     Q_INVOKABLE void stopRecording();
@@ -197,6 +198,7 @@ signals:
     void dictationChanged();
     void microphoneLevelChanged();
     void dictationReady(const QString &text);
+    void dictationAutoSendReady();
     void brainReadyChanged();
     void imageSelectionChanged();
     void imageLibraryChanged();
@@ -307,6 +309,7 @@ private:
     qint64 m_transcriptionOffset = 0, m_transcriptionSize = 0;
     qint64 m_transcriptionChunkSize = 0;
     bool m_captureDictation = false, m_transcribingDictation = false;
+    bool m_dictationAutoSend = false;
     bool m_captureWasInterrupted = false;
     QAudioFormat m_captureFormat;
     QAudioOutput m_audioOutput;
