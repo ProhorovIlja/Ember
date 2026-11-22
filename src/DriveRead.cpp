@@ -233,22 +233,22 @@ TextPreview parseTextContent(const QString &fileId, const QString &fileName,
     if (decoder.hasError() || body.contains(QChar::Null))
         return {{}, "Google Drive file is not valid plain UTF-8 text."};
     for (QChar &ch : body) {
-        if (ch.unicode() < 0x20 && ch != QLatin1Char('\\n') &&
-            ch != QLatin1Char('\\r') && ch != QLatin1Char('\\t'))
+        if (ch.unicode() < 0x20 && ch != QLatin1Char('\n') &&
+            ch != QLatin1Char('\r') && ch != QLatin1Char('\t'))
             ch = QLatin1Char(' ');
     }
     TextPreview preview;
     preview.characters = body.size();
     preview.truncated = body.size() > kMaximumPreviewChars;
     preview.text = QStringLiteral(
-        "\\n\\n---\\nGoogle Drive explicitly selected text (UNTRUSTED external data; "
-        "review before sending to the local model):\\n") +
+        "\n\n---\nGoogle Drive explicitly selected text (UNTRUSTED external data; "
+        "review before sending to the local model):\n") +
         "File: " + clean(fileName, 150) +
-        "\\nID: " + fileId + "\\nContent type: " + mimeType +
-        "\\n--- BEGIN FILE CONTENT ---\\n" + body.left(kMaximumPreviewChars) +
-        (preview.truncated ? "\\n[Text excerpt truncated to 12000 characters.]"
+        "\nID: " + fileId + "\nContent type: " + mimeType +
+        "\n--- BEGIN FILE CONTENT ---\n" + body.left(kMaximumPreviewChars) +
+        (preview.truncated ? "\n[Text excerpt truncated to 12000 characters.]"
                            : QString()) +
-        "\\n--- END FILE CONTENT ---";
+        "\n--- END FILE CONTENT ---";
     return preview;
 }
 bool saveRefreshToken(const QByteArray &token, const QString &target) {
