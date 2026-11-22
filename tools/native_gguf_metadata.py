@@ -35,14 +35,24 @@ SIZES = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4,
 TYPE_STRING = 8
 TYPE_ARRAY = 9
 UINT_LIMIT = 2**64 - 1
-# GGML tensor type indices from ggml/include/ggml.h. All recognized quantized
-# types occupy at least one bit per element; ordinary scalars have exact widths.
-# Reject unknown/retired types rather than inferring unsafe tensor lengths.
-SCALAR_WIDTHS = {0: 4, 1: 2, 24: 1, 25: 2, 26: 4,
-                 27: 8, 28: 8, 30: 2, 43: 1}
-QUANT_TYPES = {2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-               16, 17, 18, 19, 20, 21, 22, 23, 29, 34, 35,
-               39, 40, 41, 42}
+# GGML tensor type -> (elements per block, bytes per block). Sizes follow
+# ggml/src/ggml.c type_traits and ggml/src/ggml-common.h, NOT a guessed
+# one-bit lower bound. Removed GGML type IDs are intentionally unsupported.
+# Quantized tensors must have complete blocks along the innermost dimension.
+GGML_BLOCKS = {
+    0: (1, 4), 1: (1, 2), 2: (32, 18), 3: (32, 20),
+    6: (32, 22), 7: (32, 24), 8: (32, 34), 9: (32, 36),
+    10: (256, 84), 11: (256, 110), 12: (256, 144),
+    13: (256, 176), 14: (256, 210), 15: (256, 292),
+    16: (256, 66), 17: (256, 74), 18: (256, 98),
+    19: (256, 50), 20: (32, 18), 21: (256, 110),
+    22: (256, 82), 23: (256, 136),
+    24: (1, 1), 25: (1, 2), 26: (1, 4),
+    27: (1, 8), 28: (1, 8), 29: (256, 56),
+    30: (1, 2), 34: (256, 54), 35: (256, 66),
+    39: (32, 17), 40: (64, 36), 41: (128, 18),
+    42: (64, 18), 43: (1, 1),
+}
 
 
 class InvalidSpeechGGUF(ValueError):
@@ -129,11 +139,10 @@ class Reader:
 
 
 def inspect_tensor_directory(reader, tensor_count, alignment):
-    """Read only tensor descriptors; conservatively validate data extents.
+    """Validate directory, exact GGML block extents and on-disk bounds.
 
-    Actual weights are not read or hashed here. A synthetic padded file can
-    still forge bytes within those extents, so real engine-load tests remain
-    mandatory for release approval.
+    Tensor bytes are never read. A malicious padded file can still forge
+    weights that have the right length; actual inference remains mandatory.
     """
     if (type(alignment) is not int or alignment < 8 or
             alignment > 4096 or alignment % 8):
@@ -149,20 +158,23 @@ def inspect_tensor_directory(reader, tensor_count, alignment):
         if not 1 <= rank <= 4:
             raise InvalidSpeechGGUF("Invalid GGUF tensor dimension count")
         elements = 1
-        for _ in range(rank):
+        first_dimension = 0
+        for axis in range(rank):
             dimension = reader.u64()
             if not 1 <= dimension <= 2**32 or elements * dimension > 2**44:
                 raise InvalidSpeechGGUF("Empty or oversized GGUF tensor dimensions")
+            if axis == 0:
+                first_dimension = dimension
             elements *= dimension
         tensor_type = reader.u32()
         offset = reader.u64()
-        if offset % alignment or (tensor_type not in SCALAR_WIDTHS and
-                                  tensor_type not in QUANT_TYPES):
+        if tensor_type not in GGML_BLOCKS or offset % alignment:
             raise InvalidSpeechGGUF("Unknown GGML tensor type or unaligned offset")
-        minimum = (elements * SCALAR_WIDTHS[tensor_type]
-                   if tensor_type in SCALAR_WIDTHS
-                   else max(1, (elements + 7) // 8))
-        ranges.append((offset, minimum))
+        block_elements, block_bytes = GGML_BLOCKS[tensor_type]
+        if first_dimension % block_elements:
+            raise InvalidSpeechGGUF("Quantized GGUF tensor has an incomplete row block")
+        exact_bytes = (elements // block_elements) * block_bytes
+        ranges.append((offset, exact_bytes))
     # GGUF tensor offsets are relative to the beginning of the aligned
     # tensor data region, not absolute offsets from the file header.
     data_start = reader.stream.tell()
@@ -195,10 +207,12 @@ def metadata(path):
         if not (1 <= tensors <= 200_000 and 1 <= count <= MAX_KEYS):
             raise InvalidSpeechGGUF("Invalid GGUF tensor or metadata count")
         output = {}
+        keys_seen = set()
         for _ in range(count):
             key = reader.string(keep=True, max_bytes=MAX_KEY_BYTES)
-            if not key or key in output:
+            if not key or key in keys_seen:
                 raise InvalidSpeechGGUF("Duplicate or empty GGUF metadata key")
+            keys_seen.add(key)
             value_type = reader.u32()
             keep = key in KEEP_KEYS
             value = reader.value(value_type, keep=keep)
@@ -315,6 +329,8 @@ def _fixture_gguf(family, size, task, *, langs=("en", "ru"),
     ]
     if duplicated_key:
         fields.append(("speech.task", 8, task))
+    if tensor_problem == "duplicate_ignored_key":
+        fields.append(("ignored.large.tensor.metadata", 8, "duplicated"))
     if tensor_problem == "invalid_alignment":
         fields.append(("general.alignment", 4, 7))
     count = 2 if tensor_problem == "overlapping_offsets" else 1
@@ -330,17 +346,31 @@ def _fixture_gguf(family, size, task, *, langs=("en", "ru"),
             for element in value:
                 raw.extend(string(element))
     if tensor_problem != "missing_directory":
+        quantized = tensor_problem in ("quant_valid", "quant_bad_row",
+                                       "quant_short_block")
+        last_offset_index = None
         for index in range(count):
             name = "" if tensor_problem == "empty_name" else f"synthetic.weight{index}"
             rank = 0 if tensor_problem == "invalid_rank" else 1
-            dimension = 500000 if tensor_problem == "truncated_weight" else 16
-            element_type = 999 if tensor_problem == "unknown_type" else 0
+            dimension = (500000 if tensor_problem == "truncated_weight" else
+                         (16 if tensor_problem == "quant_bad_row" else
+                          256 if quantized else 16))
+            element_type = (999 if tensor_problem == "unknown_type" else
+                            12 if quantized else 0)
             offset = 1 if tensor_problem == "unaligned_offset" else 0
             raw.extend(string(name) + struct.pack("<I", rank))
             if rank:
                 raw.extend(struct.pack("<Q", dimension))
-            raw.extend(struct.pack("<IQ", element_type, offset))
+            raw.extend(struct.pack("<I", element_type))
+            last_offset_index = len(raw)
+            raw.extend(struct.pack("<Q", offset))
         raw.extend(bytes(-len(raw) % 32))
+        if tensor_problem == "quant_short_block":
+            # Leave roughly 100 bytes of a required 144-byte Q4_K block:
+            # old 1-bit lower bound accepted it, exact GGML sizing rejects it.
+            remaining = 1024 * 1024 + 1 - len(raw)
+            offset = ((remaining - 100) // 32) * 32
+            struct.pack_into("<Q", raw, last_offset_index, offset)
         raw.extend(b"\x01" * 64)
     if truncated:
         return bytes(raw[:68]).ljust(1024 * 1024 + 1, b"\0")
@@ -394,6 +424,9 @@ def self_test():
                         raise AssertionError("Missing English voice accepted")
                     except InvalidSpeechGGUF:
                         pass
+        file.write_bytes(_fixture_gguf("qwen3-tts", "0.6B", "synthesis",
+                                       tensor_problem="quant_valid"))
+        assert model_identity(file, "qwen3-tts-0.6b")["task"] == "synthesis"
         for bad in (
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
                           langs=("ru",)),
@@ -413,6 +446,10 @@ def self_test():
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis", duplicated_key=True),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis", truncated=True),
             *(_fixture_gguf("qwen3-tts", "0.6B", "synthesis",
+                            tensor_problem=mode)
+              for mode in ("duplicate_ignored_key", "quant_bad_row",
+                           "quant_short_block")),
+            *(_fixture_gguf("qwen3-tts", "0.6B", "synthesis",
                             tensor_problem=problem)
               for problem in (
                   "missing_directory", "empty_name", "invalid_rank",
@@ -430,7 +467,7 @@ def self_test():
                 raise AssertionError("Malformed or wrong GGUF accepted")
             except InvalidSpeechGGUF:
                 pass
-    print("speech.cpp GGUF metadata/tensor-directory self-test passed (synthetic only)")
+    print("speech.cpp GGUF exact tensor block/metadata self-test passed (synthetic only)")
 
 
 def main():

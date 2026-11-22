@@ -349,7 +349,10 @@ reads bounded GGUF headers, typed key/value metadata and the complete
 tensor descriptor directory without loading weight payloads or starting any
 executable. The reader rejects absent or repeated tensor names, unsupported
 GGML types, impossible dimensions, misaligned offsets, overlapping tensor
-ranges and conservative evidence of truncated tensor data. The
+ranges and truncated tensor data. It uses the exact GGML type-trait
+block sizes for F32/F16, Q4_K, Q8_0, IQ and other supported quantizations,
+and refuses partial quantized row blocks. Duplicate keys are rejected even
+if the key is not otherwise needed by Ember. The
 `general.alignment` metadata is validated (default 32 bytes). For the
 allowed Qwen3-TTS
 0.6B/1.7B aliases, it requires the matching
@@ -379,6 +382,8 @@ authentic or complete weights, license suitability, signature trust,
 GPU support, network isolation, acoustic quality or inference. A real
 offline engine load and audio test remain mandatory release gates.
 GGUF tensor layout: https://github.com/ggml-org/ggml/blob/master/docs/gguf.md .
+GGML type layouts: https://github.com/ggml-org/ggml/blob/master/src/ggml.c
+and https://github.com/ggml-org/ggml/blob/master/src/ggml-common.h .
 
 Converter reference: https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-tts
 and https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-asr
