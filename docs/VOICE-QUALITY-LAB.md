@@ -946,3 +946,21 @@ These tests verify claimed model capabilities and fail-closed configuration,
 quality, GPU throughput, VRAM headroom or driver output stability. Only
 actual listening and end-to-end recorded RU/EN accuracy experiments can
 score those properties.
+
+### Verified English speaker selection in the native Windows UI
+
+After `speech.cpp` passes the PID-verified `/v1/models` check,
+the QML Settings panel exposes the names from the loaded TTS model's
+`voices` metadata whose language is explicitly `en`. The voice list
+is **not** guessed from another model or an online catalog. A compatible
+speaker can be selected while idle without unloading the resident model;
+an unsupported typed speaker is rejected and the editor reverts to the
+last accepted name. The Vivian and Serena English-female presets are
+disabled if a custom model does not advertise them.
+
+The earlier Ono Anna and Sohee presets are no longer presented as
+English-female voices: official Qwen3 metadata describes them as
+Japanese and Korean respectively. Adding additional licensed English
+voice designs still requires a compatible model/voice adapter and
+actual listening evaluation. Merely displaying more names does not
+improve the acoustic quality of a particular model.
