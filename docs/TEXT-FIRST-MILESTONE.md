@@ -53,7 +53,13 @@ conversation is independent of ASR, TTS or an Internet connection.
 
 Settings now permits explicit context windows of 4,096 / 8,192 / 16,384 /
 32,768 tokens and GPU layer offload 0 / 20 / 50 / 99 for the managed
-llama-server. The settings are stored locally and can change only when the
+llama-server. Text responses may also use Auto/profile defaults or an
+explicit 2,048 / 4,096 / 8,192-token output budget. This is a maximum
+generation budget, not a guarantee of answer length: it is capped at half
+the configured context window (and 8,192 tokens overall) to reserve room
+for prompts/history. Spoken replies retain a strict 512-token cap. Large
+budgets increase generation time, and some GGUF model servers may end early.
+The default Auto mode preserves older text profile lengths. The settings are stored locally and can change only when the
 brain is stopped. The process still binds **only 127.0.0.1:43821**, with
 `--jinja` for reviewed tool calling. The chat archive can be arbitrarily
 long while each model request still has finite context. Large context and

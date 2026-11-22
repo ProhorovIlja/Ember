@@ -213,6 +213,10 @@ EmberBackend::EmberBackend(QObject *parent)
     });
     m_brainContextTokens = m_settings.value("llm/contextTokens", 8192).toInt();
     m_brainGpuLayers = m_settings.value("llm/gpuLayers", 99).toInt();
+    m_brainResponseTokens = m_settings.value("llm/responseTokens", 0).toInt();
+    if (m_brainResponseTokens != 0 && m_brainResponseTokens != 2048 &&
+        m_brainResponseTokens != 4096 && m_brainResponseTokens != 8192)
+        m_brainResponseTokens = 0;
     if (!EmberCore::validBrainLaunchProfile(m_brainContextTokens, m_brainGpuLayers)) {
         m_brainContextTokens = 8192;
         m_brainGpuLayers = 99;
@@ -897,6 +901,20 @@ void EmberBackend::setBrainContextTokens(int tokens) {
     m_settings.sync();
     emit configurationChanged();
     setStatus("Context updated. Larger values use more GPU memory; start brain to apply.");
+}
+void EmberBackend::setBrainResponseTokens(int tokens) {
+    if (tokens != 0 && tokens != 2048 && tokens != 4096 && tokens != 8192) return;
+    if (m_busy || m_listening || m_chatGenerating) {
+        setStatus("Finish the current reply or dictation before changing output length.");
+        return;
+    }
+    if (m_brainResponseTokens == tokens) return;
+    m_brainResponseTokens = tokens;
+    m_settings.setValue("llm/responseTokens", tokens);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus("Response limit updated. Actual maximum is bounded by half "
+              "the configured context and local model capacity.");
 }
 void EmberBackend::setBrainGpuLayers(int layers) {
     if (layers == m_brainGpuLayers ||
@@ -2631,9 +2649,13 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
         ? m_store->historicalExcerpts(m_sessionId, text) : QString();
     const bool deep = !voice && m_deepReasoning;
     const auto generation = EmberCore::chatGenerationProfile(m_chatMode, voice, deep);
+    const int requestedOutput = !voice && m_brainResponseTokens != 0
+        ? m_brainResponseTokens : generation.maxTokens;
+    const int boundedOutput = EmberCore::chatOutputBudget(
+        requestedOutput, m_brainContextTokens, voice);
     QJsonObject payload = EmberCore::chatRequest(
-        effectivePersona, m_history, text,
-        generation.maxTokens, generation.temperature, recalled, deep);
+        effectivePersona, m_history, text, boundedOutput,
+        generation.temperature, recalled, deep, 8192);
     if (!selected.isEmpty() &&
         !EmberCore::attachLocalVisionData(payload, imageData)) {
         // Leave the composer attachment and both SQLite/UI histories intact.

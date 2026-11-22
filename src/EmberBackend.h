@@ -55,6 +55,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(bool brainLaunching READ brainLaunching NOTIFY brainReadyChanged)
     Q_PROPERTY(int brainContextTokens READ brainContextTokens WRITE setBrainContextTokens NOTIFY configurationChanged)
     Q_PROPERTY(int brainGpuLayers READ brainGpuLayers WRITE setBrainGpuLayers NOTIFY configurationChanged)
+    Q_PROPERTY(int brainResponseTokens READ brainResponseTokens WRITE setBrainResponseTokens NOTIFY configurationChanged)
     Q_PROPERTY(bool visionReady READ visionReady NOTIFY brainReadyChanged)
     Q_PROPERTY(QString pendingImageUrl READ pendingImageUrl NOTIFY imageSelectionChanged)
     Q_PROPERTY(QVariantList imageLibraryItems READ imageLibraryItems NOTIFY imageLibraryChanged)
@@ -115,6 +116,7 @@ public:
     }
     int brainContextTokens() const { return m_brainContextTokens; }
     int brainGpuLayers() const { return m_brainGpuLayers; }
+    int brainResponseTokens() const { return m_brainResponseTokens; }
     bool visionReady() const { return m_brainReady && m_brainVisionMode; }
     QString pendingImageUrl() const {
         return m_images ? m_images->fileUrl(m_pendingImageId) : QString();
@@ -166,6 +168,7 @@ public:
     Q_INVOKABLE void setOutputDeviceIndex(int index);
     void setBrainContextTokens(int tokens);
     void setBrainGpuLayers(int layers);
+    void setBrainResponseTokens(int tokens);
     Q_INVOKABLE QString inspectOfflineSetup() const;
     Q_INVOKABLE void startBrain();
     Q_INVOKABLE void stopBrain();
@@ -324,6 +327,7 @@ private:
     int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0, m_chatMode = 0;
     int m_recognitionLanguage = 0, m_recognitionEngine = 0;
     int m_brainContextTokens = 8192, m_brainGpuLayers = 99;
+    int m_brainResponseTokens = 0; // 0 = profile defaults, otherwise fixed user budget
     int m_deliveryStyle = 0, m_outputVolume = 85;
     int m_microphoneLevel = 0;
     bool m_autoEndOnSilence = false;

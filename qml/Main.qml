@@ -1566,6 +1566,21 @@ ApplicationWindow {
                                         }
                                         RowLayout {
                                             Layout.fillWidth: true
+                                            Text { text: "Text response budget"; color: "#D2E6F8"; font.pixelSize: 13; Layout.fillWidth: true }
+                                            ComboBox {
+                                                id: responseTokensPicker
+                                                Layout.preferredWidth: 205
+                                                implicitHeight: 36
+                                                model: ["Auto · profile default", "2,048 tokens", "4,096 tokens", "8,192 tokens"]
+                                                currentIndex: [0, 2048, 4096, 8192].indexOf(ember.brainResponseTokens)
+                                                enabled: !ember.busy && !ember.listening
+                                                onActivated: ember.brainResponseTokens = [0, 2048, 4096, 8192][currentIndex]
+                                                contentItem: Text { text: responseTokensPicker.displayText; leftPadding: 11; color: "#E6F4FF"; verticalAlignment: Text.AlignVCenter; font.pixelSize: 12 }
+                                                background: Rectangle { radius: 10; color: "#0A1B31"; border.color: "#2B648D" }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
                                             Text { text: "Model GPU offload"; color: "#D2E6F8"; font.pixelSize: 13; Layout.fillWidth: true }
                                             ComboBox {
                                                 id: modelGpuPicker

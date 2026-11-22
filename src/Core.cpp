@@ -540,6 +540,14 @@ QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source) {
     return pcmToWav(pcm, 16000);
 }
 
+int chatOutputBudget(int requestedTokens, int contextTokens, bool voice) {
+    if (voice) return std::clamp(requestedTokens, 64, 512);
+    const int validContext = contextTokens == 4096 || contextTokens == 8192 ||
+                             contextTokens == 16384 || contextTokens == 32768
+                                 ? contextTokens : 4096;
+    return std::clamp(requestedTokens, 64, std::min(8192, validContext / 2));
+}
+
 ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep) {
     if (voice) return {512, 0.65};
     // Deep mode is a user-controlled local compute/latency trade-off. Models
@@ -555,7 +563,7 @@ ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep) {
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                         const QString &user, int maxTokens, double temperature,
                         const QString &historicalExcerpts,
-                        bool enableThinking) {
+                        bool enableThinking, int maxOutputCap) {
     QJsonArray messages;
     const QString retrieved = historicalExcerpts.left(1550).trimmed();
     // Historical dialogue is quoted as user-level data, never promoted to
@@ -602,7 +610,8 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
     messages.append(QJsonObject{{"role", "user"}, {"content", currentUser}});
     QJsonObject request{{"model", "ember"}, {"messages", messages},
                         {"max_tokens", std::clamp(maxTokens, 64,
-                                                     enableThinking ? 4096 : 2048)},
+                            maxOutputCap > 0 ? std::clamp(maxOutputCap, 64, 8192)
+                                             : (enableThinking ? 4096 : 2048))},
                         {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
                         {"stream", false}};
     if (enableThinking) {

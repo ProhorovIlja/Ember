@@ -33,7 +33,11 @@ qint64 speechAwareAsrFreshBytes(const QByteArray &candidate,
 QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source);
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, const QString &user, int maxTokens = 1024, double temperature = 0.8,
                         const QString &historicalExcerpts = {},
-                        bool enableThinking = false);
+                        bool enableThinking = false,
+                        int maxOutputCap = 0);
+// Bounded per-request output tokens; keeps half the active finite context
+// available for the prompt/history, even with a larger user-selected budget.
+int chatOutputBudget(int requestedTokens, int contextTokens, bool voice);
 // Text-first: long and precise technical replies, creative fiction separately.
 struct ChatGenerationProfile { int maxTokens; double temperature; };
 ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep = false);

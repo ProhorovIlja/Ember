@@ -653,6 +653,26 @@ private slots:
             QCOMPARE(reopened.historicalExcerpts(story, "silver compass"), QString());
         }
     }
+    void configurableTextOutputBudgetRespectsContextAndVoiceLimits() {
+        using namespace EmberCore;
+        QCOMPARE(chatOutputBudget(2048, 8192, false), 2048);
+        QCOMPARE(chatOutputBudget(8192, 4096, false), 2048);
+        QCOMPARE(chatOutputBudget(8192, 8192, false), 4096);
+        QCOMPARE(chatOutputBudget(8192, 16384, false), 8192);
+        QCOMPARE(chatOutputBudget(8192, 32768, false), 8192);
+        QCOMPARE(chatOutputBudget(8192, -1, false), 2048);
+        QCOMPARE(chatOutputBudget(8192, 32768, true), 512);
+        QCOMPARE(chatOutputBudget(10, 8192, false), 64);
+        const auto longResponse = chatRequest(
+            "Developer", {}, "Explain the repair", 8192, 0.25, {}, false, 8192);
+        QCOMPARE(longResponse.value("max_tokens").toInt(), 8192);
+        const auto capped = chatRequest(
+            "Developer", {}, "Explain", 100000, 0.25, {}, true, 100000);
+        QCOMPARE(capped.value("max_tokens").toInt(), 8192);
+        // Default call sites retain their previous cap until explicit opt-in.
+        QCOMPARE(chatRequest("No network", {}, "Hi", 99999)
+                     .value("max_tokens").toInt(), 2048);
+    }
     void textFirstProfilesAllowUsefulCodeAndDiagnosticResponses() {
         const auto everyday = EmberCore::chatGenerationProfile(0, false);
         const auto story = EmberCore::chatGenerationProfile(1, false);
