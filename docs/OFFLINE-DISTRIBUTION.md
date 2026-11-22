@@ -118,3 +118,15 @@ manual override (which always blocks), and catalog-only operation that would
 require explicit opt-in/network access. It also identifies a missing
 speech.exe. This inspection does not start a model, download anything, save
 private prompts or assert successful real inference.
+
+
+## Full first stable release voice acceptance (not an internal text-first preview)
+
+The publicly downloadable first Ember stable Release cannot be approved on
+text/ASR CI alone. The release gate also requires reviewed real Windows 10
+English-voice listening quality, native audio output on target hardware,
+interrupt/cancel cleanup, licensed complete offline TTS weights/engines and a
+genuine no-VPN clean-install test. These are distinct manual evidence records
+in release/verify_release.py; neither a model header nor a fake local server
+is enough. The text-first preparation tools remain useful for internal
+development and must not be advertised as the complete public edition.

@@ -22,6 +22,11 @@ REQUIRED = (
     "nvidia_rtx_4070_text_model_test",
     "english_russian_long_asr",
     "dictation_cancel_draft_send",
+    "english_voice_quality_real_listening",
+    "native_tts_real_windows_playback",
+    "spoken_reply_interruption_and_cleanup",
+    "offline_voice_model_weights_and_dependencies",
+    "offline_no_vpn_clean_install",
     "local_code_read_edit_test",
     "github_agent_real_tool_calls",
     "google_drive_consent_read",
@@ -138,6 +143,17 @@ def self_test() -> None:
     assert any("local_code_read_edit_test" in error
                for error in validate_manifest(tag, manifest, notes, cmake))
     manifest["checks"]["local_code_read_edit_test"]["passed"] = True
+    for required_voice_gate in (
+        "english_voice_quality_real_listening",
+        "native_tts_real_windows_playback",
+        "spoken_reply_interruption_and_cleanup",
+        "offline_voice_model_weights_and_dependencies",
+        "offline_no_vpn_clean_install",
+    ):
+        manifest["checks"][required_voice_gate]["passed"] = False
+        assert any(required_voice_gate in error
+                   for error in validate_manifest(tag, manifest, notes, cmake))
+        manifest["checks"][required_voice_gate]["passed"] = True
     assert validate_manifest("v1.2.3-rc1", manifest, notes, cmake)
     assert validate_manifest(tag, manifest, "# only a placeholder", cmake)
     assert not valid_evidence_url("http://127.0.0.1:43822/private")

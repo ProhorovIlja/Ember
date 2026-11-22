@@ -1,18 +1,23 @@
 # Ember release policy
 
-## Required first release: text, RU/EN dictation and development
+## First public stable release: complete local text, RU/EN dictation and English voice
 
-The text-first release is complete only after **all** release/verify_release.py
-checks have independent, reviewable real-machine evidence. Spoken output,
-English natural-voice benchmarking and full-duplex voice conversation are
-intentionally deferred; their code remains but does not gate the first
-text/ASR release. Mandatory: real Windows 10 RTX4070 multilingual long capture,
-Cancel / To draft / Transcribe & send behavior, local LLM and coding tools,
-GitHub tool calls and manual Google Drive access, offline/no-VPN install with
-approved licensing, stable chat archive, clean uninstall and privacy audit.
-The twelve checked fields in the release gate match this narrowed scope.
-No benchmark-only, simulated HTTP, developer installer or CI test can waive
-target-hardware acceptance. No public previews.
+The text-first milestone is an **internal development checkpoint**, not a
+publicly downloadable preview. The user requires a finished premium assistant
+with an actual natural English-speaking voice and offline text, RU/EN
+dictation, development and research capabilities. Consequently, the first
+stable release requires all seventeen evidence checks in
+`release/verify_release.py`, including **real English TTS listening
+quality**, native Windows playback, interruption/audio cleanup, a legally
+redistributable or honestly user-supplied complete offline voice stack, and a
+clean Windows 10 no-VPN/no-first-run-download install.
+
+Mandatory tests also include real Windows 10 RTX 4070 multilingual long
+capture; Cancel / To draft / Transcribe & send; local LLM and coding tools;
+explicit GitHub tool calls and Drive consent read; history durability,
+correct uninstall and privacy. A synthetic CI build, protocol fixture,
+developer installer or screenshot is **not** evidence of real voice prosody,
+model quality or completed Windows deployment. No public previews.
 
 ## Native Image Library and multimodal release checks
 
@@ -32,9 +37,10 @@ target-hardware acceptance. No public previews.
 
 ## No-VPN / no-first-run-network deployment — mandatory for final publication
 
-- [ ] Assemble a signed-off inventory of ALL offline LLM and RU/EN ASR,
-  executable DLL dependencies and license/NOTICE texts. Optional future TTS
-  has separate inventory and acceptance. Verify
+- [ ] Assemble a signed-off inventory of ALL offline LLM, RU/EN ASR and
+  English TTS model weights, engines, CUDA/Vulkan DLL dependencies and
+  license/NOTICE texts. The English voice stack is mandatory for the first
+  stable release, not an optional future preview. Verify
   exact SHA-256 and source provenance, and manually approve redistribution.
 - [ ] Final complete installer and/or portable package ships every lawfully
   redistributable asset needed to run selected chat and dictation on
@@ -53,7 +59,7 @@ target-hardware acceptance. No public previews.
 
 
 
-The first branch is a **source-first development foundation**. The unsigned development installer is already built and smoke-tested in GitHub Actions, but this does not waive real hardware and model acceptance. `release/verify_release.py` and `.github/workflows/stable-release.yml` block stable publication unless the tag is semantically versioned, an explicit reviewed acceptance manifest exists with twelve HTTPS evidence records, the release source version matches the tested revision and detailed version-specific notes are present. It must **not** publish a stable GitHub Release as a finished private AI until every mandatory item is demonstrably working and license compliant.
+The first branch is a **source-first development foundation**. The unsigned development installer is already built and smoke-tested in GitHub Actions, but this does not waive real hardware and model acceptance. `release/verify_release.py` and `.github/workflows/stable-release.yml` block stable publication unless the tag is semantically versioned, an explicit reviewed acceptance manifest exists with seventeen HTTPS evidence records (including real TTS and no-VPN installation), the release source version matches the tested revision and detailed version-specific notes are present. It must **not** publish a stable GitHub Release as a finished private AI until every mandatory item is demonstrably working and license compliant.
 
 - [ ] All native Windows CI builds and automated tests green, with a portable bundle that starts on a **clean** Windows 10/11 install and has zero WebView2 dependency.
 - [ ] LLM model weights and backend supplied with clear safe installation and checksum verification. Tested GGUF on RTX 4070 12 GB / Ryzen 5600 / 32 GB.
