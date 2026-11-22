@@ -2,9 +2,11 @@
 #include "LocalTextImport.h"
 #include "LocalRepoSearch.h"
 #include "PublicGitHub.h"
+#include "GitHubIssueWrite.h"
 #include "GitHubCredential.h"
 #include "WikipediaSearch.h"
 #include <QInputDialog>
+#include <QMessageBox>
 #include <QLineEdit>
 
 #include <QAudioDevice>
@@ -1307,6 +1309,132 @@ void EmberBackend::searchWikipedia() {
         setStatus(QString("Wikipedia returned %1 candidate article(s). "
                           "Read source links and review before adding to chat.")
                       .arg(result.count));
+    });
+}
+void EmberBackend::githubIssuesAction() {
+    if (m_publicGitHubReply || m_busy || m_listening) {
+        setStatus("Finish current work or GitHub request before using Issues.");
+        return;
+    }
+    bool accepted = false;
+    const QStringList actions{
+        "Create a GitHub issue (manual text)",
+        "Create a GitHub issue from last Ember reply (review first)",
+        "Connect / replace Issues-write credential",
+        "Disconnect Issues-write credential"
+    };
+    const QString selection = QInputDialog::getItem(
+        nullptr, "GitHub · Scoped Issues write", "Operation:",
+        actions, 0, false, &accepted);
+    if (!accepted) return;
+    const int index = actions.indexOf(selection);
+    if (index == 2) {
+        QString secret = QInputDialog::getText(
+            nullptr, "Connect GitHub Issues-write credential",
+            "Fine-grained GitHub token with Issues (write) only "
+            "for approved repositories. Stored separately from read-only access:",
+            QLineEdit::Password, {}, &accepted);
+        if (!accepted) { secret.fill(QChar(0)); return; }
+        QByteArray token = secret.toLatin1();
+        secret.fill(QChar(0));
+        const bool saved = EmberCredential::saveGitHubToken(
+            token, QString::fromLatin1(EmberCredential::kGitHubIssuesWriteTarget));
+        token.fill('\0');
+        setStatus(saved
+            ? "Separate Issues-write credential stored in Windows Credential Manager."
+            : "GitHub write token invalid or credential storage unavailable.");
+        return;
+    }
+    if (index == 3) {
+        const bool cleared = EmberCredential::deleteGitHubToken(
+            QString::fromLatin1(EmberCredential::kGitHubIssuesWriteTarget));
+        setStatus(cleared ? "GitHub Issues-write credential cleared."
+                          : "Failed to clear GitHub Issues-write credential.");
+        return;
+    }
+    if (index != 0 && index != 1) return;
+    const QString repo = QInputDialog::getText(
+        nullptr, "GitHub destination", "Owner/repository:",
+        QLineEdit::Normal, "ProhorovIlja/Ember", &accepted).trimmed();
+    if (!accepted) return;
+    const QString title = QInputDialog::getText(
+        nullptr, "GitHub issue title", "Title:",
+        QLineEdit::Normal, {}, &accepted);
+    if (!accepted) return;
+    const QString suggested = index == 1 ? m_lastReply.left(12000) : QString();
+    const QString body = QInputDialog::getMultiLineText(
+        nullptr, "Review full GitHub issue body", "Markdown body (may become public):",
+        suggested, &accepted);
+    if (!accepted) return;
+    const auto prepared = EmberGitHubWrite::prepareIssue(repo, title, body);
+    if (!prepared.ok()) { setStatus(prepared.error); return; }
+    const auto approval = QMessageBox::question(
+        nullptr, "Publish one GitHub issue?",
+        "Repository: " + repo + "\nTitle: " + title.trimmed() +
+        "\n\nPublish the complete Markdown body you just reviewed? "
+        "This is an external write that may become public.",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (approval != QMessageBox::Yes) {
+        setStatus("GitHub publishing cancelled; no network write.");
+        return;
+    }
+    QByteArray token;
+    if (!EmberCredential::readGitHubToken(
+            token, QString::fromLatin1(EmberCredential::kGitHubIssuesWriteTarget))) {
+        setStatus("No separate Issues-write credential. Connect it first. "
+                  "The read-only token cannot publish.");
+        return;
+    }
+    QNetworkRequest request(prepared.endpoint);
+    request.setTransferTimeout(12000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    request.setRawHeader("Accept", "application/vnd.github+json");
+    request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
+    request.setRawHeader("User-Agent", "Ember-local-issues/0.1");
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setRawHeader("Authorization", QByteArray("Bearer ") + token);
+    token.fill('\0');
+    m_publicGitHubBuffer.clear();
+    m_publicGitHubOversize = false;
+    QNetworkReply *reply = m_publicGitHubNetwork.post(request, prepared.json);
+    m_publicGitHubReply = reply;
+    setStatus("Publishing one explicitly approved GitHub issue...");
+    connect(reply, &QIODevice::readyRead, this, [this, reply] {
+        if (m_publicGitHubReply != reply) return;
+        constexpr qsizetype limit = 64 * 1024;
+        if (reply->bytesAvailable() > limit - m_publicGitHubBuffer.size()) {
+            m_publicGitHubOversize = true;
+            reply->abort();
+            return;
+        }
+        m_publicGitHubBuffer += reply->readAll();
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply, repo] {
+        if (m_publicGitHubReply != reply) { reply->deleteLater(); return; }
+        m_publicGitHubReply = nullptr;
+        QByteArray response = std::move(m_publicGitHubBuffer);
+        m_publicGitHubBuffer.clear();
+        if (reply->bytesAvailable() > (64 * 1024 - response.size()))
+            m_publicGitHubOversize = true;
+        else response += reply->readAll();
+        const int http = reply->attribute(
+            QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const auto networkError = reply->error();
+        reply->deleteLater();
+        if (m_publicGitHubOversize) {
+            setStatus("Oversized GitHub response. Check the repository before retrying.");
+            return;
+        }
+        if (http != 201 || networkError != QNetworkReply::NoError) {
+            setStatus("GitHub issue creation not confirmed (HTTP " +
+                      QString::number(http) +
+                      "). Check the repository before retrying.");
+            return;
+        }
+        const auto result = EmberGitHubWrite::parseCreatedIssue(repo, http, response);
+        setStatus(result.ok() ? "Created GitHub issue: " + result.url :
+                  result.error + " Check the repository before retrying.");
     });
 }
 void EmberBackend::inspectPublicGitHub() {

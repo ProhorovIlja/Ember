@@ -1239,6 +1239,16 @@ ApplicationWindow {
                                             ToolTip.text: "Inspect one public repository, issues, PRs or file. Network access only on your click; no token or modifications."
                                         }
                                         PillButton {
+                                            text: "GitHub · Issues"
+                                            implicitWidth: 134
+                                            implicitHeight: 31
+                                            enabled: !ember.busy && !ember.listening
+                                            onClicked: ember.githubIssuesAction()
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Manually review and publish one GitHub issue with a separate Issues-write credential; never publish in the background."
+                                        }
+                                        PillButton {
                                             text: "Wikipedia"
                                             implicitWidth: 110
                                             implicitHeight: 31

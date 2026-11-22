@@ -6,6 +6,7 @@
 #include "LocalRepoSearch.h"
 #include "LocalCodeEdit.h"
 #include "PublicGitHub.h"
+#include "GitHubIssueWrite.h"
 #include "GitHubCredential.h"
 #include "WikipediaSearch.h"
 #include "DriveRead.h"
@@ -817,6 +818,40 @@ private slots:
         const auto bound = EmberCore::chatRequest(
             "Be accurate", {}, "Hello", 1000000, 0.73, {}, true);
         QCOMPARE(bound.value("max_tokens").toInt(), 4096);
+    }
+    void scopedGithubIssueWriteRequiresExactRepositoryAndVerifiedResult() {
+        using namespace EmberGitHubWrite;
+        const auto draft = prepareIssue("ProhorovIlja/Ember", "Fix bug",
+                                        "Repro:\\n- Step 1");
+        QVERIFY2(draft.ok(), qPrintable(draft.error));
+        QCOMPARE(draft.endpoint.host(), QString("api.github.com"));
+        QCOMPARE(draft.endpoint.path(),
+                 QString("/repos/ProhorovIlja/Ember/issues"));
+        QVERIFY(draft.endpoint.query().isEmpty());
+        const auto json = QJsonDocument::fromJson(draft.json).object();
+        QCOMPARE(json.value("title").toString(), QString("Fix bug"));
+        QVERIFY(!prepareIssue("owner/../repo", "Bug", "Body").ok());
+        QVERIFY(!prepareIssue("owner/repo?x=y", "Bug", "Body").ok());
+        QVERIFY(!prepareIssue("owner/repo", "", "Body").ok());
+        QVERIFY(!prepareIssue("owner/repo", "Title", "").ok());
+        QVERIFY(!prepareIssue("owner/repo", "Title", QString(12001,'a')).ok());
+        QVERIFY(!prepareIssue("owner/repo", QString(241,'a'), "Body").ok());
+        const QByteArray success = QJsonDocument(QJsonObject{
+            {"number", 77},
+            {"html_url", "https://github.com/ProhorovIlja/Ember/issues/77"},
+            {"repository_url", "https://api.github.com/repos/ProhorovIlja/Ember"}
+        }).toJson();
+        const auto confirmed = parseCreatedIssue("ProhorovIlja/Ember", 201, success);
+        QVERIFY2(confirmed.ok(), qPrintable(confirmed.error));
+        QCOMPARE(confirmed.url,
+                 QString("https://github.com/ProhorovIlja/Ember/issues/77"));
+        QVERIFY(!parseCreatedIssue("ProhorovIlja/Ember", 403, success).ok());
+        QVERIFY(!parseCreatedIssue("Other/repo", 201, success).ok());
+        QVERIFY(!parseCreatedIssue("ProhorovIlja/Ember", 201, "invalid").ok());
+        QVERIFY(!parseCreatedIssue("ProhorovIlja/Ember", 201,
+             R"({"number":77,"html_url":"https://github.com/attacker/repo/issues/77"})").ok());
+        QVERIFY(QString::fromLatin1(EmberCredential::kGitHubCredentialTarget) !=
+                QString::fromLatin1(EmberCredential::kGitHubIssuesWriteTarget));
     }
     void publicGitHubReadOnlyRequestsAndUntrustedPreviews() {
         using namespace EmberGitHub;

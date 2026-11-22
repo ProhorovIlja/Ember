@@ -12,7 +12,8 @@
 namespace EmberCredential {
 namespace {
 bool allowedTarget(const QString &target) {
-    if (target == QString::fromLatin1(kGitHubCredentialTarget)) return true;
+    if (target == QString::fromLatin1(kGitHubCredentialTarget) ||
+        target == QString::fromLatin1(kGitHubIssuesWriteTarget)) return true;
     static const QRegularExpression testTarget(
         QStringLiteral("^Ember\\.Local\\.GitHub\\.Test\\.[A-Za-z0-9-]{1,50}$"));
     return testTarget.match(target).hasMatch();
@@ -39,7 +40,7 @@ bool saveGitHubToken(const QByteArray &token, const QString &target) {
     credential.CredentialBlob = reinterpret_cast<LPBYTE>(
         const_cast<char *>(token.constData()));
     credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
-    credential.UserName = const_cast<LPWSTR>(L"GitHub read-only account");
+    credential.UserName = const_cast<LPWSTR>(L"GitHub scoped credential");
     return CredWriteW(&credential, 0) != 0;
 #else
     return false; // No plaintext fallback; target product is Windows.

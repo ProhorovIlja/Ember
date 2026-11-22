@@ -7,6 +7,7 @@ namespace EmberCredential {
 // read-only workflow. A unique Ember.Local.GitHub.Test.* name is also allowed
 // for isolated regression tests. No tokens are stored in QSettings or SQLite.
 constexpr auto kGitHubCredentialTarget = "Ember.Local.GitHub.ReadOnly";
+constexpr auto kGitHubIssuesWriteTarget = "Ember.Local.GitHub.IssuesWrite";
 bool validToken(const QByteArray &token);
 bool saveGitHubToken(const QByteArray &token,
                      const QString &target = QString::fromLatin1(kGitHubCredentialTarget));

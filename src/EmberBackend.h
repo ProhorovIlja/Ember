@@ -153,6 +153,7 @@ public:
     Q_INVOKABLE bool applyStagedLocalCodeEdit();
     Q_INVOKABLE void discardStagedLocalCodeEdit();
     Q_INVOKABLE void inspectPublicGitHub();
+    Q_INVOKABLE void githubIssuesAction();
     Q_INVOKABLE void searchWikipedia();
     Q_INVOKABLE void driveAction();
     Q_INVOKABLE void continueIncompleteReply();
