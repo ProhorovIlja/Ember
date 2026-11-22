@@ -7,6 +7,27 @@ function Mock-File([string]$Path, [byte[]]$Magic) {
     [array]::Copy($Magic, $raw, $Magic.Length)
     [System.IO.File]::WriteAllBytes($Path, $raw)
 }
+
+function Mock-Exe([string]$Path, [int]$Machine = 0x8664) {
+    $raw = New-Object byte[] 512
+    $raw[0] = 77; $raw[1] = 90; $raw[60] = 128
+    $raw[128] = 80; $raw[129] = 69
+    $raw[132] = [byte]($Machine -band 255)
+    $raw[133] = [byte](($Machine -shr 8) -band 255)
+    [System.IO.File]::WriteAllBytes($Path, $raw)
+}
+function Mock-Gguf([string]$Path, [int]$Version = 3) {
+    $raw = New-Object byte[] (1MB + 128)
+    $raw[0] = 71; $raw[1] = 71; $raw[2] = 85; $raw[3] = 70
+    [array]::Copy([System.BitConverter]::GetBytes([uint32]$Version), 0, $raw, 4, 4)
+    [System.IO.File]::WriteAllBytes($Path, $raw)
+}
+function Mock-Whisper([string]$Path) {
+    $raw = New-Object byte[] (1MB + 128)
+    $raw[0] = 108; $raw[1] = 109; $raw[2] = 103; $raw[3] = 103
+    [System.IO.File]::WriteAllBytes($Path, $raw)
+}
+
 try {
     $app = Join-Path $root 'app'
     $eng = Join-Path $root 'engine'
@@ -16,11 +37,11 @@ try {
     }
     Mock-File (Join-Path $app 'Ember.exe') ([byte[]](77,90))
     Mock-File (Join-Path $app 'Qt6Core.dll') ([byte[]](77,90))
-    Mock-File (Join-Path $eng 'llama-server.exe') ([byte[]](77,90))
+    Mock-Exe (Join-Path $eng 'llama-server.exe')
     Mock-File (Join-Path $eng 'ggml-base.dll') ([byte[]](77,90))
-    Mock-File (Join-Path $weights 'local.gguf') ([byte[]](71,71,85,70))
-    Mock-File (Join-Path $eng 'whisper-cli.exe') ([byte[]](77,90))
-    Mock-File (Join-Path $weights 'ggml-base.bin') ([byte[]](108,109,103,103))
+    Mock-Gguf (Join-Path $weights 'local.gguf')
+    Mock-Exe (Join-Path $eng 'whisper-cli.exe')
+    Mock-Whisper (Join-Path $weights 'ggml-base.bin')
     $arguments = @{
         AppDirectory = $app
         LlamaServer = (Join-Path $eng 'llama-server.exe')
@@ -50,7 +71,7 @@ try {
     $destination = Join-Path $app 'models/llm/model.gguf'
     $before = (Get-FileHash $destination -Algorithm SHA256).Hash
     $alternate = Join-Path $weights 'different.gguf'
-    Mock-File $alternate ([byte[]](71,71,85,70))
+    Mock-Gguf $alternate
     $raw = [System.IO.File]::ReadAllBytes($alternate)
     $raw[42] = 59
     [System.IO.File]::WriteAllBytes($alternate, $raw)
@@ -67,6 +88,48 @@ try {
     $blocked = $false
     try { & $prepare @arguments | Out-Null } catch { $blocked = $true }
     if (-not $blocked) { throw 'Invalid GGUF file magic was accepted.' }
+
+    # Wrong Windows machine, unsupported GGUF version and invalid Whisper model
+    # must fail before any staged files are replaced.
+    $wrongMachine = Join-Path $eng 'x86.exe'
+    Mock-Exe $wrongMachine 0x14c
+    $arguments.LlamaServer = $wrongMachine
+    $blocked = $false
+    try { & $prepare @arguments | Out-Null } catch { $blocked = $true }
+    if (-not $blocked) { throw '32-bit Windows engine passed preflight.' }
+    $arguments.LlamaServer = Join-Path $eng 'llama-server.exe'
+
+    $wrongVersion = Join-Path $weights 'v99.gguf'
+    Mock-Gguf $wrongVersion 99
+    $arguments.ModelGguf = $wrongVersion
+    $blocked = $false
+    try { & $prepare @arguments | Out-Null } catch { $blocked = $true }
+    if (-not $blocked) { throw 'Unsupported GGUF version passed preflight.' }
+    $arguments.ModelGguf = Join-Path $weights 'local.gguf'
+
+    $englishOnly = Join-Path $weights 'ggml-base.en.bin'
+    Mock-Whisper $englishOnly
+    $arguments.WhisperModel = $englishOnly
+    $blocked = $false
+    try { & $prepare @arguments | Out-Null } catch { $blocked = $true }
+    if (-not $blocked) { throw 'English-only Whisper weights passed RU/EN preflight.' }
+    $arguments.WhisperModel = Join-Path $weights 'ggml-base.bin'
+
+    $badAsr = Join-Path $weights 'corrupt.bin'
+    Mock-File $badAsr ([byte[]](65,66,67,68))
+    $arguments.WhisperModel = $badAsr
+    $blocked = $false
+    try { & $prepare @arguments | Out-Null } catch { $blocked = $true }
+    if (-not $blocked) { throw 'Corrupt Whisper weights passed preflight.' }
+    $arguments.WhisperModel = Join-Path $weights 'ggml-base.bin'
+    
+    # CheckOnly must reject corruption after original staging, too.
+    $stagedWhisper = Join-Path $app 'models/stt/ggml-base.bin'
+    Mock-File $stagedWhisper ([byte[]](65,66,67,68))
+    $blocked = $false
+    try { & $prepare -AppDirectory $app -CheckOnly -RequireAsr | Out-Null } catch { $blocked = $true }
+    if (-not $blocked) { throw 'CheckOnly accepted a damaged installed Whisper model.' }
+
     Write-Host 'Offline Windows text-first staging regressions passed.'
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
