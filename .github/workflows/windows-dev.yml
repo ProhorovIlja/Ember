@@ -64,6 +64,9 @@ jobs:
         run: |
           python tools/portable_zip.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Offline ZIP64 packaging test failed.' }
+      - name: Test manual offline text-first staging without network
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/text-first-preparation.test.ps1
       - name: Install Qt 6.8.3 dynamic development modules
         uses: jurplel/install-qt-action@v4
         with:
@@ -120,6 +123,8 @@ jobs:
           Copy-Item README.md build/Release/README.md
           Copy-Item LICENSE build/Release/LICENSE
           Copy-Item docs/SETUP.md build/Release/SETUP.md
+          Copy-Item docs/TEXT-FIRST-MILESTONE.md build/Release/TEXT-FIRST-MILESTONE.md
+          Copy-Item release/prepare-text-first.ps1 build/Release/prepare-text-first.ps1
           Compress-Archive -Path 'build/Release/*' -DestinationPath 'Ember-dev-win64.zip' -CompressionLevel Optimal
       - name: Compile and validate unsigned developer installer
         shell: pwsh

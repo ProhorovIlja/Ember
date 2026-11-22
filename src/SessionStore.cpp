@@ -169,7 +169,7 @@ QString SessionStore::historicalExcerpts(const QString &session,
                                          const QString &question,
                                          int maxResults) const {
     if (!m_ready || session.isEmpty() || session.size() > 64 ||
-        question.trimmed().isEmpty() || question.size() > 4096) return {};
+        question.trimmed().isEmpty() || question.size() > 8192) return {};
     // Avoid an embeddings index or long-lived duplicate text on the disk.
     static const QSet<QString> ignored{
         "the", "and", "this", "that", "then", "from", "with", "about",

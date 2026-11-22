@@ -62,3 +62,16 @@ text/audio. External compatible localhost TTS remains possible through
 an explicit **Trust external local TTS** toggle, disabled by default;
 such a server can see the text sent for speech. This is PID-based
 defense-in-depth, not protection against fully privileged local malware.
+
+
+### Interim offline text-first milestone
+
+For an early usable local programming/troubleshooting/chat experience,
+see [the manual offline setup](docs/TEXT-FIRST-MILESTONE.md). Development
+and Troubleshooting now request 2,048 output tokens at lower temperature
+than creative Story mode, and accept up to 8,192 characters of user code
+or diagnostic logs. A compatible licensed GGUF and Windows llama-server
+remain user-supplied; models/binaries are **not** distributed. The source
+also includes a Windows PowerShell 5.1 text-only staging/check helper,
+with no downloads, subscriptions or scheduled work. This interim
+functionality does not relax the no-public-preview policy.

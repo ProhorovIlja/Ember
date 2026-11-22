@@ -523,6 +523,15 @@ QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source) {
     return pcmToWav(pcm, 16000);
 }
 
+ChatGenerationProfile chatGenerationProfile(int mode, bool voice) {
+    if (voice) return {512, 0.65};
+    switch (mode) {
+    case 1: return {2048, 0.92}; // long collaborative fiction
+    case 2: return {2048, 0.35}; // diagnostic and troubleshooting
+    case 3: return {2048, 0.25}; // actionable coding and debugging
+    default: return {1400, 0.73}; // natural conversation
+    }
+}
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                         const QString &user, int maxTokens, double temperature,
                         const QString &historicalExcerpts) {
@@ -542,8 +551,9 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
     // Retain as many recent complete exchanges as fit the bounded request.
     // This avoids both the old fixed eight-turn memory loss and accidental
     // requests larger than the 8192-token llama.cpp context. Character count
-    // is a conservative heuristic, not a tokenizer / exact context guarantee.
-    const QString currentUser = user.left(4096);
+    // is an estimate, not a tokenizer or an exact context guarantee. Accept
+    // longer compiler errors/logs, trimming old context before current input.
+    const QString currentUser = user.left(8192);
     int remainingChars = std::max(0, int(12000 - persona.left(4096).size()
                                         - currentUser.size() - quote.size()));
     QList<Turn> selected;

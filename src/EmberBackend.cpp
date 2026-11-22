@@ -1190,9 +1190,9 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
         setStatus("Start the local brain before sending a message.");
         return false;
     }
-    if (m_busy || m_listening || text.isEmpty() || text.size() > 4096) {
-        if (text.size() > 4096)
-            setStatus("Message exceeds the 4,096-character input limit.");
+    if (m_busy || m_listening || text.isEmpty() || text.size() > 8192) {
+        if (text.size() > 8192)
+            setStatus("Message exceeds the 8,192-character input limit.");
         else if (m_listening)
             setStatus("Finish recording before sending the text draft.");
         return false;
@@ -1237,10 +1237,10 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
     }
     const QString recalled = m_store && m_store->ready() && !m_sessionId.isEmpty()
         ? m_store->historicalExcerpts(m_sessionId, text) : QString();
+    const auto generation = EmberCore::chatGenerationProfile(m_chatMode, voice);
     QJsonObject payload = EmberCore::chatRequest(
         effectivePersona, m_history, text,
-        voice ? 512 : (m_chatMode == 1 ? 2048 : 1400),
-        m_chatMode == 1 ? 0.92 : 0.73, recalled);
+        generation.maxTokens, generation.temperature, recalled);
     if (!selected.isEmpty() &&
         !EmberCore::attachLocalVisionData(payload, imageData)) {
         // Leave the composer attachment and both SQLite/UI histories intact.

@@ -33,6 +33,9 @@ qint64 speechAwareAsrFreshBytes(const QByteArray &candidate,
 QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source);
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, const QString &user, int maxTokens = 1024, double temperature = 0.8,
                         const QString &historicalExcerpts = {});
+// Text-first: long and precise technical replies, creative fiction separately.
+struct ChatGenerationProfile { int maxTokens; double temperature; };
+ChatGenerationProfile chatGenerationProfile(int mode, bool voice);
 // Windows: prove the IPv4 127.0.0.1 listener belongs to the exact managed
 // QProcess PID. HTTP 200 on /health alone is not authentication. Returns
 // false when the listener is absent, wildcard-bound or cannot be inspected.

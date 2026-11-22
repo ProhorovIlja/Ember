@@ -218,3 +218,15 @@ Example hint for a story or development chat: `Mara, Yharnam, RTX 4070, C++, Qwe
 The English sidebar now offers **Start private session / Private session END**. Entering private mode stops the current reply/audio, starts a fresh conversation held only in application RAM, and never creates a SQLite session for it. The user's and assistant's text/continuity stays in the active process, and the mode has no selected persistent session ID. Exiting discards ephemeral messages and restores a previously saved chat; selecting any saved chat also exits private mode. Clearing the current private conversation does not affect saved chats. Export and persistent continuity/ASR vocabulary settings cannot write private content. The mode is **not** persisted in application settings.
 
 Privacy limits are explicit: the local model still processes text in RAM, and a voice turn still creates temporary microphone raw/WAV files for local recognition which are removed after completion/normal shutdown (with best-effort abandoned scratch cleanup after crash). OS swap, hibernation, GPU process memory and forensic traces cannot be ruled out. The feature is **not encrypted memory, secure physical disk erasure, or a guarantee that all traces disappear**. It is an original native Ember implementation, not a clone of Sesame's undocumented app internals.
+
+
+## Interim text-first local chat (manual offline install)
+
+Before final voice acceptance, the native chat can run with only an installed
+Qt app, a licensed compatible Windows llama-server and local GGUF weights.
+See [Text-first milestone](TEXT-FIRST-MILESTONE.md) and the offline
+`prepare-text-first.ps1` helper. The helper uses built-in PowerShell,
+copies only local already-downloaded files with SHA-256 validation,
+refuses replacements and never downloads or starts models. The code and
+CI smoke tests do **not** guarantee a real model works until the target
+Windows 10 machine runs its GGUF and completes full chat acceptance.
