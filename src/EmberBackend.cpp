@@ -3,6 +3,7 @@
 #include "LocalRepoSearch.h"
 #include "PublicGitHub.h"
 #include "GitHubCredential.h"
+#include "WikipediaSearch.h"
 #include <QInputDialog>
 #include <QLineEdit>
 
@@ -203,6 +204,7 @@ EmberBackend::EmberBackend(QObject *parent)
     // Otherwise an environment proxy could receive private conversation text.
     m_network.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     m_publicGitHubNetwork.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+    m_wikipediaNetwork.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     m_voiceId = qBound(0, m_voiceId, 10);
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
     m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 4);
@@ -1177,6 +1179,82 @@ QString EmberBackend::messageText(const QString &body) const {
 }
 bool EmberBackend::submitText(const QString &text) {
     return submit(text, false);
+}
+void EmberBackend::searchWikipedia() {
+    if (m_wikipediaReply || m_busy || m_listening) {
+        setStatus("Finish the current task or Wikipedia search before searching again.");
+        return;
+    }
+    bool accepted = false;
+    const QStringList languages{"English", "Russian"};
+    const QString choice = QInputDialog::getItem(
+        nullptr, "Wikipedia research", "Search language:",
+        languages, 0, false, &accepted);
+    if (!accepted) return;
+    const QString language = choice == "Russian" ? "ru" : "en";
+    const QString query = QInputDialog::getText(
+        nullptr, "Wikipedia research", "Search article titles and excerpts:",
+        QLineEdit::Normal, {}, &accepted).trimmed();
+    if (!accepted) return;
+    const QUrl endpoint = EmberWikipedia::searchUrl(query, language);
+    if (endpoint.isEmpty()) {
+        setStatus("Wikipedia search must be 2–120 printable characters.");
+        return;
+    }
+    QNetworkRequest request(endpoint);
+    request.setTransferTimeout(12000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
+    request.setRawHeader("Accept", "application/json");
+    request.setRawHeader("User-Agent", "EmberLocalResearch/0.1 (manual)");
+    m_wikipediaBuffer.clear();
+    m_wikipediaOversize = false;
+    QNetworkReply *reply = m_wikipediaNetwork.get(request);
+    m_wikipediaReply = reply;
+    setStatus("Searching Wikipedia after your explicit request; no background lookup.");
+    connect(reply, &QIODevice::readyRead, this, [this, reply]() {
+        if (m_wikipediaReply != reply) return;
+        constexpr qsizetype limit = 128 * 1024;
+        if (reply->bytesAvailable() > limit - m_wikipediaBuffer.size()) {
+            m_wikipediaOversize = true;
+            reply->abort();
+            return;
+        }
+        m_wikipediaBuffer += reply->readAll();
+    });
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, query, language]() {
+        if (m_wikipediaReply != reply) { reply->deleteLater(); return; }
+        m_wikipediaReply = nullptr;
+        QByteArray payload = std::move(m_wikipediaBuffer);
+        m_wikipediaBuffer.clear();
+        if (reply->bytesAvailable() > 128 * 1024 - payload.size())
+            m_wikipediaOversize = true;
+        else payload += reply->readAll();
+        const int status = reply->attribute(
+            QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QNetworkReply::NetworkError error = reply->error();
+        reply->deleteLater();
+        if (m_wikipediaOversize) {
+            setStatus("Wikipedia response exceeded the 128 KiB safety cap.");
+            return;
+        }
+        if (status != 200 || error != QNetworkReply::NoError) {
+            setStatus(QString("Wikipedia search failed (HTTP %1). "
+                              "Check connection or regional access.")
+                          .arg(status));
+            return;
+        }
+        const auto result = EmberWikipedia::parseSearch(query, language, payload);
+        if (!result.ok()) {
+            setStatus(result.error);
+            return;
+        }
+        emit wikipediaExcerptReady(result.text);
+        setStatus(QString("Wikipedia returned %1 candidate article(s). "
+                          "Read source links and review before adding to chat.")
+                      .arg(result.count));
+    });
 }
 void EmberBackend::inspectPublicGitHub() {
     if (m_publicGitHubReply || m_busy || m_listening) {

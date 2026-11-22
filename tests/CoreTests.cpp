@@ -6,6 +6,7 @@
 #include "LocalRepoSearch.h"
 #include "PublicGitHub.h"
 #include "GitHubCredential.h"
+#include "WikipediaSearch.h"
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
@@ -745,6 +746,44 @@ private slots:
         QVERIFY(deleteGitHubToken(target));
         QVERIFY(!readGitHubToken(retrieved, target));
 #endif
+    }
+    void wikipediaSearchIsBoundedCitedAndOnlyUserRequested() {
+        using namespace EmberWikipedia;
+        QVERIFY(searchUrl("Earth", "en").isValid());
+        QVERIFY(searchUrl(QString::fromUtf8("солнечная система"), "ru").isValid());
+        QVERIFY(searchUrl("Earth", "en").host() == "en.wikipedia.org");
+        QCOMPARE(searchUrl("Earth", "en").scheme(), QString("https"));
+        QVERIFY(searchUrl("Earth\nHost: bad", "en").isEmpty());
+        QVERIFY(searchUrl("Earth", "de").isEmpty());
+        QVERIFY(searchUrl("", "en").isEmpty());
+        const QByteArray response = R"({"pages":[{"key":"Earth","title":"Earth",
+            "description":"The third planet",
+            "excerpt":"Earth is the <span class=\"searchmatch\">third</span> planet &amp; home."},
+            {"key":"Mars","title":"Mars","excerpt":"Other <b>planet</b>."}]})";
+        const auto found = parseSearch("planet", "en", response);
+        QVERIFY2(found.ok(), qPrintable(found.error));
+        QCOMPARE(found.count, 2);
+        QVERIFY(found.text.contains("https://en.wikipedia.org/wiki/Earth"));
+        QVERIFY(found.text.contains("https://en.wikipedia.org/wiki/Mars"));
+        QVERIFY(found.text.contains("third planet & home"));
+        QVERIFY(!found.text.contains("<span"));
+        QVERIFY(found.text.contains("NOT full verified articles"));
+        const auto noHits = parseSearch(
+            "planet", "en", R"({"pages":[]})");
+        QVERIFY(noHits.ok());
+        QCOMPARE(noHits.count, 0);
+        QVERIFY(noHits.text.contains("No matching article snippets"));
+        QVERIFY(!parseSearch("planet", "en", R"({"wrong":[]})").ok());
+        QVERIFY(!parseSearch("planet", "en", "invalid json").ok());
+        QVERIFY(!parseSearch("planet", "en",
+            QByteArray(128*1024+1, 'x')).ok());
+        const auto hostile = parseSearch("planet", "en",
+            R"({"pages":[{"key":"https://evil.example/","title":"Hostile",
+                 "description":"untrusted","excerpt":"<img src='bad' />secret"}]})");
+        QVERIFY(hostile.ok());
+        QVERIFY(!hostile.text.contains("<img"));
+        QVERIFY(!hostile.text.contains("Source: https://evil.example"));
+        QVERIFY(hostile.text.contains("Source: https://en.wikipedia.org/wiki/"));
     }
     void historicalReferencesNeverBecomeSystemCommands() {
         const QString previous =

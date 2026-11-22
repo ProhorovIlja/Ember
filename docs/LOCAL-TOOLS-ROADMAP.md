@@ -65,16 +65,32 @@ This is manual PAT integration, NOT a GitHub OAuth login, nor Google Drive
 access. No browser login, VPN or external packaged account service needed,
 but GitHub connectivity itself is required.
 
+## Implemented fifth step: explicit EN/RU Wikipedia topic search
+
+The **Wikipedia** button permits a one-shot English or Russian Wikipedia
+article search. It uses Wikimedia's documented modern MediaWiki REST
+`/w/rest.php/v1/search/page` endpoint rather than the older
+`/api/rest_v1/page/summary` path, which Wikimedia began deprecating.
+Only selected `en.wikipedia.org` and `ru.wikipedia.org` are contacted
+over HTTPS, with manual redirects disabled, a 12-second network timeout
+and a 128 KiB response limit. A strict parser strips HTML highlighting
+from up to five returned excerpts, attaches per-article source URLs and
+labels them as search snippets **not full verified articles**. The
+same native preview dialog requires user confirmation before adding
+research to the local prompt. No automatic background search, general
+web search, site crawler, remote code action, or cloud LLM calls exist.
+
 ## Next integrations — NOT YET IMPLEMENTED
 
 1. **Local codebase retrieval/indexing:** expand the implemented one-shot
    bounded literal search to explicit approval scopes, gitignore rules,
    token-aware context selection, repository maps and semantic indexing
    without persistent scans or automatic activity.
-2. **Cited Internet/Wikipedia research:** explicit user request, isolated
-   HTTP client, content-length / MIME / timeout limits, direct URL citations,
-   injected page text treated as untrusted data; network off means clear
-   offline error, not a fabricated search result.
+2. **Expanded Internet research:** initial cited EN/RU Wikipedia topic
+   search is now implemented, with strict one-shot browsing and user review.
+   Broader verified pages, full articles, time-aware citations and independent
+   web search providers require separate opt-in integrations. Remote source
+   text must remain untrusted and offline mode must never fabricate results.
 3. **Authenticated GitHub write operations:** private read-only access
    is now available with a user-connected fine-grained PAT protected by
    Windows Credential Manager. Separate write permissions and visible

@@ -148,6 +148,7 @@ public:
     Q_INVOKABLE QString chooseLocalTextFile(const QString &existingDraft);
     Q_INVOKABLE QString searchLocalCodeFolder(const QString &existingDraft);
     Q_INVOKABLE void inspectPublicGitHub();
+    Q_INVOKABLE void searchWikipedia();
     Q_INVOKABLE void continueIncompleteReply();
     Q_INVOKABLE void chooseImage();
     Q_INVOKABLE void pasteImage();
@@ -200,6 +201,7 @@ signals:
     void configurationChanged();
     void audioDevicesChanged();
     void publicGitHubExcerptReady(const QString &text);
+    void wikipediaExcerptReady(const QString &text);
 private:
     void setStatus(const QString &text);
     void setBusy(bool value);
@@ -316,6 +318,10 @@ private:
     QPointer<QNetworkReply> m_publicGitHubReply;
     QByteArray m_publicGitHubBuffer;
     bool m_publicGitHubOversize = false;
+    QNetworkAccessManager m_wikipediaNetwork;
+    QPointer<QNetworkReply> m_wikipediaReply;
+    QByteArray m_wikipediaBuffer;
+    bool m_wikipediaOversize = false;
     QPointer<QNetworkReply> m_reply;
     QPointer<QNetworkReply> m_speechReply;
     QPointer<QNetworkReply> m_nativeAsrReply;

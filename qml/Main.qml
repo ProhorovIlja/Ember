@@ -19,22 +19,23 @@ ApplicationWindow {
     property color cardColor: "#0A101C"
     property string historyQuery: ""
     property string imageToDelete: ""
-    property string publicGitHubPreview: ""
+    property string externalReferencePreview: ""
+    property string externalReferenceSource: "GitHub"
     Dialog {
-        id: publicGitHubDialog
+        id: externalReferenceDialog
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: Math.min(window.width - 70, 760)
         height: Math.min(window.height - 70, 560)
         modal: true
-        title: "Public GitHub · Review before inserting"
+        title: window.externalReferenceSource + " · Review before inserting"
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
-            if (composer.text.length + window.publicGitHubPreview.length > 8192) {
-                publicGitHubDialog.open()
+            if (composer.text.length + window.externalReferencePreview.length > 8192) {
+                externalReferenceDialog.open()
                 return
             }
-            composer.text += window.publicGitHubPreview
+            composer.text += window.externalReferencePreview
             composer.cursorPosition = composer.length
             window.page = 1
         }
@@ -50,8 +51,8 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
                 color: "#9CB8D4"
                 font.pixelSize: 12
-                text: composer.text.length + window.publicGitHubPreview.length <= 8192
-                      ? "Read-only public GitHub response. You control whether it enters your local text prompt."
+                text: composer.text.length + window.externalReferencePreview.length <= 8192
+                      ? "One-shot external research. Review source links and decide whether to add these excerpts to your local text prompt."
                       : "Too much text for the current draft. Remove text before inserting; the preview remains copyable."
             }
             ScrollView {
@@ -59,7 +60,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 TextArea {
                     readOnly: true
-                    text: window.publicGitHubPreview
+                    text: window.externalReferencePreview
                     font.pixelSize: 12
                     color: "#E4EDF9"
                     wrapMode: TextEdit.Wrap
@@ -72,8 +73,14 @@ ApplicationWindow {
     Connections {
         target: ember
         function onPublicGitHubExcerptReady(excerpt) {
-            window.publicGitHubPreview = excerpt
-            publicGitHubDialog.open()
+            window.externalReferenceSource = "GitHub"
+            window.externalReferencePreview = excerpt
+            externalReferenceDialog.open()
+        }
+        function onWikipediaExcerptReady(excerpt) {
+            window.externalReferenceSource = "Wikipedia"
+            window.externalReferencePreview = excerpt
+            externalReferenceDialog.open()
         }
     }
 
@@ -1157,6 +1164,16 @@ ApplicationWindow {
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
                                             ToolTip.text: "Inspect one public repository, issues, PRs or file. Network access only on your click; no token or modifications."
+                                        }
+                                        PillButton {
+                                            text: "Wikipedia"
+                                            implicitWidth: 110
+                                            implicitHeight: 31
+                                            enabled: !ember.busy && !ember.listening
+                                            onClicked: ember.searchWikipedia()
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Search English or Russian Wikipedia with source URLs. No background requests; review excerpts before adding them to chat."
                                         }
                                         PillButton {
                                             text: "Add image"

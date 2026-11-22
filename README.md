@@ -121,3 +121,11 @@ the repository, and is sent only on an explicitly selected **Connected**
 GitHub read to the official HTTPS API. **Public** reads use no credentials.
 The application has no GitHub write actions or automatic scans. This is not
 an OAuth account sign-in; Google Drive authentication is not implemented.
+
+
+The Chat toolbar now also has **Wikipedia** for one user-triggered search
+of English or Russian Wikipedia, returning up to five source-linked,
+plain-text article snippets to the existing manual review dialog. No
+background research is initiated, and snippets are not substitutes for
+full articles. Wikimedia connectivity is required; the LLM itself remains
+fully local. See `docs/LOCAL-TOOLS-ROADMAP.md`.
