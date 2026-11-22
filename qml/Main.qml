@@ -1384,7 +1384,7 @@ ApplicationWindow {
                                             onClicked: ember.driveAction()
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
-                                            ToolTip.text: "Manual browser-based Google OAuth, folder metadata only. No automatic sync, downloads or file writes."
+                                            ToolTip.text: "Manual read-only Google consent, folder listing and selected text/Docs excerpts. No automatic sync or writes."
                                         }
                                         Item { Layout.fillWidth: true }
                                         PillButton {
