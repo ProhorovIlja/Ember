@@ -1347,9 +1347,10 @@ void EmberBackend::stopSpeechServer() {
     setStatus("Managed speech engine stopped; local text chat remains available.");
 }
 void EmberBackend::pollSpeechServer() {
-    if (m_speechServer.state() == QProcess::NotRunning ||
-        m_speechServerReady || m_speechInventoryPending)
+    if (m_speechServer.state() == QProcess::NotRunning || m_speechServerReady)
         return;
+    // Preserve the absolute startup deadline even if a /v1/models HTTP reply
+    // is stalled. Never let an in-flight inventory request bypass the timeout.
     if (m_speechServerElapsed.isValid() &&
         m_speechServerElapsed.elapsed() > 180000) {
         // Prevent a permanently stalled model loader from consuming CPU,
@@ -1362,6 +1363,7 @@ void EmberBackend::pollSpeechServer() {
         m_speechServer.kill(); // finished callback retains the timeout reason
         return;
     }
+    if (m_speechInventoryPending) return;
     if (!EmberCore::ownedLoopbackTcpListener(
             43822, quint64(m_speechServer.processId()))) return;
     const quint64 session = m_speechServerSession;
