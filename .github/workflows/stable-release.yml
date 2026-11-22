@@ -55,6 +55,11 @@ jobs:
           }
           python tools/offline_bundle.py verify --root build/Release --manifest $manifest --redistribution-required --require-voice
           if ($LASTEXITCODE -ne 0) { throw 'Stable release blocked: offline assets not approved or complete.' }
+          # A valid model hash is not proof that its Windows native DLL
+          # imports were packaged. Check the real complete payload before
+          # ZIP64/installer/publication, not only on a developer machine.
+          python tools/windows_pe_audit.py --root build/Release
+          if ($LASTEXITCODE -ne 0) { throw 'Stable release blocked: missing native Windows x64 runtime DLLs.' }
           Copy-Item README.md build/Release/README.md
           Copy-Item LICENSE build/Release/LICENSE
           Copy-Item docs/SETUP.md build/Release/SETUP.md
