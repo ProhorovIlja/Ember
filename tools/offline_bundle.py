@@ -20,6 +20,15 @@ COMPONENTS = ("llm", "asr", "tts", "shared", "license")
 MAX_FILES = 6000
 MAX_MANIFEST = 3 * 1024 * 1024
 MAX_FILE = 100 * 1024 ** 3
+MIN_MODEL = 1024 * 1024
+# These are the exact paths expected by Ember's native, download-free launch
+# defaults. A manifest with arbitrary "llm"/"asr" labels is not sufficient.
+REQUIRED_TEXT_FIRST = {
+    "engines/llama/llama-server.exe": "llm",
+    "models/llm/model.gguf": "llm",
+    "engines/whisper/whisper-cli.exe": "asr",
+    "models/stt/ggml-base.bin": "asr",
+}
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {
     f"{letter}{number}" for letter in ("COM", "LPT") for number in range(1, 10)
@@ -62,6 +71,64 @@ def hash_file(path):
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def verify_windows_amd64_pe(path, name):
+    """Non-executing header sanity check; cannot prove runtime DLL completeness."""
+    if path.stat().st_size < 256:
+        raise ValueError(f"Windows executable is too short: {name}")
+    with path.open("rb") as stream:
+        dos = stream.read(64)
+        if len(dos) < 64 or dos[:2] != b"MZ":
+            raise ValueError(f"Not a Windows PE executable: {name}")
+        offset = int.from_bytes(dos[60:64], "little")
+        if not 64 <= offset <= 4096 or offset + 6 > path.stat().st_size:
+            raise ValueError(f"Invalid Windows PE offset: {name}")
+        stream.seek(offset)
+        if stream.read(6) != b"PE\x00\x00\x64\x86":
+            raise ValueError(f"Windows executable is not AMD64 PE: {name}")
+
+
+def verify_gguf_header(path, name):
+    if not name.lower().endswith(".gguf") or path.stat().st_size < MIN_MODEL:
+        raise ValueError(f"Expected substantial GGUF model: {name}")
+    with path.open("rb") as stream:
+        header = stream.read(8)
+    if header[:4] != b"GGUF" or len(header) != 8 or (
+            int.from_bytes(header[4:], "little") not in (2, 3)):
+        raise ValueError(f"Invalid GGUF v2/v3 header: {name}")
+
+
+def verify_multilingual_whisper_header(path, name):
+    if (not name.lower().endswith(".bin") or
+            name.lower().endswith(".en.bin") or
+            path.stat().st_size < MIN_MODEL):
+        raise ValueError(f"Expected substantial multilingual Whisper GGML .bin: {name}")
+    with path.open("rb") as stream:
+        magic = stream.read(4)
+    if magic != b"lmgg":
+        raise ValueError(f"Invalid whisper.cpp GGML model header: {name}")
+
+
+def verify_text_first_shapes(root, items):
+    """Mandatory default-path and file-header gate for approved bundles only.
+
+    Header checks do NOT establish that weights are complete, licensed,
+    multilingual, compatible with a selected engine, or runnable on a PC.
+    Actual subprocess inference/ASR acceptance is a separate manual gate.
+    """
+    for name, component in REQUIRED_TEXT_FIRST.items():
+        if name not in items or items[name].get("component") != component:
+            raise ValueError(f"Required Ember default asset/component missing: {name}")
+    for name in items:
+        path = local_file(root, name)
+        lowered = name.lower()
+        if name.startswith("engines/") and lowered.endswith((".exe", ".dll")):
+            verify_windows_amd64_pe(path, name)
+        if name.startswith("models/") and lowered.endswith(".gguf"):
+            verify_gguf_header(path, name)
+    verify_multilingual_whisper_header(
+        local_file(root, "models/stt/ggml-base.bin"), "models/stt/ggml-base.bin")
 
 
 def present_files(root):
@@ -203,6 +270,7 @@ def verify(root, manifest_path, approved=False):
         for component in components:
             if component not in engine_components and "shared" not in engine_components:
                 raise ValueError(f"Required {component} engine executable missing")
+        verify_text_first_shapes(root, items)
     return len(entries)
 
 
@@ -266,17 +334,36 @@ def assemble(staged_root, manifest, application, output):
     return out
 
 
+def fake_pe64():
+    # Minimal synthetic header for a non-executing preflight, not runnable.
+    data = bytearray(256)
+    data[:2] = b"MZ"
+    data[60:64] = (128).to_bytes(4, "little")
+    data[128:134] = b"PE\x00\x00\x64\x86"
+    return bytes(data)
+
+
+def fake_gguf():
+    # At least 1 MiB, GGUF v3 header; synthetic zero bytes are NOT model data.
+    return b"GGUF" + (3).to_bytes(4, "little") + bytes(MIN_MODEL)
+
+
+def fake_whisper():
+    # Legacy whisper.cpp GGML magic and synthetic zero bytes, NOT real ASR.
+    return b"lmgg" + bytes(MIN_MODEL)
+
+
 def self_test():
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         payload = root / "source"
         for path, data in {
-            "engines/llama/llama-server.exe": b"synthetic demo LLM executable",
-            "models/llm/model.gguf": b"synthetic demo LLM model",
-            "engines/whisper/whisper-cli.exe": b"synthetic demo ASR executable",
-            "models/stt/ggml-base.bin": b"synthetic demo ASR model",
-            "engines/speech/speech.exe": b"synthetic demo TTS executable",
-            "models/speech/qwen3-tts-0.6b.gguf": b"synthetic demo TTS model",
+            "engines/llama/llama-server.exe": fake_pe64(),
+            "models/llm/model.gguf": fake_gguf(),
+            "engines/whisper/whisper-cli.exe": fake_pe64(),
+            "models/stt/ggml-base.bin": fake_whisper(),
+            "engines/speech/speech.exe": fake_pe64(),
+            "models/speech/qwen3-tts-0.6b.gguf": fake_gguf(),
             "licenses/demo.txt": b"Synthetic test license; NOT a real grant",
         }.items():
             file = payload / path
@@ -305,6 +392,54 @@ def self_test():
         approved = root / "approved.json"
         approved.write_text(json.dumps(content), encoding="utf-8")
         assert verify(payload, approved, approved=True) == 7
+
+        # Approval must reject a forged but correctly rehashed payload, not
+        # merely catch different bytes against an old SHA-256 manifest.
+        def reject_rehashed(relative, altered):
+            source = payload / relative
+            before = source.read_bytes()
+            source.write_bytes(altered)
+            forged = json.loads(json.dumps(content))
+            entry = next(x for x in forged["assets"] if x["path"] == relative)
+            entry["bytes"] = len(altered)
+            entry["sha256"] = hashlib.sha256(altered).hexdigest()
+            candidate = root / "forged-headers.json"
+            candidate.write_text(json.dumps(forged), encoding="utf-8")
+            try:
+                verify(payload, candidate, approved=True)
+                raise AssertionError(f"Forged approved file passed: {relative}")
+            except ValueError:
+                pass
+            finally:
+                source.write_bytes(before)
+
+        reject_rehashed("models/llm/model.gguf",
+                        b"GGUF" + (99).to_bytes(4, "little") + bytes(MIN_MODEL))
+        reject_rehashed("models/stt/ggml-base.bin",
+                        b"WRONG" + bytes(MIN_MODEL))
+        reject_rehashed("engines/llama/llama-server.exe",
+                        fake_pe64()[:132] + b"\x4c\x01" + fake_pe64()[134:])
+        # A checked and correctly hashed x86 PE is still not an x64 runtime.
+
+        # Reject bundles that advertise the right component labels but don't
+        # actually contain Ember's default runtime paths.
+        renamed = root / "renamed-default"
+        shutil.copytree(payload, renamed)
+        wrong = json.loads(json.dumps(content))
+        old = renamed / "engines/llama/llama-server.exe"
+        alt = renamed / "engines/llama/alternative.exe"
+        old.rename(alt)
+        next(x for x in wrong["assets"]
+             if x["path"] == "engines/llama/llama-server.exe")["path"] = (
+                 "engines/llama/alternative.exe")
+        wrong_manifest = root / "wrong-default.json"
+        wrong_manifest.write_text(json.dumps(wrong), encoding="utf-8")
+        try:
+            verify(renamed, wrong_manifest, approved=True)
+            raise AssertionError("Renamed mandatory runtime passed approval")
+        except ValueError:
+            pass
+
         # Text-first approval must succeed without any TTS weights or engine;
         # otherwise an optional voice milestone silently blocks delivery.
         text_payload = root / "text-only-source"

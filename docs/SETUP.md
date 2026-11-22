@@ -51,6 +51,8 @@ the separate SHA-256 offline payload inventory before redistribution.
 This does not guarantee a third-party executable never contacts the Internet;
 a real disconnected-machine acceptance test remains mandatory.
 
+**Approved bundle structural gate (2026-11-22):** The offline manifest verifier now refuses an approved text-first bundle unless the exact native default files exist: `engines/llama/llama-server.exe`, `models/llm/model.gguf`, `engines/whisper/whisper-cli.exe`, and `models/stt/ggml-base.bin`. It checks Windows AMD64 PE headers for packaged `.exe`/`.dll` files, GGUF v2/v3 headers for `.gguf` weights (at least 1 MiB), and the whisper.cpp GGML signature for the default multilingual model. SHA-256 and license review are still mandatory. Header checks alone **do not verify model tensor integrity, actual RU/EN capability, Windows loader dependencies, CUDA, performance, privacy/network behavior or licensing**. Only manually performed real inference and dictation checks on the final hardware can certify those. This does not download or start anything.
+
 **Offline packaging:** Ember's desired final distribution must install and run
 fully without a VPN, zapret, GitHub, Hugging Face or model downloads. At this
 development checkpoint, models and engine DLLs are NOT bundled. The new
