@@ -142,7 +142,7 @@ Example local corpus layout:
 ```
 
 ```powershell
-python tools/asr_corpus.py --manifest .\private-voice-corpus\corpus.json --model qwen3-asr-1.7b --omit-model-id --output .\asr-metrics.json
+python tools/asr_corpus.py --speech-pid 1234 --manifest .\private-voice-corpus\corpus.json --model qwen3-asr-1.7b --omit-model-id --output .\asr-metrics.json
 ```
 
 The JSON example is a **schema illustration**, not a supplied real audio
@@ -295,7 +295,7 @@ total ASR processing-time RTF. The report never contains recorded audio,
 recognized sentences, reference text or file paths.
 
 ```powershell
-python tools/asr_corpus.py --manifest .\private-voice-corpus\corpus.json --model qwen3-asr-1.7b --omit-model-id --app-chunking --output asr-chunked-metrics.json
+python tools/asr_corpus.py --speech-pid 1234 --manifest .\private-voice-corpus\corpus.json --model qwen3-asr-1.7b --omit-model-id --app-chunking --output asr-chunked-metrics.json
 ```
 
 This permits paired comparisons (direct whole-file recognition vs the
@@ -448,7 +448,7 @@ still storage/privacy caveats.
 Example using your own privately stored files and both separately installed engines:
 
 ```powershell
-python tools/compare_asr_engines.py --manifest .\private-voice-corpus\corpus.json --whisper-exe .\engines\whisper-cli.exe --whisper-model .\models\ggml-large-v3-turbo.bin --qwen-model qwen3-asr-1.7b --omit-qwen-model-id --output .\paired-asr-metrics.json
+python tools/compare_asr_engines.py --speech-pid 1234 --manifest .\private-voice-corpus\corpus.json --whisper-exe .\engines\whisper-cli.exe --whisper-model .\models\ggml-large-v3-turbo.bin --qwen-model qwen3-asr-1.7b --omit-qwen-model-id --output .\paired-asr-metrics.json
 ```
 
 Use `--whisper-vad-model <path>` only when you need to compare a Whisper
@@ -867,3 +867,26 @@ by Cyrillic output and [DONE]. Physical latency still requires benchmarking.
 **2026-11-22 native Voice access:** The complete native Voice StackLayout page, previously present but hidden, is now accessible via the sidebar. This does not auto-start models/microphones; the default route is still Chat. Voice input works with a foreground tap (record until second tap Stop) or >=450ms hold/release (finish, transcribe and explicitly submit spoken prompt). Cancelling the first held press by dragging outside discards audio; manual Cancel remains. Unlike text dictation hold-to-draft, a completed *voice* turn sends to the managed local model; the two actions are separated and covered by a new Core unit test. CI's existing explicit QML smoke now navigates 0=Voice, 1=Chat, 2=Settings, 3=Library and checks StackLayout.currentIndex plus QML warnings, without invoking engines or a microphone. Human Windows 10 microphone, latency and listening tests still required. Qt 6.8 Button pressed/released/canceled signal source: https://doc.qt.io/qt-6.8/qml-qtquick-controls-abstractbutton.html .
 
 **Voice onboarding and CI coverage:** The exposed native Voice page now shows a direct, manual *Configure offline* action when the local LLM is not running. It navigates to existing Settings and explicitly indicates that missing ASR/TTS binaries are never downloaded automatically. The foreground QML smoke also asserts the Voice navigation control exists, not just that a hidden StackLayout page can be activated programmatically.\n
+## November 22 — fail-closed private speech.cpp benchmark process ownership
+
+The opt-in EN/RU ASR benchmark, multi-clip corpus evaluator and paired
+Whisper-versus-Qwen3 comparator now **require** `--speech-pid` (shown as
+`1234` in examples; substitute your actual running trusted speech.exe PID).
+Before opening any private recording for a live benchmark, verify the expected
+binary and PID in Windows Task Manager or `Get-Process speech | Select Id,Path`.
+Then cross-check `Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 43822
+-State Listen | Select OwningProcess`. Do **not** simply trust whichever
+unknown program happens to own the port. Any PID mismatch, non-Windows host,
+non-loopback binding or missing listener aborts before WAV transmission.
+The benchmark checks ownership again after the HTTP response. Mocked
+`--self-test` only uses an ephemeral test port and synthetic silence, never
+an actual speech model, recording, or server. No external networking,
+scheduled checks or background services are added.
+
+For one-shot ASR measurements, use:
+`python tools/asr_benchmark.py --speech-pid 1234 --file <WAV> --reference-file <TXT>
+--model qwen3-asr-1.7b --language ru --omit-model-id`.
+Replacing `1234` with the PID you verified is mandatory. The CLI sends only
+the deliberately selected audio to the specifically verified localhost
+process and never saves the transcript. As with all PID checks, a narrow
+process-rebinding race still exists; physical Windows testing is required.
