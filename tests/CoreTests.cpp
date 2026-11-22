@@ -59,6 +59,31 @@ private slots:
         QVERIFY(!EmberCore::ownedLoopbackTcpListener(43821, 1234));
 #endif
     }
+    void rejectsInvalidNativeModelHealthResponses() {
+        using EmberCore::validManagedHealthResponse;
+        QVERIFY(validManagedHealthResponse(
+            R"({"status":"ok"})", "application/json"));
+        QVERIFY(validManagedHealthResponse(
+            R"({"status":"ok","model":"local"})",
+            "application/json; charset=utf-8"));
+        QVERIFY(!validManagedHealthResponse(
+            R"({"status":"loading model"})", "application/json"));
+        QVERIFY(!validManagedHealthResponse(
+            R"({"status":"error"})", "application/json"));
+        QVERIFY(!validManagedHealthResponse(
+            R"({"status":true})", "application/json"));
+        QVERIFY(!validManagedHealthResponse("{}", "application/json"));
+        QVERIFY(!validManagedHealthResponse("[]", "application/json"));
+        QVERIFY(!validManagedHealthResponse(
+            "<html>ok</html>", "text/html"));
+        QVERIFY(!validManagedHealthResponse(
+            R"({"status":"ok"})", "text/plain"));
+        QVERIFY(!validManagedHealthResponse(
+            R"({"status":"ok")", "application/json"));
+        QVERIFY(!validManagedHealthResponse(
+            QByteArray(4097, 'x'), "application/json"));
+        QVERIFY(!validManagedHealthResponse({}, "application/json"));
+    }
     void localBrainLaunchProfilesStayLoopbackOnlyAndConfigurable() {
         using namespace EmberCore;
         QVERIFY(validBrainLaunchProfile(4096, 0));
