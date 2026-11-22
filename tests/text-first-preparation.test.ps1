@@ -38,7 +38,7 @@ try {
     Mock-File (Join-Path $app 'Ember.exe') ([byte[]](77,90))
     Mock-File (Join-Path $app 'Qt6Core.dll') ([byte[]](77,90))
     Mock-Exe (Join-Path $eng 'llama-server.exe')
-    Mock-File (Join-Path $eng 'ggml-base.dll') ([byte[]](77,90))
+    Mock-Exe (Join-Path $eng 'ggml-base.dll')
     Mock-Gguf (Join-Path $weights 'local.gguf')
     Mock-Exe (Join-Path $eng 'whisper-cli.exe')
     Mock-Whisper (Join-Path $weights 'ggml-base.bin')
@@ -129,6 +129,55 @@ try {
     $blocked = $false
     try { & $prepare -AppDirectory $app -CheckOnly -RequireAsr | Out-Null } catch { $blocked = $true }
     if (-not $blocked) { throw 'CheckOnly accepted a damaged installed Whisper model.' }
+
+    # Bad/mismatched Windows DLLs are not usable with the x64 native engines.
+    # Do not ship a package which passes only the EXE header check.
+    $badEngine = Join-Path $root 'wrong-runtime'
+    $badApp = Join-Path $root 'wrong-runtime-app'
+    New-Item -ItemType Directory -Force -Path $badEngine,$badApp | Out-Null
+    Mock-Exe (Join-Path $badEngine 'llama-server.exe')
+    Mock-Exe (Join-Path $badEngine 'wrong.dll') 0x14c
+    Mock-File (Join-Path $badApp 'Ember.exe') ([byte[]](77,90))
+    Mock-File (Join-Path $badApp 'Qt6Core.dll') ([byte[]](77,90))
+    $badArgs = @{
+        AppDirectory = $badApp
+        LlamaServer = (Join-Path $badEngine 'llama-server.exe')
+        ModelGguf = (Join-Path $weights 'local.gguf')
+    }
+    $blocked = $false
+    try { & $prepare @badArgs | Out-Null } catch { $blocked = $true }
+    if (-not $blocked) { throw 'x86 companion DLL was accepted for x64 engine.' }
+    if (Test-Path (Join-Path $badApp 'engines/llama/llama-server.exe')) {
+        throw 'Invalid runtime DLL did not fail before staging.'
+    }
+
+    # CheckOnly must inspect already staged companions rather than just the
+    # required executable and weights.
+    $installedDll = Join-Path $app 'engines/llama/ggml-base.dll'
+    Mock-Exe $installedDll 0x14c
+    $blocked = $false
+    try { & $prepare -AppDirectory $app -CheckOnly | Out-Null } catch { $blocked = $true }
+    if (-not $blocked) { throw 'CheckOnly accepted an incompatible staged DLL.' }
+
+    # A nested directory junction must never redirect stage writes outside
+    # AppDirectory, even though AppDirectory itself is a regular directory.
+    $linkedApp = Join-Path $root 'junction-app'
+    $outside = Join-Path $root 'outside-stage'
+    New-Item -ItemType Directory -Force -Path $linkedApp,$outside | Out-Null
+    Mock-File (Join-Path $linkedApp 'Ember.exe') ([byte[]](77,90))
+    Mock-File (Join-Path $linkedApp 'Qt6Core.dll') ([byte[]](77,90))
+    New-Item -ItemType Junction -Path (Join-Path $linkedApp 'engines') -Target $outside | Out-Null
+    $linkedArgs = @{
+        AppDirectory = $linkedApp
+        LlamaServer = (Join-Path $eng 'llama-server.exe')
+        ModelGguf = (Join-Path $weights 'local.gguf')
+    }
+    $blocked = $false
+    try { & $prepare @linkedArgs | Out-Null } catch { $blocked = $true }
+    if (-not $blocked) { throw 'A nested junction escaped the application root.' }
+    if (@(Get-ChildItem -LiteralPath $outside -Force).Count -ne 0) {
+        throw 'An offline asset was written through the nested junction.'
+    }
 
     Write-Host 'Offline Windows text-first staging regressions passed.'
 } finally {
