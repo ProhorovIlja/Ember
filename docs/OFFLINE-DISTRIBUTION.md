@@ -271,3 +271,33 @@ block every possible outbound socket, isolate the process at the OS level,
 secure untrusted arbitrary repositories or replace a disconnected-PC
 acceptance test. Opt-in model catalog downloads in the native UI remain
 independent of the strict one-shot Python offline acceptance scripts.
+
+
+### Verified native speech tasks before showing Ready — 22 November 2026
+
+A managed `speech.cpp` process is now considered ready **only after both**
+the bounded JSON `GET /health` test and a second PID-verified
+`GET /v1/models` request. The model inventory must contain the requested
+Qwen3-TTS synthesis and/or Qwen3-ASR recognition task, match the configured
+0.6B/1.7B `size_label` and expected `architecture`, and declare the
+necessary language support. A requested TTS speaker must appear in the
+model's voice metadata with language `en`; native ASR requires both
+`en` and `ru`. A mismatch fails closed and stops that managed server;
+a temporary inventory HTTP error may be retried within the existing
+three-minute startup budget. No automatic download or model substitution
+is initiated by this check.
+
+The explicit one-shot `tools/native_speech_acceptance.py --run` also
+requires actual `/v1/models` TTS/voice metadata before generating
+numeric-only PCM quality-gate samples. The explicit text-first
+`tools/offline_acceptance.py --run` likewise checks the documented
+`llama.cpp` health JSON and the local process's port identity. They
+do not compare acoustic naturalness or prevent native executables from
+opening external network connections. The inventory comes from the live
+process and must not be confused with a verified GGUF license, trusted
+provenance or independent model integrity inspection.
+
+Upstream protocol:
+https://github.com/nyosegawa/speech.cpp/blob/v0.11.2/docs/server.md
+and model metadata:
+https://github.com/nyosegawa/speech.cpp/blob/v0.11.2/docs/c-api.md .
