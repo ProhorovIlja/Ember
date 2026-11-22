@@ -1238,18 +1238,22 @@ private slots:
         QCOMPARE(modelRequest(history, 0, Scope::LocalProject, true)
                      .value("tool_choice").toString(), QString("none"));
         auto completion = [](const QJsonObject &args) {
-            return QJsonDocument(QJsonObject{{"choices", QJsonArray{
-                QJsonObject{{"message", QJsonObject{
-                    {"role", "assistant"}, {"tool_calls", QJsonArray{
-                        QJsonObject{{"id", "batch_1"}, {"type", "function"},
-                            {"function", QJsonObject{
-                                {"name", "propose_patch_batch"},
-                                {"arguments", QString::fromUtf8(
-                                    QJsonDocument(args).toJson(QJsonDocument::Compact))}
-                            }}}}
-                    }}
-                }}, {"finish_reason", "tool_calls"}}
-            }}}).toJson();
+            const QJsonObject function{
+                {"name", "propose_patch_batch"},
+                {"arguments", QString::fromUtf8(
+                    QJsonDocument(args).toJson(QJsonDocument::Compact))}
+            };
+            const QJsonObject call{
+                {"id", "batch_1"}, {"type", "function"}, {"function", function}
+            };
+            const QJsonObject message{
+                {"role", "assistant"}, {"tool_calls", QJsonArray{call}}
+            };
+            const QJsonObject choice{
+                {"message", message}, {"finish_reason", "tool_calls"}
+            };
+            return QJsonDocument(
+                QJsonObject{{"choices", QJsonArray{choice}}}).toJson();
         };
         const QJsonArray validEdits{
             QJsonObject{{"path", "src/main.cpp"}, {"old_text", "a=1"},
