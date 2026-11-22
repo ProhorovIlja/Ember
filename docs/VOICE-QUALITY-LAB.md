@@ -836,3 +836,19 @@ Local chat requests, including an image selected from the content-addressed Libr
 OpenAI-compatible streaming can return HTTP 200 with a well-formed `[DONE]` event and `finish_reason=length`. This means the model exhausted the requested output budget, **not** a network failure. The completed token-limited text is still marked incomplete and offered for user-triggered continuation, but an initiated English spoken reply now finishes its available words rather than being cut off purely by the token cap. Only `[DONE]` + HTTP 200 + no parser error can enable that exception: HTTP errors, malformed SSE, aborted streams and missing terminal markers continue to cancel partially streamed voice. Core regression covers the eight policy combinations.
 
 Hardware tests remain required: verify a natural complete-sentence voice and a token-capped partial in both PCM and WAV/CLI branches, then disconnect the local brain midway and ensure no new partial voice is initiated. Developer CI is not proof of audible quality or low-latency GPU inference.
+
+### November 22 — suppress non-spoken token-budget status in low-latency voice
+
+An earlier token-budget fix correctly allowed a valid HTTP 200 + SSE [DONE] +
+finish_reason=length to **complete an already-started spoken turn**, but left
+the UI-only `[Response reached local model token limit]` annotation attached
+to the source consumed by the final early-speech flush. As a result, TTS could
+literally announce its own error/status message after a truncated story answer.
+Live synthesis now consumes the original visible model text captured before
+archive/UI annotation, preserving the exact text length used by the committed
+speech cursor. The separate archived answer retains its incomplete indicator
+and user-controlled continuation button. Invalid, aborted and unfinished
+streams still stop speech, rather than accepting partial transport as a
+genuine token cap. Regression covers complete sentences, unsent tail,
+status-only archive text and cancellation policy. Voice quality and exact
+first sound still require target Windows 10 listening tests.

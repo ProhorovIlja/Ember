@@ -576,6 +576,26 @@ private slots:
         QCOMPARE(parts.last().toObject().value("content").toString().size(), 4000);
     }
 
+    void streamedVoiceNeverNarratesItsOwnStatusOrRecoveryMarker() {
+        // A valid HTTP 200 + [DONE] can still finish at max_tokens. Archive
+        // an incomplete-response note, but never synthesize that note.
+        const QString text = "The hunter crossed the bridge. And stopped midway";
+        qsizetype cursor = 0;
+        QCOMPARE(EmberCore::takeCommittedSpeech(text, cursor, false),
+                 QStringList({"The hunter crossed the bridge."}));
+        const QString archived = EmberCore::archivedStreamedReply(text, true, true);
+        QVERIFY(archived.contains("[Response reached local model token limit]"));
+        QCOMPARE(EmberCore::takeCommittedSpeech(text, cursor, true),
+                 QStringList({"And stopped midway"}));
+        QVERIFY(EmberCore::takeCommittedSpeech(text, cursor, true).isEmpty());
+        QCOMPARE(cursor, qsizetype(text.size()));
+        QCOMPARE(EmberCore::archivedStreamedReply(text, false, false), text);
+        QCOMPARE(EmberCore::archivedStreamedReply(text, true, false),
+                 text + QString("\\n\\n[Response stopped]").replace("\\n", "\n"));
+        QCOMPARE(EmberCore::archivedStreamedReply("  ", true, true), QString("  "));
+        QVERIFY(EmberCore::canSpeakStreamedReply(true, true, true));
+        QVERIFY(!EmberCore::canSpeakStreamedReply(true, true, false));
+    }
     void tokenBudgetMayFinishValidVoiceButNeverMaskTransportErrors() {
         QVERIFY(EmberCore::canSpeakStreamedReply(true, false, false));
         QVERIFY(EmberCore::canSpeakStreamedReply(true, false, true));

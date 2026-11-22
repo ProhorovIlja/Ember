@@ -89,6 +89,10 @@ bool shouldPersistConversation(bool privateMode, const QString &sessionId);
 // text, not a failed transport. Only then may already generated speech finish.
 bool canSpeakStreamedReply(bool voiceRequested, bool interrupted,
                            bool verifiedTokenLimit);
+// User-facing status markers belong to the persisted/display text only;
+// the live TTS stream must consume the unmodified, visible model response.
+QString archivedStreamedReply(const QString &visibleText, bool interrupted,
+                              bool verifiedTokenLimit);
 // Half-duplex user-controlled voice interruption; never interrupt active ASR.
 bool captureAllowedWithInterruption(bool busy, bool listening,
                                     bool speechActive, bool recognitionActive);

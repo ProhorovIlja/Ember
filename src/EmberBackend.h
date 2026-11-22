@@ -211,7 +211,7 @@ private:
     void rebuildConversationHistory();
     void renderChatStream();
     void finishChatStream(bool interrupted, bool verifiedTokenLimit = false);
-    void enqueueLiveSpeech(bool final);
+    void enqueueLiveSpeech(bool final, const QString &visibleDraft);
     void beginSpeech(const QString &text);
     void playNextSpeechChunk();
     void synthesize(const QString &text);

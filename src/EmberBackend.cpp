@@ -1328,7 +1328,7 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
                 m_chatStreamText += committed;
                 if (!m_chatRenderTimer.isActive()) m_chatRenderTimer.start();
                 if (m_voiceEarlyActive && !m_voiceEarlyFailed)
-                    enqueueLiveSpeech(false);
+                    enqueueLiveSpeech(false, m_chatStreamText);
             }
         }
         if (tokens.truncated) m_chatStreamTruncated = true;
@@ -1372,10 +1372,12 @@ void EmberBackend::renderChatStream() {
     }
     emit messagesChanged();
 }
-void EmberBackend::enqueueLiveSpeech(bool final) {
+void EmberBackend::enqueueLiveSpeech(bool final, const QString &visibleDraft) {
     if (!m_voiceEarlyActive || m_voiceEarlyFailed) return;
+    // Never pass UI/persistence-only interruption messages to the TTS. On
+    // finalization, visibleDraft is captured BEFORE any status annotation.
     const QStringList segments = EmberCore::takeCommittedSpeech(
-        m_chatStreamText, m_liveSpeechCursor, final);
+        visibleDraft, m_liveSpeechCursor, final);
     for (const QString &segment : segments) {
         if (EmberCore::mostlyCyrillic(segment)) {
             m_voiceEarlyFailed = true;
@@ -1394,15 +1396,18 @@ void EmberBackend::enqueueLiveSpeech(bool final) {
 void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
     m_chatRenderTimer.stop();
     m_chatGenerating = false;
-    const QString response = m_chatStreamText.trimmed();
+    // Preserve the exact stream length (including trailing spaces) because
+    // early-speech cursor positions are measured against these characters.
+    // The archive may receive a status marker, but TTS only sees this copy.
+    const QString spokenDraft = m_chatStreamText;
+    const QString response = spokenDraft.trimmed();
     const bool tokenLimit = verifiedTokenLimit;
     const bool shouldSpeak = EmberCore::canSpeakStreamedReply(
         m_voicePending, interrupted, verifiedTokenLimit);
     m_voicePending = false;
     if (!response.isEmpty()) {
-        if (interrupted) m_chatStreamText += tokenLimit
-            ? QStringLiteral("\n\n[Response reached local model token limit]")
-            : QStringLiteral("\n\n[Response stopped]");
+        m_chatStreamText = EmberCore::archivedStreamedReply(
+            spokenDraft, interrupted, verifiedTokenLimit);
         renderChatStream();
         m_lastReply = m_chatStreamText;
         m_lastReplyIncomplete = tokenLimit;
@@ -1436,7 +1441,7 @@ void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
         setStatus("The local model returned no streamed text. Check its server logs.");
     } else if (shouldSpeak) {
         if (m_voiceEarlyActive) {
-            if (!m_voiceEarlyFailed) enqueueLiveSpeech(true);
+            if (!m_voiceEarlyFailed) enqueueLiveSpeech(true, spokenDraft);
             else setStatus("Voice language or synthesis failed. Full text is saved locally.");
         } else {
             beginSpeech(response);

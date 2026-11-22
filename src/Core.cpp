@@ -644,6 +644,14 @@ bool canSpeakStreamedReply(bool voiceRequested, bool interrupted,
                            bool verifiedTokenLimit) {
     return voiceRequested && (!interrupted || verifiedTokenLimit);
 }
+QString archivedStreamedReply(const QString &visibleText, bool interrupted,
+                              bool verifiedTokenLimit) {
+    if (!interrupted || visibleText.trimmed().isEmpty()) return visibleText;
+    return visibleText +
+        (verifiedTokenLimit
+            ? QStringLiteral("\n\n[Response reached local model token limit]")
+            : QStringLiteral("\n\n[Response stopped]"));
+}
 bool safeScratchSessionName(const QString &name) {
     // Never pass arbitrary user paths into abandoned-audio cleanup.
     static const QRegularExpression pattern("^[A-Za-z0-9]{6}$");
