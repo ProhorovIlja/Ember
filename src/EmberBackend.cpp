@@ -1420,8 +1420,11 @@ void EmberBackend::pollSpeechServer() {
             }
             m_speechHealthTimer.stop();
             setSpeechServerReady(true);
-            setStatus("Native Qwen3 models verified: selected TTS/ASR tasks, "
-                      "English/Russian support and speaker are available.");
+            setStatus(m_voiceEngine == 1
+                ? (m_recognitionEngine > 0
+                    ? "Native Qwen3-TTS voice and RU/EN Qwen3-ASR models verified."
+                    : "Native Qwen3-TTS English voice and selected speaker verified.")
+                : "Native Qwen3-ASR RU/EN recognition model verified.");
         });
 
     });
