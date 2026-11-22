@@ -630,7 +630,7 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                 // by full characters is bounded and never touches the prompt.
                 while (!oldAssistant.isEmpty() &&
                        oldAssistant.toUtf8().size() > assistantByteRoom)
-                    oldAssistant.remove(0, std::max(1, oldAssistant.size() / 4));
+                    oldAssistant = oldAssistant.mid(std::max<qsizetype>(1, oldAssistant.size() / 4));
                 if (!oldAssistant.isEmpty())
                     selected.prepend(Turn{oldUser, oldAssistant});
             }
