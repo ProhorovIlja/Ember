@@ -449,10 +449,21 @@ private slots:
         QVERIFY(QDir().mkpath(temp.filePath("models/speech")));
         QFile file(temp.filePath("models/speech/qwen3-tts-0.6b.gguf"));
         QVERIFY(file.open(QIODevice::WriteOnly));
-        QCOMPARE(file.write(QByteArray("GGUF") + QByteArray(80, char(0))), qint64(84));
+        const QByteArray goodHeader = QByteArray("GGUF") + QByteArray::fromHex("03000000");
+        QCOMPARE(file.write(goodHeader), qint64(8));
+        file.close();
+        // An 8-byte magic/version is NOT an actual installed TTS model.
+        QVERIFY(EmberCore::offlineSpeechModelFile(temp.path(), "qwen3-tts-0.6b").isEmpty());
+        QVERIFY(file.open(QIODevice::ReadWrite));
+        QVERIFY(file.resize(1024 * 1024 + 128));
         file.close();
         QVERIFY(!EmberCore::offlineSpeechModelFile(temp.path(), "qwen3-tts-0.6b").isEmpty());
         QVERIFY(EmberCore::offlineSpeechModelFile(temp.path(), "qwen3-asr-1.7b").isEmpty());
+        QVERIFY(file.open(QIODevice::ReadWrite));
+        QVERIFY(file.seek(4));
+        QCOMPARE(file.write(QByteArray::fromHex("63000000")), qint64(4));
+        file.close();
+        QVERIFY(EmberCore::offlineSpeechModelFile(temp.path(), "qwen3-tts-0.6b").isEmpty());
         QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
         QCOMPARE(file.write(QByteArray(84, char(0))), qint64(84));
         file.close();
