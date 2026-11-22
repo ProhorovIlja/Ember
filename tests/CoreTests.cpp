@@ -142,6 +142,13 @@ private slots:
         QVERIFY(!valid(inventory(QJsonArray{tts, wrong}),
                        "qwen3-tts-0.6b", "qwen3-asr-1.7b"));
         wrongInfo = tts.value("speech").toObject();
+        wrongInfo.insert("voices", QJsonArray{
+            QJsonObject{{"name", "vivian"}, {"language", "ja"}}
+        });
+        wrong = tts;
+        wrong.insert("speech", wrongInfo);
+        QVERIFY(!valid(inventory(QJsonArray{wrong}), "qwen3-tts-0.6b", ""));
+        wrongInfo = tts.value("speech").toObject();
         wrongInfo.insert("voices", QJsonArray{});
         wrong = tts;
         wrong.insert("speech", wrongInfo);
