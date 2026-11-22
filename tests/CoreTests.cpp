@@ -5,6 +5,7 @@
 #include "LocalTextImport.h"
 #include "LocalRepoSearch.h"
 #include "LocalAgent.h"
+#include "ProjectTestRun.h"
 #include "LocalCodeEdit.h"
 #include "PublicGitHub.h"
 #include "GitHubIssueWrite.h"
@@ -1054,6 +1055,46 @@ private slots:
         QVERIFY(archive.messages(session, 100, -1).isEmpty());
         QVERIFY(archive.messages(session, 100, 340).isEmpty());
         QCOMPARE(archive.totalMessages(session), qint64(340));
+    }
+    void projectTestPlansRequireTrustedRealRootAndFixedPresets() {
+        using namespace EmberProjectTests;
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const QDir root(temp.path());
+        QVERIFY(root.mkpath("build"));
+        QVERIFY(root.mkpath("tests"));
+        auto save = [&](const QString &relative, const QByteArray &content) {
+            QFile file(root.filePath(relative));
+            if (!file.open(QIODevice::WriteOnly)) return false;
+            return file.write(content) == content.size();
+        };
+        QVERIFY(save("build/CTestTestfile.cmake", "# tests\n"));
+        QVERIFY(save("Cargo.toml", "[package]\nname='fixture'\n"));
+        QVERIFY(!prepare("nonexistent-project-root", Preset::CTest).ok());
+        QVERIFY(!prepare(root.path(), static_cast<Preset>(20)).ok());
+        const auto ctest = prepare(root.path(), Preset::CTest);
+        QVERIFY2(ctest.ok(), qPrintable(ctest.error));
+        QCOMPARE(QFileInfo(ctest.program).fileName().toLower(),
+                 QString("ctest.exe"));
+        QCOMPARE(ctest.arguments.size(), 5);
+        QCOMPARE(ctest.arguments.at(0), QString("--test-dir"));
+        QCOMPARE(ctest.arguments.at(2), QString("-C"));
+        QCOMPARE(ctest.arguments.at(3), QString("Release"));
+        QCOMPARE(ctest.arguments.at(4), QString("--output-on-failure"));
+        const auto python = prepare(root.path(), Preset::PythonUnittest);
+        // Python alias depends on developer PATH, but never allows arbitrary
+        // command or argument injection from the model or project metadata.
+        if (python.ok()) {
+            QCOMPARE(python.arguments,
+                     QStringList({"-m", "unittest", "discover", "-v"}));
+        }
+        const auto cargo = prepare(root.path(), Preset::Cargo);
+        if (cargo.ok())
+            QCOMPARE(cargo.arguments, QStringList({"test", "--locked"}));
+        QVERIFY(root.mkpath("isolated"));
+        QVERIFY(!prepare(root.filePath("isolated"), Preset::CTest).ok());
+        QVERIFY(!prepare(root.filePath("isolated"), Preset::Cargo).ok());
+        QVERIFY(!prepare(root.filePath("isolated"), Preset::PythonUnittest).ok());
     }
     void localModelCanOnlyStageOneScopedReviewablePatch() {
         using namespace EmberAgent;

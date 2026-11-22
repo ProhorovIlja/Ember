@@ -145,6 +145,11 @@ ApplicationWindow {
             window.localEditPreview = preview
             localCodeEditDialog.open()
         }
+        function onLocalTestResultReady(excerpt) {
+            window.externalReferenceSource = "Local project test results"
+            window.externalReferencePreview = excerpt
+            externalReferenceDialog.open()
+        }
     }
 
     Dialog {
@@ -1281,6 +1286,17 @@ ApplicationWindow {
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
                                             ToolTip.text: "Choose a local source project. The model can inspect and stage one exact patch, never write automatically; a full review and backup are mandatory."
+                                        }
+                                        PillButton {
+                                            text: "Run tests"
+                                            implicitWidth: 108
+                                            implicitHeight: 31
+                                            enabled: !ember.busy && !ember.listening &&
+                                                     !ember.speaking
+                                            onClicked: ember.runApprovedProjectTests()
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Run one explicitly approved fixed CTest, Cargo or Python unittest command inside a trusted project. Tests execute arbitrary project code; no sandbox or automatic rerun."
                                         }
                                         PillButton {
                                             text: "GitHub agent"

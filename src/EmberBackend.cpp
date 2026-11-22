@@ -34,6 +34,7 @@
 #include <QNetworkProxy>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QUrl>
 #include <QVariantMap>
@@ -1643,6 +1644,142 @@ bool EmberBackend::applyStagedLocalCodeEdit() {
 }
 void EmberBackend::discardStagedLocalCodeEdit() {
     m_stagedCodeEdit.reset();
+}
+void EmberBackend::collectProjectTestOutput() {
+    const QByteArray out = m_projectTestProcess.readAllStandardOutput();
+    const QByteArray err = m_projectTestProcess.readAllStandardError();
+    if (!m_projectTestActive) return;
+    constexpr qsizetype kMaxVisible = 24576;
+    for (const QByteArray &chunk : {out, err}) {
+        if (chunk.isEmpty()) continue;
+        const QString decoded = QString::fromUtf8(chunk);
+        const qsizetype room = qMax(qsizetype(0),
+                                    kMaxVisible - m_projectTestOutput.size());
+        if (decoded.size() > room) m_projectTestOutputCapped = true;
+        if (room == 0) continue;
+        QString clean = decoded.left(room);
+        for (QChar &c : clean) {
+            const ushort n = c.unicode();
+            if ((n < 0x20 && n != '\r' && n != '\n' && n != '\t') ||
+                n == 0x7f || n == 0x1b || n == 0x2028 || n == 0x2029)
+                c = QLatin1Char(' ');
+        }
+        m_projectTestOutput += clean;
+    }
+}
+void EmberBackend::runApprovedProjectTests() {
+    if (m_busy || m_listening || m_speaking || m_projectTestActive) {
+        setStatus("Finish the current task before running project tests.");
+        return;
+    }
+    const QString root = QFileDialog::getExistingDirectory(
+        nullptr, "Select one trusted local project to test",
+        QDir::homePath(),
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    if (root.isEmpty()) return;
+    bool accepted = false;
+    const QStringList choices{
+        "CTest · Release (existing build/)",
+        "Cargo test --locked (Cargo.toml)",
+        "Python unittest discover (tests/)"
+    };
+    const QString choice = QInputDialog::getItem(
+        nullptr, "Choose one fixed test command", "Test runner:",
+        choices, 0, false, &accepted);
+    if (!accepted) return;
+    const int index = choices.indexOf(choice);
+    const auto plan = EmberProjectTests::prepare(
+        root, static_cast<EmberProjectTests::Preset>(index));
+    if (!plan.ok()) { setStatus(plan.error); return; }
+    if (QMessageBox::question(
+            nullptr, "Run project code ONCE?",
+            "This will execute a fixed test command within:\n" +
+            plan.workingDirectory +
+            "\n\nExecutable: " + plan.program +
+            "\nArguments: " + plan.arguments.join(' ') +
+            "\n\nWARNING: Tests and build scripts can execute arbitrary "
+            "project code, access files, start child processes or use "
+            "the Internet. Ember does NOT sandbox this test process. "
+            "Only continue for a project you trust. The direct process "
+            "has a 120-second timeout; child processes may survive. "
+            "No scheduled or automatic reruns will be created.\n\nProceed?",
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No) != QMessageBox::Yes) return;
+    m_projectTestOutput.clear();
+    m_projectTestTimedOut = false;
+    m_projectTestOutputCapped = false;
+    m_projectTestActive = true;
+    const quint64 runId = ++m_projectTestRunId;
+    m_projectTestProcess.disconnect(this);
+    m_projectTestProcess.setWorkingDirectory(plan.workingDirectory);
+    m_projectTestProcess.setProgram(plan.program);
+    m_projectTestProcess.setArguments(plan.arguments);
+    m_projectTestProcess.setProcessChannelMode(QProcess::SeparateChannels);
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    // This reduces accidental credential inheritance; it is NOT isolation.
+    for (const QString &key : environment.keys()) {
+        const QString upper = key.toUpper();
+        if (upper.contains("TOKEN") || upper.contains("SECRET") ||
+            upper.contains("PASSWORD") || upper.contains("CREDENTIAL") ||
+            upper.contains("API_KEY") || upper.startsWith("AWS_") ||
+            upper.startsWith("GITHUB_") || upper.startsWith("OPENAI_") ||
+            upper.startsWith("GOOGLE_") || upper.startsWith("AZURE_"))
+            environment.remove(key);
+    }
+    m_projectTestProcess.setProcessEnvironment(environment);
+    connect(&m_projectTestProcess, &QProcess::readyReadStandardOutput,
+            this, &EmberBackend::collectProjectTestOutput);
+    connect(&m_projectTestProcess, &QProcess::readyReadStandardError,
+            this, &EmberBackend::collectProjectTestOutput);
+    connect(&m_projectTestProcess, &QProcess::errorOccurred,
+            this, [this, runId](QProcess::ProcessError error) {
+        if (!m_projectTestActive || runId != m_projectTestRunId ||
+            error != QProcess::FailedToStart) return;
+        m_projectTestActive = false;
+        ++m_projectTestRunId;
+        setBusy(false);
+        setStatus("Could not start explicitly approved project test: " +
+                  m_projectTestProcess.errorString().left(200));
+    });
+    connect(&m_projectTestProcess, &QProcess::finished,
+            this, [this, plan, runId](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (!m_projectTestActive || runId != m_projectTestRunId) return;
+        collectProjectTestOutput();
+        const QString report =
+            QStringLiteral("\n---\nOn-demand local project test result "
+                           "(UNTRUSTED process output, review before sending):\n") +
+            "Project: " + plan.workingDirectory +
+            "\nPreset: " + plan.label +
+            "\nExit code: " + QString::number(exitCode) +
+            "\nExited normally: " +
+                (exitStatus == QProcess::NormalExit ? "yes" : "no") +
+            "\nTimeout: " + (m_projectTestTimedOut ? "yes" : "no") +
+            "\nOutput capped: " + (m_projectTestOutputCapped ? "yes" : "no") +
+            "\n\n" + m_projectTestOutput +
+            "\n--- End local test result ---";
+        const bool passed = exitCode == 0 &&
+                            exitStatus == QProcess::NormalExit &&
+                            !m_projectTestTimedOut;
+        m_projectTestActive = false;
+        m_projectTestOutput.clear();
+        ++m_projectTestRunId;
+        setBusy(false);
+        emit localTestResultReady(report);
+        setStatus(passed ? "Approved on-demand project test completed "
+                           "with exit code 0. Review output."
+                         : "Local project test failed, crashed or timed out. "
+                           "Review output; no automatic retry.");
+    });
+    setBusy(true);
+    m_projectTestProcess.start();
+    QTimer::singleShot(120000, this, [this, runId] {
+        if (!m_projectTestActive || runId != m_projectTestRunId ||
+            m_projectTestProcess.state() == QProcess::NotRunning) return;
+        m_projectTestTimedOut = true;
+        m_projectTestProcess.kill();
+    });
+    setStatus("Running one explicitly approved project test; "
+              "no scheduler, background monitor or automatic retry.");
 }
 bool EmberBackend::researchGitHubRepository(const QString &goal) {
     if (m_busy || m_listening || m_agentReply || m_agentGitHubReply ||
@@ -3427,6 +3564,13 @@ void EmberBackend::retryCancelledAudioCleanup(quint64 revision, int retriesLeft)
     }
 }
 void EmberBackend::cancelWork() {
+    if (m_projectTestActive) {
+        m_projectTestActive = false;
+        ++m_projectTestRunId;
+        m_projectTestProcess.kill();
+        m_projectTestProcess.waitForFinished(1000);
+        m_projectTestOutput.clear();
+    }
     if (m_agentReply || m_agentGitHubReply || !m_agentRoot.isEmpty() ||
         !m_agentRepository.isEmpty()) {
         endLocalAgent("Cancelled by the user.");

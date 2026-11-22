@@ -6,6 +6,7 @@
 #include "DriveRead.h"
 #include "LocalCodeEdit.h"
 #include "LocalAgent.h"
+#include "ProjectTestRun.h"
 #include <QFile>
 #include <QLockFile>
 #include <QAudioDevice>
@@ -161,6 +162,7 @@ public:
     Q_INVOKABLE QString searchLocalCodeFolder(const QString &existingDraft);
     Q_INVOKABLE bool researchLocalProject(const QString &goal);
     Q_INVOKABLE bool proposeLocalProjectFix(const QString &goal);
+    Q_INVOKABLE void runApprovedProjectTests();
     Q_INVOKABLE bool researchGitHubRepository(const QString &goal);
     Q_INVOKABLE QString stageLocalCodeEdit();
     Q_INVOKABLE bool applyStagedLocalCodeEdit();
@@ -229,6 +231,7 @@ signals:
     void driveExcerptReady(const QString &text);
     void localAgentResultReady(const QString &text);
     void localAgentEditReady(const QString &preview);
+    void localTestResultReady(const QString &text);
 private:
     void setStatus(const QString &text);
     void setBusy(bool value);
@@ -244,6 +247,7 @@ private:
     void completeTranscription();
     void failTranscription(const QString &reason);
     bool beginLocalProjectAgent(const QString &goal, bool mayProposeEdit);
+    void collectProjectTestOutput();
     void requestLocalAgentStep();
     void requestAgentGitHubRead(const EmberAgent::Decision &decision);
     void endLocalAgent(const QString &error = {}, const QString &result = {});
@@ -366,6 +370,12 @@ private:
     bool m_agentMayProposeEdit = false;
     bool m_agentStagedEdit = false;
     int m_agentCalls = 0;
+    QProcess m_projectTestProcess;
+    QString m_projectTestOutput;
+    bool m_projectTestActive = false;
+    bool m_projectTestTimedOut = false;
+    bool m_projectTestOutputCapped = false;
+    quint64 m_projectTestRunId = 0;
     QPointer<QNetworkReply> m_speechReply;
     QPointer<QNetworkReply> m_nativeAsrReply;
     QProcess m_brain, m_whisper, m_tts, m_speechServer;
