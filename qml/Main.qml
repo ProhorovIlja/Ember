@@ -454,7 +454,7 @@ ApplicationWindow {
                     spacing: 8
                     // Fully native route; no mic or inference starts on navigation.
                     // Default startup remains Chat until engines are configured.
-                    NavButton { label: "Voice"; symbol: "◉"; index: 0 }
+                    NavButton { label: "Voice"; symbol: "◉"; index: 0; objectName: "emberVoiceNav" }
                     NavButton { label: "Chat"; symbol: "▤"; index: 1 }
                     NavButton { label: "Library"; symbol: "▧"; index: 3 }
                     NavButton { label: "Settings"; symbol: "⚙"; index: 2 }
@@ -833,6 +833,27 @@ ApplicationWindow {
                                 text: "Tap to record until Stop, or hold and release to ask Ember. Cancel discards audio. Voice stays local."
                                 color: "#94AFC8"
                                 font.pixelSize: 13
+                            }
+                            RowLayout {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.maximumWidth: 670
+                                visible: !ember.brainReady
+                                spacing: 12
+                                Text {
+                                    Layout.preferredWidth: 320
+                                    color: "#E7B89E"
+                                    font.pixelSize: 12
+                                    wrapMode: Text.WordWrap
+                                    text: "Voice needs your local text model and an installed ASR/TTS engine. Nothing is downloaded automatically."
+                                }
+                                PillButton {
+                                    text: "Configure offline"
+                                    implicitWidth: 168
+                                    implicitHeight: 35
+                                    onClicked: window.page = 2
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Select your trusted local GGUF, Whisper and voice models in Settings. No Internet installation is triggered."
+                                }
                             }
                             ColumnLayout {
                                 Layout.alignment: Qt.AlignHCenter

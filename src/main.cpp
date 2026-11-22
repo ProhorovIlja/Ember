@@ -90,7 +90,8 @@ int main(int argc, char *argv[]) {
             QTimer::singleShot(100 + 170 * i, &app, [&, page = pages.at(i)] {
                 QObject *root = engine.rootObjects().first();
                 QObject *stack = root->findChild<QObject *>("emberViews");
-                if (!stack || !root->setProperty("page", page) ||
+                QObject *voiceNav = root->findChild<QObject *>("emberVoiceNav");
+                if (!voiceNav || !stack || !root->setProperty("page", page) ||
                     stack->property("currentIndex").toInt() != page) {
                     qmlDiagnostics.append(
                         QString("Native QML page navigation failed for %1").arg(page));
