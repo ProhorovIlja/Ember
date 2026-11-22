@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QSet>
+#include <QStringList>
 #include <QUuid>
 
 namespace EmberLocalEdit {
@@ -285,6 +286,131 @@ EditResult applyApprovedEdit(const EditPlan &plan,
         result.error = "Post-write verification failed. Original backup retained.";
         return result;
     }
+    return result;
+}
+
+EditBatchPlan planWithinProjectBatch(
+    const QString &selectedRoot, const QVector<SourceReplacement> &changes) {
+    EditBatchPlan batch;
+    if (changes.isEmpty() || changes.size() > 3) {
+        batch.error = "A source batch requires one to three distinct files.";
+        return batch;
+    }
+    QSet<QString> seen;
+    QStringList previews;
+    for (const auto &change : changes) {
+        EditPlan edit = planWithinProject(
+            selectedRoot, change.relativePath, change.oldText, change.newText);
+        if (!edit.ok()) {
+            batch.error = "Batch refused for " + change.relativePath +
+                          ": " + edit.error;
+            return batch;
+        }
+        const QString key = QDir::fromNativeSeparators(edit.path).toCaseFolded();
+        if (seen.contains(key)) {
+            batch.error = "A batch cannot edit the same source file twice.";
+            return batch;
+        }
+        seen.insert(key);
+        previews << QString("CHANGE %1 OF %2\n%3")
+            .arg(batch.edits.size() + 1).arg(changes.size())
+            .arg(edit.displayPreview);
+        batch.edits.append(std::move(edit));
+    }
+    batch.displayPreview = previews.join(
+        "\n\n========== NEXT SOURCE FILE ==========\n\n");
+    return batch;
+}
+EditBatchResult applyApprovedBatch(
+    const EditBatchPlan &batch, const QString &backupDirectory) {
+    EditBatchResult result;
+    if (!batch.ok() || batch.edits.size() > 3 || backupDirectory.isEmpty()) {
+        result.error = "No valid approved multi-file edit is ready.";
+        return result;
+    }
+    QSet<QString> paths;
+    QByteArray current;
+    // Before making any source changes, verify all immutable snapshots.
+    for (const auto &edit : batch.edits) {
+        const QString key = QDir::fromNativeSeparators(edit.path).toCaseFolded();
+        if (paths.contains(key) || edit.originalSha256.size() != 32 ||
+            !validUtf8(edit.proposedBytes) || !exactSnapshot(edit, current)) {
+            result.error = "A batch source changed or is unsafe. Nothing modified.";
+            return result;
+        }
+        paths.insert(key);
+    }
+    if (!QDir().mkpath(backupDirectory)) {
+        result.error = "Could not create private backup directory.";
+        return result;
+    }
+    for (const auto &edit : batch.edits) {
+        const QString backupPath = QDir(backupDirectory).filePath(
+            QDateTime::currentDateTimeUtc().toString("yyyyMMddTHHmmsszzz") +
+            "-" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ".bak");
+        QSaveFile backup(backupPath);
+        backup.setDirectWriteFallback(false);
+        if (!backup.open(QIODevice::WriteOnly) ||
+            backup.write(edit.originalBytes) != edit.originalBytes.size() ||
+            !backup.commit()) {
+            result.error = "Cannot back up all files. Sources untouched; any "
+                           "completed private backups were retained.";
+            return result;
+        }
+        result.backupPaths.append(backupPath);
+    }
+    for (const auto &edit : batch.edits) {
+        if (!exactSnapshot(edit, current)) {
+            result.error = "A source changed during backup. Sources untouched.";
+            return result;
+        }
+    }
+    qsizetype applied = 0;
+    QString failure;
+    for (const auto &edit : batch.edits) {
+        if (!exactSnapshot(edit, current)) {
+            failure = "Source changed during batch application.";
+            break;
+        }
+        QSaveFile output(edit.path);
+        output.setDirectWriteFallback(false);
+        if (!output.open(QIODevice::WriteOnly) ||
+            output.write(edit.proposedBytes) != edit.proposedBytes.size() ||
+            !output.commit()) {
+            failure = "Cannot atomically replace one batch source.";
+            break;
+        }
+        ++applied;
+        QFile verify(edit.path);
+        if (!verify.open(QIODevice::ReadOnly) ||
+            sha(verify.readAll()) != sha(edit.proposedBytes)) {
+            failure = "Post-write SHA-256 verification failed.";
+            break;
+        }
+    }
+    if (failure.isEmpty()) return result;
+    bool rollbackIncomplete = false;
+    for (qsizetype i = applied; i > 0; --i) {
+        const auto &edit = batch.edits.at(i - 1);
+        QFile currentFile(edit.path);
+        if (!currentFile.open(QIODevice::ReadOnly) ||
+            currentFile.readAll() != edit.proposedBytes) {
+            rollbackIncomplete = true; // never overwrite a concurrent user edit
+            continue;
+        }
+        currentFile.close();
+        QSaveFile rollback(edit.path);
+        rollback.setDirectWriteFallback(false);
+        if (!rollback.open(QIODevice::WriteOnly) ||
+            rollback.write(edit.originalBytes) != edit.originalBytes.size() ||
+            !rollback.commit()) {
+            rollbackIncomplete = true;
+        }
+    }
+    result.error = failure +
+        (rollbackIncomplete
+            ? " ROLLBACK INCOMPLETE: restore from the retained backups manually."
+            : " Previous files rolled back; private backups retained.");
     return result;
 }
 }

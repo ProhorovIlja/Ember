@@ -1,6 +1,8 @@
 #pragma once
 #include <QByteArray>
 #include <QString>
+#include <QStringList>
+#include <QVector>
 
 namespace EmberLocalEdit {
 // No automatic edits. This immutable-by-convention snapshot is produced by
@@ -41,4 +43,25 @@ EditPlan planWithinProject(const QString &selectedRoot,
                            const QString &newText);
 EditResult applyApprovedEdit(const EditPlan &plan,
                              const QString &backupDirectory);
+
+// Explicitly approved, bounded 1-3 distinct existing UTF-8 source files.
+// Planning only stages immutable snapshots; no source is written.
+struct SourceReplacement { QString relativePath, oldText, newText; };
+struct EditBatchPlan {
+    QVector<EditPlan> edits;
+    QString displayPreview, error;
+    bool ok() const { return error.isEmpty() && !edits.isEmpty(); }
+};
+struct EditBatchResult {
+    QStringList backupPaths;
+    QString error;
+    bool ok() const { return error.isEmpty(); }
+};
+EditBatchPlan planWithinProjectBatch(
+    const QString &selectedRoot, const QVector<SourceReplacement> &changes);
+// Preflight all paths, back up every original, then QSaveFile each target.
+// Failed multi-file writes attempt verified rollback. A power interruption
+// is NOT cross-file atomic; retained backups allow manual recovery.
+EditBatchResult applyApprovedBatch(
+    const EditBatchPlan &batch, const QString &backupDirectory);
 }

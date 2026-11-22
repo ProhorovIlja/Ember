@@ -1317,6 +1317,75 @@ private slots:
         QVERIFY(verify.open(QIODevice::ReadOnly));
         QCOMPARE(verify.readAll(), QByteArray("// TEST_MARKER in source\n"));
     }
+    void localMultipleSourceEditsAreStagedAndPreflightedTogether() {
+        using namespace EmberLocalEdit;
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        QDir root(temp.path());
+        QVERIFY(root.mkpath("src"));
+        const QString first = root.filePath("src/main.cpp");
+        const QString second = root.filePath("src/helpers.cpp");
+        for (const QString &filePath : {first, second}) {
+            QFile file(filePath);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QCOMPARE(file.write("int value = 1;\n"), qint64(15));
+        }
+        const QVector<SourceReplacement> proposals{
+            {"src/main.cpp", "value = 1", "value = 2"},
+            {"src/helpers.cpp", "value = 1", "value = 3"}
+        };
+        const auto batch = planWithinProjectBatch(temp.path(), proposals);
+        QVERIFY2(batch.ok(), qPrintable(batch.error));
+        QCOMPARE(batch.edits.size(), 2);
+        QVERIFY(batch.displayPreview.contains("CHANGE 1 OF 2"));
+        QVERIFY(batch.displayPreview.contains("CHANGE 2 OF 2"));
+        for (const QString &filePath : {first, second}) {
+            QFile file(filePath);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(file.readAll(), QByteArray("int value = 1;\n"));
+        }
+        QVERIFY(!planWithinProjectBatch(temp.path(), {}).ok());
+        QVERIFY(!planWithinProjectBatch(temp.path(),
+            {proposals[0], proposals[1], proposals[0], proposals[1]}).ok());
+        QVERIFY(!planWithinProjectBatch(temp.path(),
+            {proposals[0], proposals[0]}).ok());
+        QVERIFY(!planWithinProjectBatch(temp.path(),
+            {proposals[0], {"../secret.cpp", "a", "b"}}).ok());
+        // If ANY source changes after review, NONE of the others may change.
+        {
+            QFile file(second);
+            QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            QCOMPARE(file.write("human changed\n"), qint64(14));
+        }
+        const QString backups = root.filePath("private-backups");
+        QVERIFY(!applyApprovedBatch(batch, backups).ok());
+        QVERIFY(!QDir(backups).exists());
+        {
+            QFile file(first);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(file.readAll(), QByteArray("int value = 1;\n"));
+        }
+        {
+            QFile file(second);
+            QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            QCOMPARE(file.write("int value = 1;\n"), qint64(15));
+        }
+        const auto refreshed = planWithinProjectBatch(temp.path(), proposals);
+        QVERIFY(refreshed.ok());
+        const auto applied = applyApprovedBatch(refreshed, backups);
+        QVERIFY2(applied.ok(), qPrintable(applied.error));
+        QCOMPARE(applied.backupPaths.size(), 2);
+        for (int i = 0; i < 2; ++i) {
+            QFile file(i == 0 ? first : second);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QVERIFY(file.readAll().contains(
+                i == 0 ? "value = 2" : "value = 3"));
+            QFile original(applied.backupPaths.at(i));
+            QVERIFY(original.open(QIODevice::ReadOnly));
+            QCOMPARE(original.readAll(), QByteArray("int value = 1;\n"));
+        }
+        QVERIFY(!applyApprovedBatch(refreshed, backups).ok());
+    }
     void localSourceEditRequiresExactMatchApprovalAndKeepsBackup() {
         using namespace EmberLocalEdit;
         QTemporaryDir temporary;
