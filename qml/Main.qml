@@ -2598,6 +2598,7 @@ ApplicationWindow {
                                                 font.pixelSize: 11
                                             }
                                             PillButton {
+                                                objectName: "emberNativeTtsPicker"
                                                 text: "Choose file"
                                                 implicitWidth: 114
                                                 implicitHeight: 31
@@ -2609,7 +2610,8 @@ ApplicationWindow {
                                                 text: "Clear"
                                                 implicitWidth: 68
                                                 implicitHeight: 31
-                                                enabled: !ember.busy && !ember.listening &&
+                                                enabled: ember.configurationRevision >= 0 &&
+                                                         !ember.busy && !ember.listening &&
                                                          !ember.speaking && !ember.speechServerRunning &&
                                                          ember.nativeSpeechModelPath(false).length > 0
                                                 onClicked: ember.clearNativeSpeechModel(false)
@@ -2640,6 +2642,7 @@ ApplicationWindow {
                                                 font.pixelSize: 11
                                             }
                                             PillButton {
+                                                objectName: "emberNativeAsrPicker"
                                                 text: "Choose file"
                                                 implicitWidth: 114
                                                 implicitHeight: 31
@@ -2651,7 +2654,8 @@ ApplicationWindow {
                                                 text: "Clear"
                                                 implicitWidth: 68
                                                 implicitHeight: 31
-                                                enabled: !ember.busy && !ember.listening &&
+                                                enabled: ember.configurationRevision >= 0 &&
+                                                         !ember.busy && !ember.listening &&
                                                          !ember.speaking && !ember.speechServerRunning &&
                                                          ember.nativeSpeechModelPath(true).length > 0
                                                 onClicked: ember.clearNativeSpeechModel(true)

@@ -45,9 +45,14 @@ default, place a trusted GGUF at `models/speech/qwen3-tts-0.6b.gguf`,
 The local GGUF is opened by explicit absolute file path, rather than a catalog
 alias that triggers speech.cpp's `curl`-based model fetch.
 The Settings toggle **Allow model downloads** is disabled by default;
-allowing it is an explicit choice. The UI checks only the first four GGUF
-magic bytes and file path safety, **not weight integrity or license**; use
-the separate SHA-256 offline payload inventory before redistribution.
+allowing it is an explicit choice. The manual and bundled speech-model preflight checks GGUF v2/v3 headers,
+a minimum 1 MiB file, absolute paths and symlink/junction safety; manual
+files can be selected from any local fixed or removable drive in Settings
+using **Choose file**, without duplicating model weights. A manually
+selected invalid file blocks startup rather than invoking a download.
+The preflight does **not** establish tensor integrity, correct model family,
+inference compatibility or license; use the separate SHA-256 offline asset
+inventory before redistribution.
 This does not guarantee a third-party executable never contacts the Internet;
 a real disconnected-machine acceptance test remains mandatory.
 

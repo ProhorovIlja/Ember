@@ -98,6 +98,22 @@ int main(int argc, char *argv[]) {
                 }
             });
         }
+        // Inspect native Settings controls after their QML page exists.
+        // This is a single explicit --smoke-test check, never a background
+        // model download, microphone capture or recurrent monitor.
+        QTimer::singleShot(840, &app, [&] {
+            if (engine.rootObjects().isEmpty()) return;
+            QObject *root = engine.rootObjects().first();
+            root->setProperty("page", 2);
+            backend.setVoiceEngine(1);
+            backend.setRecognitionEngine(1);
+            if (!root->findChild<QObject *>("emberNativeTtsPicker") ||
+                !root->findChild<QObject *>("emberNativeAsrPicker") ||
+                !backend.inspectOfflineSetup().contains("Native speech.cpp")) {
+                qmlDiagnostics.append(
+                    "Native offline TTS/ASR model picker or readiness check missing");
+            }
+        });
         QTimer::singleShot(980, &app, [&] {
             if (!engine.rootObjects().isEmpty())
                 engine.rootObjects().first()->setProperty("page", 1);
