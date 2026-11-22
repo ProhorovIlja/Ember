@@ -61,7 +61,7 @@ def verify_pe_header(data):
     offset = int.from_bytes(data[60:64], "little")
     if not 64 <= offset <= 4096 or offset + 6 > len(data):
         raise ValueError("Bad Windows PE header offset")
-    if data[offset:offset + 6] != b"PE\\0\\0\\x64\\x86":
+    if data[offset:offset + 6] != b"PE\0\0\x64\x86":
         raise ValueError("Bundled speech.exe is not AMD64 PE")
 
 
@@ -155,7 +155,7 @@ def fake_pe():
     data = bytearray(512)
     data[:2] = b"MZ"
     data[60:64] = (128).to_bytes(4, "little")
-    data[128:134] = b"PE\\0\\0\\x64\\x86"
+    data[128:134] = b"PE\0\0\x64\x86"
     return bytes(data)
 
 
@@ -182,7 +182,7 @@ def self_test():
         for bad in (
             [("../escaped.txt", b"bad"), *good],
             [("speech.exe", fake_pe()), ("SPEECH.EXE", fake_pe())],
-            [("speech.exe", b"MZ" + b"\\0" * 254)],
+            [("speech.exe", b"MZ" + b"\0" * 254)],
             [("no-exe.txt", b"not Windows")],
             [("CON.txt", b"device"), *good],
             [("subdir\\\\wrong.txt", b"escape"), *good],
