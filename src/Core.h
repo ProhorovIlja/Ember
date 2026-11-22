@@ -62,7 +62,8 @@ bool validManagedHealthResponse(const QByteArray &body, const QByteArray &conten
 // sizes, languages and speaker. A healthy HTTP port alone is not sufficient.
 bool validNativeSpeechInventory(const QByteArray &body, const QByteArray &contentType,
                                 const QString &ttsAlias, const QString &asrAlias,
-                                const QString &selectedVoice);
+                                const QString &selectedVoice,
+                                QStringList *availableEnglishVoices = nullptr);
 bool allowedLocalEndpoint(const QString &url);
 // Dictation may send only after the user selects Send, ASR finishes,
 // recording was intact, and the local model is available.
