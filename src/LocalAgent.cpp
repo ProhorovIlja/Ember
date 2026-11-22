@@ -50,14 +50,17 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining, Scope s
                     "using official GitHub REST API. No repository, host, URL, "
                     "branch, query, or token selection by the model. "
                     "Allowed views: overview, issues, pulls, branches, forks, "
-                    "actions, file. Only file requires a repository-relative path.",
+                    "actions, file. Only file requires a repository-relative path; "
+                    "file can request an optional start_line for source excerpts.",
                     QJsonObject{
                         {"view", QJsonObject{
                             {"type", "string"},
                             {"enum", QJsonArray{"overview", "issues", "pulls",
                                                   "branches", "forks", "actions", "file"}}
                         }},
-                        {"path", QJsonObject{{"type", "string"}}}
+                        {"path", QJsonObject{{"type", "string"}}},
+                        {"start_line", QJsonObject{{"type", "integer"},
+                            {"minimum", 1}, {"maximum", 100000}}}
                     }, QJsonArray{"view"}),
                 functionDef("github_detail",
                     "Read ONE issue, pull request or workflow run job/failed "
@@ -182,9 +185,10 @@ Decision parseModelResponse(const QByteArray &json, Scope scope) {
                 "actions", "file"
             };
             if (!args.value("view").isString() ||
-                args.size() < 1 || args.size() > 2 ||
+                args.size() < 1 || args.size() > 3 ||
                 !kViews.contains(args.value("view").toString()) ||
-                (args.size() == 2 && !args.contains("path"))) {
+                (args.size() > 1 && !args.contains("path") &&
+                 !args.contains("start_line"))) {
                 answer.error = "github_read accepts one allowed view and optional file path.";
                 return answer;
             }
@@ -200,8 +204,18 @@ Decision parseModelResponse(const QByteArray &json, Scope scope) {
                     answer.error = "GitHub source path is invalid or oversized.";
                     return answer;
                 }
-            } else if (args.contains("path")) {
-                answer.error = "Only GitHub file view may contain a path.";
+                if (args.contains("start_line")) {
+                    const double line = args.value("start_line").toDouble();
+                    if (!args.value("start_line").isDouble() ||
+                        !std::isfinite(line) || std::floor(line) != line ||
+                        line < 1 || line > 100000) {
+                        answer.error = "Invalid GitHub source starting line.";
+                        return answer;
+                    }
+                    answer.startLine = int(line);
+                }
+            } else if (args.size() != 1) {
+                answer.error = "Only GitHub file view may specify a path or line.";
                 return answer;
             }
         } else if (tool == "project_map") {
@@ -267,7 +281,9 @@ QJsonObject assistantToolMessage(const Decision &decision) {
             ? QJsonObject{{"query", decision.query}}
             : decision.tool == "github_read"
                 ? (decision.view == "file"
-                    ? QJsonObject{{"view", decision.view}, {"path", decision.path}}
+                    ? QJsonObject{{"view", decision.view},
+                                  {"path", decision.path},
+                                  {"start_line", decision.startLine}}
                     : QJsonObject{{"view", decision.view}})
                 : decision.tool == "github_detail"
                     ? QJsonObject{{"kind", decision.view},

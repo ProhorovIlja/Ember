@@ -16,5 +16,6 @@ struct Preview {
 QUrl publicRequestUrl(const QString &repository, View view,
                       const QString &filePath = {});
 Preview parsePublicResponse(const QString &repository, View view,
-                            const QString &filePath, const QByteArray &data);
+                            const QString &filePath, const QByteArray &data,
+                            int startLine = 1);
 }

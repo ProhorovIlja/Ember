@@ -754,6 +754,69 @@ private slots:
         QVERIFY(!EmberLocalSearch::readProjectFile(
             root.path(), "C:/Windows/secret.cpp").ok());
     }
+    void githubSourceReadingSupportsLargeFilesAndLineRanges() {
+        using namespace EmberGitHub;
+        QByteArray contents;
+        for (int i = 1; i <= 1100; ++i)
+            contents += "line_" + QByteArray::number(i) +
+                        QByteArray(80, 'x') + "\n";
+        QVERIFY(contents.size() > 12 * 1024);
+        QVERIFY(contents.size() < 160 * 1024);
+        const QByteArray encoded = QJsonDocument(QJsonObject{
+            {"type", "file"}, {"path", "src/huge.cpp"},
+            {"size", contents.size()}, {"encoding", "base64"},
+            {"content", QString::fromLatin1(contents.toBase64())}
+        }).toJson();
+        QVERIFY(encoded.size() < 256 * 1024);
+        const auto excerpt = parsePublicResponse(
+            "owner/repo", View::File, "src/huge.cpp", encoded, 800);
+        QVERIFY2(excerpt.ok(), qPrintable(excerpt.error));
+        QVERIFY(excerpt.text.contains("800: line_800"));
+        QVERIFY(!excerpt.text.contains("400: line_400"));
+        QVERIFY(excerpt.text.contains("https://github.com/owner/repo/blob/HEAD/src/huge.cpp"));
+        QVERIFY(excerpt.text.size() < 5500);
+        QVERIFY(!parsePublicResponse(
+            "owner/repo", View::File, "src/huge.cpp", encoded, 1300).ok());
+        QVERIFY(!parsePublicResponse(
+            "owner/repo", View::File, "src/huge.cpp", encoded, 0).ok());
+        QVERIFY(!parsePublicResponse(
+            "owner/repo", View::Issues, {}, QByteArray("[]"), 5).ok());
+        const auto completion = [](const QJsonObject &args) {
+            return QJsonDocument(QJsonObject{
+                {"choices", QJsonArray{QJsonObject{
+                    {"finish_reason", "tool_calls"},
+                    {"message", QJsonObject{
+                        {"role", "assistant"}, {"content", QJsonValue::Null},
+                        {"tool_calls", QJsonArray{QJsonObject{
+                            {"id", "call_file"}, {"type", "function"},
+                            {"function", QJsonObject{
+                                {"name", "github_read"},
+                                {"arguments", QString::fromUtf8(
+                                    QJsonDocument(args).toJson(QJsonDocument::Compact))}
+                            }}
+                        }}}
+                    }}
+                }}}
+            }).toJson();
+        };
+        const auto valid = EmberAgent::parseModelResponse(completion(
+            QJsonObject{{"view", "file"},
+                        {"path", "src/huge.cpp"}, {"start_line", 800}}),
+            EmberAgent::Scope::GitHubRepository);
+        QVERIFY2(valid.ok(), qPrintable(valid.error));
+        QCOMPARE(valid.startLine, 800);
+        QVERIFY(!EmberAgent::parseModelResponse(completion(
+            QJsonObject{{"view", "file"},
+                        {"path", "src/huge.cpp"}, {"start_line", 1.5}}),
+            EmberAgent::Scope::GitHubRepository).ok());
+        QVERIFY(!EmberAgent::parseModelResponse(completion(
+            QJsonObject{{"view", "issues"}, {"start_line", 500}}),
+            EmberAgent::Scope::GitHubRepository).ok());
+        QVERIFY(!EmberAgent::parseModelResponse(completion(
+            QJsonObject{{"view", "file"}, {"path", "src/huge.cpp"},
+                        {"start_line", 800}, {"repo", "attacker/evil"}}),
+            EmberAgent::Scope::GitHubRepository).ok());
+    }
     void githubAgentDetailReadsAreScopedAndParseRealWorkflowFailures() {
         using namespace EmberGitHubDetails;
         const auto issueUrl = detailUrl("ProhorovIlja/Ember", Kind::Issue, 17);

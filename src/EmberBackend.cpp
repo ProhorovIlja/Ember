@@ -1928,7 +1928,8 @@ void EmberBackend::requestAgentGitHubRead(const EmberAgent::Decision &decision) 
         } else {
             const auto view = static_cast<EmberGitHub::View>(viewNumber);
             const auto result = EmberGitHub::parsePublicResponse(
-                m_agentRepository, view, filePath, data);
+                m_agentRepository, view, filePath, data,
+                decision.startLine);
             if (!result.ok()) {
                 endLocalAgent("GitHub data failed validation: " + result.error);
                 return;
@@ -1939,7 +1940,8 @@ void EmberBackend::requestAgentGitHubRead(const EmberAgent::Decision &decision) 
             .arg(QString::number(m_agentCalls + 1), decision.tool,
                  decision.view,
                  detail ? " #" + QString::number(decision.number) :
-                 (filePath.isEmpty() ? QString() : " " + filePath));
+                 (filePath.isEmpty() ? QString() :
+                    " " + filePath + ":" + QString::number(decision.startLine)));
         m_agentMessages.append(EmberAgent::assistantToolMessage(decision));
         m_agentMessages.append(EmberAgent::toolResultMessage(
             decision, QStringLiteral(

@@ -8,7 +8,7 @@
 namespace EmberGitHub {
 namespace {
 constexpr qsizetype kMaxJson = 256 * 1024;
-constexpr int kMaxFileBytes = 12288;
+constexpr int kMaxFileBytes = 160 * 1024;
 constexpr int kMaxPreviewChars = 4900;
 
 bool validRepository(const QString &repository) {
@@ -73,7 +73,11 @@ QUrl publicRequestUrl(const QString &repository, View view, const QString &fileP
     return url;
 }
 Preview parsePublicResponse(const QString &repository, View view,
-                            const QString &filePath, const QByteArray &data) {
+                            const QString &filePath, const QByteArray &data,
+                            int startLine) {
+    if (startLine < 1 || startLine > 100000 ||
+        (view != View::File && startLine != 1))
+        return {{}, "Invalid GitHub source start line."};
     if (publicRequestUrl(repository, view, filePath).isEmpty())
         return {{}, "Invalid public GitHub repository or file path."};
     if (data.isEmpty() || data.size() > kMaxJson)
@@ -172,7 +176,7 @@ Preview parsePublicResponse(const QString &repository, View view,
             return {{}, "GitHub did not return the requested regular text file."};
         const int size = obj.value("size").toInt(-1);
         if (size < 0 || size > kMaxFileBytes)
-            return {{}, "Requested file is larger than the 12 KiB safe preview."};
+            return {{}, "Requested file exceeds the 160 KiB text limit."};
         QByteArray encoded = obj.value("content").toString().toLatin1();
         encoded.replace("\n", ""); encoded.replace("\r", "");
         if (encoded.size() > 4 * (kMaxFileBytes + 3) / 3 + 8)
@@ -184,11 +188,23 @@ Preview parsePublicResponse(const QString &repository, View view,
         if (decoded.size() != size || decoded.toBase64() != encoded ||
             decoded.contains('\0') || QString::fromUtf8(decoded).toUtf8() != decoded)
             return {{}, "GitHub file is corrupted, binary or non-UTF-8."};
-        QString body = QString::fromUtf8(decoded);
-        if (body.size() > 3800)
-            body = body.left(3800) + "\n[Preview truncated; inspect the source on GitHub.]";
+        const QStringList lines = QString::fromUtf8(decoded).split('\n');
+        if (startLine > lines.size())
+            return {{}, "GitHub requested source line exceeds file length."};
         out += "File: " + filePath + "\n";
-        out += body + "\n";
+        out += "Source lines starting at " + QString::number(startLine) + ":\n";
+        int appended = 0, lineIndex = startLine - 1;
+        for (; lineIndex < lines.size() && appended < 65; ++lineIndex) {
+            QString line = lines.at(lineIndex);
+            if (line.endsWith('\r')) line.chop(1);
+            const QString numbered = QString("%1: %2\n")
+                .arg(QString::number(lineIndex + 1), line.left(240));
+            if (out.size() + numbered.size() > 4250) break;
+            out += numbered;
+            ++appended;
+        }
+        if (lineIndex < lines.size())
+            out += "[Excerpt capped; request later lines explicitly.]\n";
         out += "GitHub: https://github.com/" + repository + "/blob/HEAD/" + filePath + "\n";
     } else {
         return {{}, "Unsupported GitHub view."};
