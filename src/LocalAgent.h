@@ -4,6 +4,7 @@
 #include <QString>
 #include <QUrl>
 #include <QVector>
+#include <QSet>
 
 namespace EmberAgent {
 enum class Scope { LocalProject, GitHubRepository, WikipediaResearch };
@@ -33,6 +34,12 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
 Decision parseModelResponse(const QByteArray &json,
                             Scope scope = Scope::LocalProject,
                             bool mayProposeEdit = false);
+// Check against successful read_source calls in the current foreground task.
+// This is not permission to access any additional file: the project-root
+// and exact-snapshot validators still run before staging or writing.
+bool patchSourcesWereInspected(const QSet<QString> &readPaths,
+                               const Decision &decision);
+QString normalizedInspectedSourcePath(const QString &path);
 QJsonObject assistantToolMessage(const Decision &decision);
 QJsonObject toolResultMessage(const Decision &decision, const QString &result);
 // Does NOT read outside the user-selected root. All file traversal uses

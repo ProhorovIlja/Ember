@@ -1979,6 +1979,7 @@ bool EmberBackend::beginLocalProjectAgent(const QString &goal,
     m_agentRepository.clear();
     m_agentAuthenticatedGitHub = false;
     m_stagedCodeEdit.reset();
+    m_agentInspectedSourcePaths.clear();
     m_agentStagedEdit = false;
     m_agentMayProposeEdit = mayProposeEdit;
     m_agentRoot = info.canonicalFilePath();
@@ -2098,6 +2099,18 @@ void EmberBackend::requestLocalAgentStep() {
                 endLocalAgent("Local agent has no remaining patch permission.");
                 return;
             }
+            if (!EmberAgent::patchSourcesWereInspected(
+                    m_agentInspectedSourcePaths, decision)) {
+                m_agentMessages.append(
+                    EmberAgent::assistantToolMessage(decision));
+                m_agentMessages.append(EmberAgent::toolResultMessage(
+                    decision, "Patch REJECTED. Before proposing a file edit, "
+                    "call read_source on EVERY proposed path in this task. "
+                    "No source file was modified."));
+                ++m_agentCalls;
+                requestLocalAgentStep();
+                return;
+            }
             QVector<EmberLocalEdit::SourceReplacement> changes;
             if (decision.tool == "propose_patch_batch") {
                 for (const auto &edit : decision.patches)
@@ -2137,6 +2150,11 @@ void EmberBackend::requestLocalAgentStep() {
             return;
         }
         const QString outcome = EmberAgent::executeReadOnly(m_agentRoot, decision);
+        if (decision.tool == "read_source" &&
+            outcome.startsWith("Read-only local tool result")) {
+            m_agentInspectedSourcePaths.insert(
+                EmberAgent::normalizedInspectedSourcePath(decision.path));
+        }
         m_agentTrace += QString("\n%1: %2%3\n").arg(
             QString::number(m_agentCalls + 1),
             decision.tool,
@@ -2355,6 +2373,7 @@ void EmberBackend::endLocalAgent(const QString &error, const QString &result) {
     const bool wikipedia = m_agentScope == EmberAgent::Scope::WikipediaResearch;
     const bool stagedEdit = m_agentStagedEdit;
     m_agentMessages = {};
+    m_agentInspectedSourcePaths.clear();
     m_agentRoot.clear();
     m_agentRepository.clear();
     m_agentAuthenticatedGitHub = false;

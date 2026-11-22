@@ -130,7 +130,10 @@ end remains independent of any cloud API.
 
 The approved local project agent now supports one bounded
 `propose_patch_batch(edits)` tool call for up to **three different existing
-UTF-8 source files**. The model must inspect source first. Parsing rejects
+UTF-8 source files**. The backend now requires a *successful read_source(path)* for **every**
+file named in a patch proposal within the same foreground task. An attempt
+without that read is rejected as a tool result without staging any source.
+Parsing rejects
 unknown JSON properties, invalid strings, unsupported scope, unsupported
 privileged tool names, more than three edits, and arguments exceeding 4096
 bytes. The existing 512 KiB file limits, forbidden private-key types,

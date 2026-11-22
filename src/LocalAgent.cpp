@@ -4,6 +4,7 @@
 #include "WikipediaSearch.h"
 
 #include <QJsonDocument>
+#include <QDir>
 #include <QJsonParseError>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -400,6 +401,21 @@ Decision parseModelResponse(const QByteArray &json,
     answer.kind = Decision::Kind::Final;
     answer.text = text;
     return answer;
+}
+QString normalizedInspectedSourcePath(const QString &path) {
+    return QDir::cleanPath(QDir::fromNativeSeparators(path)).toCaseFolded();
+}
+bool patchSourcesWereInspected(const QSet<QString> &readPaths,
+                               const Decision &decision) {
+    if (decision.kind != Decision::Kind::Call) return false;
+    if (decision.tool == "propose_patch")
+        return readPaths.contains(normalizedInspectedSourcePath(decision.path));
+    if (decision.tool != "propose_patch_batch" ||
+        decision.patches.isEmpty() || decision.patches.size() > 3) return false;
+    for (const auto &patch : decision.patches)
+        if (!readPaths.contains(normalizedInspectedSourcePath(patch.path)))
+            return false;
+    return true;
 }
 QJsonObject assistantToolMessage(const Decision &decision) {
     if (decision.kind != Decision::Kind::Call) return {};

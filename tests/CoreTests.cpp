@@ -1203,6 +1203,29 @@ private slots:
         source.close();
         QVERIFY(!EmberLocalEdit::applyApprovedEdit(plan, backupDir).ok());
     }
+    void sourcePatchBatchMustReadEveryFileBeforeProposal() {
+        using namespace EmberAgent;
+        QSet<QString> read;
+        Decision single;
+        single.kind = Decision::Kind::Call;
+        single.tool = "propose_patch";
+        single.path = "src/main.cpp";
+        QVERIFY(!patchSourcesWereInspected(read, single));
+        read.insert(normalizedInspectedSourcePath("SRC/main.cpp"));
+        QVERIFY(patchSourcesWereInspected(read, single));
+        Decision batch;
+        batch.kind = Decision::Kind::Call;
+        batch.tool = "propose_patch_batch";
+        batch.patches.append({"src/main.cpp", "a", "b"});
+        batch.patches.append({"src/test.cpp", "a", "b"});
+        QVERIFY(!patchSourcesWereInspected(read, batch));
+        read.insert(normalizedInspectedSourcePath("src/test.cpp"));
+        QVERIFY(patchSourcesWereInspected(read, batch));
+        batch.patches.append({"src/missing.cpp", "a", "b"});
+        QVERIFY(!patchSourcesWereInspected(read, batch));
+        batch.tool = "github_read";
+        QVERIFY(!patchSourcesWereInspected(read, batch));
+    }
     void localAgentBatchPatchToolIsStrictAndRequiresPermission() {
         using namespace EmberAgent;
         const QJsonArray history{QJsonObject{{"role", "user"},

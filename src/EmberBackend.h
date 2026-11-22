@@ -25,6 +25,7 @@
 #include <QPointer>
 #include <QProcess>
 #include <QSettings>
+#include <QSet>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QVariantList>
@@ -363,6 +364,7 @@ private:
     bool m_publicGitHubOversize = false;
     EmberDrive::Client m_driveClient;
     std::unique_ptr<EmberLocalEdit::EditBatchPlan> m_stagedCodeEdit;
+    QSet<QString> m_agentInspectedSourcePaths;
     QNetworkAccessManager m_wikipediaNetwork;
     QPointer<QNetworkReply> m_wikipediaReply;
     QByteArray m_wikipediaBuffer;
