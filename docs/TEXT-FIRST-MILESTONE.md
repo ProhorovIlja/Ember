@@ -44,6 +44,21 @@ Then open Ember.exe, select **Start brain**, wait for local health readiness,
 choose **Troubleshooting** or **Development**, and send a test prompt. Text
 conversation is independent of ASR, TTS or an Internet connection.
 
+## Local LLM resource and startup controls
+
+Settings now permits explicit context windows of 4,096 / 8,192 / 16,384 /
+32,768 tokens and GPU layer offload 0 / 20 / 50 / 99 for the managed
+llama-server. The settings are stored locally and can change only when the
+brain is stopped. The process still binds **only 127.0.0.1:43821**, with
+`--jinja` for reviewed tool calling. The chat archive can be arbitrarily
+long while each model request still has finite context. Large context and
+full GPU offload can exceed the RTX4070 12 GiB VRAM: start with 8,192 and
+reduce GPU layers or context if model loading fails. The Start/Stop control
+now permits stopping a brain during cold loading; after a three-minute
+startup timeout Ember terminates its owned inference process rather than
+leaving a stalled process consuming VRAM. This does not establish inference
+compatibility, performance or reasoning quality of an untested model.
+
 ## Native, read-only offline setup check
 
 In Ember Settings, click **Check offline setup** to see a local-only file

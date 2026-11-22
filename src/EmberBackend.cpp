@@ -211,6 +211,12 @@ EmberBackend::EmberBackend(QObject *parent)
             readPcmResponse(m_speechReply);
         pumpPcmPlayback();
     });
+    m_brainContextTokens = m_settings.value("llm/contextTokens", 8192).toInt();
+    m_brainGpuLayers = m_settings.value("llm/gpuLayers", 99).toInt();
+    if (!EmberCore::validBrainLaunchProfile(m_brainContextTokens, m_brainGpuLayers)) {
+        m_brainContextTokens = 8192;
+        m_brainGpuLayers = 99;
+    }
     m_voiceId = m_settings.value("voiceId", 0).toInt();
     // Ignore Windows/system proxies for both local inference services.
     // Otherwise an environment proxy could receive private conversation text.
@@ -386,12 +392,19 @@ EmberBackend::EmberBackend(QObject *parent)
         emit speechServerChanged();
         setStatus("speech.exe could not start. Check the Windows binary, GPU and model.");
     });
+    connect(&m_brain, &QProcess::stateChanged, this,
+            [this](QProcess::ProcessState) { emit brainReadyChanged(); });
     connect(&m_brain, &QProcess::finished, this,
             [this](int, QProcess::ExitStatus) {
                 m_healthTimer.stop();
                 if (m_brainReady) setBrainReady(false);
                 if (m_busy || m_listening) cancelWork();
-                setStatus("Local text engine stopped. Start the brain to continue.");
+                if (m_brainStartupTimedOut) {
+                    m_brainStartupTimedOut = false;
+                    setStatus("Local model startup timed out and the inference process was stopped. Try 4096 context tokens or fewer GPU layers.");
+                } else {
+                    setStatus("Local text engine stopped. Start the brain to continue.");
+                }
             });
     connect(&m_brain, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         setBrainReady(false);
@@ -872,6 +885,32 @@ void EmberBackend::appendMessage(const QString &role, const QString &text) {
     emit messagesChanged();
 }
 
+void EmberBackend::setBrainContextTokens(int tokens) {
+    if (tokens == m_brainContextTokens ||
+        !EmberCore::validBrainLaunchProfile(tokens, m_brainGpuLayers)) return;
+    if (m_brain.state() != QProcess::NotRunning) {
+        setStatus("Stop the local brain before changing the context window.");
+        return;
+    }
+    m_brainContextTokens = tokens;
+    m_settings.setValue("llm/contextTokens", tokens);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus("Context updated. Larger values use more GPU memory; start brain to apply.");
+}
+void EmberBackend::setBrainGpuLayers(int layers) {
+    if (layers == m_brainGpuLayers ||
+        !EmberCore::validBrainLaunchProfile(m_brainContextTokens, layers)) return;
+    if (m_brain.state() != QProcess::NotRunning) {
+        setStatus("Stop the local brain before changing GPU layer allocation.");
+        return;
+    }
+    m_brainGpuLayers = layers;
+    m_settings.setValue("llm/gpuLayers", layers);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus("GPU layers updated. Set 0 to use CPU instead of offloading to NVIDIA.");
+}
 QString EmberBackend::inspectOfflineSetup() const {
     const EmberLocalSetup::Inputs input{
         configPath("brainExe"), configPath("brainModel"),
@@ -889,17 +928,22 @@ void EmberBackend::startBrain() {
     }
     const QString binary = configPath("brainExe");
     const QString model = configPath("brainModel");
-    if (!isRegularFile(binary) || !isRegularFile(model)) {
-        setStatus("Configure a valid llama-server.exe and GGUF model in Settings.");
+    const auto preflight = EmberLocalSetup::inspect(
+        {binary, model, {}, {}, false, false});
+    if (!preflight.textFilesReady) {
+        setStatus("Local engine or GGUF preflight failed. See Settings → Check offline setup.");
         return;
     }
     ++m_brainSession; // invalidate late HTTP health checks from earlier runs
     m_brain.setWorkingDirectory(QFileInfo(binary).absolutePath());
     m_brain.setProgram(binary);
-    QStringList launch{"--model", model, "--alias", "ember",
-                       "--host", "127.0.0.1", "--port", "43821",
-                       "--ctx-size", "8192", "--n-gpu-layers", "99",
-                       "--parallel", "1", "--jinja"};
+    QStringList launch = EmberCore::llamaLocalLaunchArguments(
+        model, m_brainContextTokens, m_brainGpuLayers);
+    if (launch.isEmpty()) {
+        setStatus("Invalid model context or GPU layer configuration.");
+        return;
+    }
+    m_brainStartupTimedOut = false;
     const QString projector = configPath("visionProj");
     m_brainVisionMode = isRegularFile(projector);
     if (m_brainVisionMode) launch << "--mmproj" << projector;
@@ -911,9 +955,12 @@ void EmberBackend::startBrain() {
 }
 void EmberBackend::pollBrain() {
     if (m_brainReady || m_brain.state() == QProcess::NotRunning) return;
-    if (m_brainElapsed.elapsed() > 90000) {
+    if (m_brainElapsed.elapsed() > 180000) {
         m_healthTimer.stop();
-        setStatus("Model load exceeded 90 seconds; inspect your GGUF/GPU configuration.");
+        m_brainStartupTimedOut = true;
+        ++m_brainSession; // stale health replies cannot resurrect this session
+        m_brain.kill(); // do not strand a multi-gigabyte process after timeout
+        setStatus("Model load exceeded three minutes. Stopping engine; try lower context or GPU layers.");
         return;
     }
     const QString url = "http://127.0.0.1:43821/health";
@@ -1100,6 +1147,7 @@ void EmberBackend::pollSpeechServer() {
     });
 }
 void EmberBackend::stopBrain() {
+    m_brainStartupTimedOut = false;
     m_brainVisionMode = false;
     ++m_brainSession;
     cancelWork();

@@ -59,6 +59,28 @@ private slots:
         QVERIFY(!EmberCore::ownedLoopbackTcpListener(43821, 1234));
 #endif
     }
+    void localBrainLaunchProfilesStayLoopbackOnlyAndConfigurable() {
+        using namespace EmberCore;
+        QVERIFY(validBrainLaunchProfile(4096, 0));
+        QVERIFY(validBrainLaunchProfile(8192, 99));
+        QVERIFY(validBrainLaunchProfile(16384, 50));
+        QVERIFY(validBrainLaunchProfile(32768, 20));
+        QVERIFY(!validBrainLaunchProfile(1000000, 99));
+        QVERIFY(!validBrainLaunchProfile(8192, -1));
+        QVERIFY(!validBrainLaunchProfile(8192, 100));
+        const QStringList args = llamaLocalLaunchArguments(
+            "D:/AI/models/brain.gguf", 16384, 20);
+        QVERIFY(args.contains("127.0.0.1"));
+        QVERIFY(args.contains("--jinja"));
+        QCOMPARE(args.at(args.indexOf("--ctx-size") + 1), QString("16384"));
+        QCOMPARE(args.at(args.indexOf("--n-gpu-layers") + 1), QString("20"));
+        QCOMPARE(args.at(args.indexOf("--model") + 1),
+                 QString("D:/AI/models/brain.gguf"));
+        QVERIFY(!args.contains("--models-dir"));
+        QVERIFY(!args.contains("--download"));
+        QVERIFY(llamaLocalLaunchArguments("brain.gguf", 1024, 99).isEmpty());
+        QVERIFY(llamaLocalLaunchArguments("", 8192, 99).isEmpty());
+    }
     void localOfflineSetupPreflightChecksActualFileHeadersWithoutExecution() {
         using namespace EmberLocalSetup;
         QTemporaryDir temporary;

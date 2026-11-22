@@ -52,6 +52,9 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(bool dictationTranscribing READ dictationTranscribing NOTIFY dictationChanged)
     Q_PROPERTY(QString dictatedText READ dictatedText NOTIFY dictationChanged)
     Q_PROPERTY(bool brainReady READ brainReady NOTIFY brainReadyChanged)
+    Q_PROPERTY(bool brainLaunching READ brainLaunching NOTIFY brainReadyChanged)
+    Q_PROPERTY(int brainContextTokens READ brainContextTokens WRITE setBrainContextTokens NOTIFY configurationChanged)
+    Q_PROPERTY(int brainGpuLayers READ brainGpuLayers WRITE setBrainGpuLayers NOTIFY configurationChanged)
     Q_PROPERTY(bool visionReady READ visionReady NOTIFY brainReadyChanged)
     Q_PROPERTY(QString pendingImageUrl READ pendingImageUrl NOTIFY imageSelectionChanged)
     Q_PROPERTY(QVariantList imageLibraryItems READ imageLibraryItems NOTIFY imageLibraryChanged)
@@ -107,6 +110,11 @@ public:
     bool dictationTranscribing() const { return m_transcribingDictation; }
     QString dictatedText() const { return m_dictatedText; }
     bool brainReady() const { return m_brainReady; }
+    bool brainLaunching() const {
+        return !m_brainReady && m_brain.state() != QProcess::NotRunning;
+    }
+    int brainContextTokens() const { return m_brainContextTokens; }
+    int brainGpuLayers() const { return m_brainGpuLayers; }
     bool visionReady() const { return m_brainReady && m_brainVisionMode; }
     QString pendingImageUrl() const {
         return m_images ? m_images->fileUrl(m_pendingImageId) : QString();
@@ -156,6 +164,8 @@ public:
     Q_INVOKABLE void setLocalModel(const QString &value);
     Q_INVOKABLE void setInputDeviceIndex(int index);
     Q_INVOKABLE void setOutputDeviceIndex(int index);
+    void setBrainContextTokens(int tokens);
+    void setBrainGpuLayers(int layers);
     Q_INVOKABLE QString inspectOfflineSetup() const;
     Q_INVOKABLE void startBrain();
     Q_INVOKABLE void stopBrain();
@@ -313,10 +323,12 @@ private:
     QList<EmberCore::Turn> m_history;
     int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0, m_chatMode = 0;
     int m_recognitionLanguage = 0, m_recognitionEngine = 0;
+    int m_brainContextTokens = 8192, m_brainGpuLayers = 99;
     int m_deliveryStyle = 0, m_outputVolume = 85;
     int m_microphoneLevel = 0;
     bool m_autoEndOnSilence = false;
     bool m_brainReady = false, m_busy = false, m_listening = false;
+    bool m_brainStartupTimedOut = false;
     bool m_privateMode = false; // never stored in QSettings
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
     bool m_cliAsrActive = false;

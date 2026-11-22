@@ -14,6 +14,23 @@
 #include <cstring>
 #include <numbers>
 namespace EmberCore {
+bool validBrainLaunchProfile(int contextTokens, int gpuLayers) {
+    const bool contextOk = contextTokens == 4096 || contextTokens == 8192 ||
+                           contextTokens == 16384 || contextTokens == 32768;
+    const bool layersOk = gpuLayers == 0 || gpuLayers == 20 ||
+                          gpuLayers == 50 || gpuLayers == 99;
+    return contextOk && layersOk;
+}
+QStringList llamaLocalLaunchArguments(const QString &gguf, int contextTokens,
+                                     int gpuLayers) {
+    if (gguf.isEmpty() || !validBrainLaunchProfile(contextTokens, gpuLayers))
+        return {};
+    return {"--model", gguf, "--alias", "ember",
+            "--host", "127.0.0.1", "--port", "43821",
+            "--ctx-size", QString::number(contextTokens),
+            "--n-gpu-layers", QString::number(gpuLayers),
+            "--parallel", "1", "--jinja"};
+}
 bool discardPrivateVoiceScratch(QFile &microphone, const QString &folder) {
     if (microphone.isOpen()) microphone.close();
     if (folder.isEmpty() || !QFileInfo(folder).isDir() ||

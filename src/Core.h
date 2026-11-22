@@ -86,6 +86,11 @@ private:
     int m_carry = -1;
     bool m_ready = false, m_closed = false;
 };
+// Finite local inference profiles. User can shrink the GPU allocation or
+// increase context only after stopping the owned model process.
+bool validBrainLaunchProfile(int contextTokens, int gpuLayers);
+QStringList llamaLocalLaunchArguments(const QString &gguf, int contextTokens,
+                                     int gpuLayers);
 bool validPcmSampleRate(int rate);
 bool safeScratchSessionName(const QString &name);
 // Close the microphone handle first, then delete only Ember-owned scratch files.

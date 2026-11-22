@@ -691,8 +691,8 @@ ApplicationWindow {
                     }
                     Item { Layout.fillWidth: true }
                     PillButton {
-                        text: ember.brainReady ? "Stop brain" : "Start brain"
-                        onClicked: ember.brainReady ? ember.stopBrain() : ember.startBrain()
+                        text: (ember.brainReady || ember.brainLaunching) ? "Stop brain" : "Start brain"
+                        onClicked: (ember.brainReady || ember.brainLaunching) ? ember.stopBrain() : ember.startBrain()
                     }
                 }
 
@@ -1538,6 +1538,55 @@ ApplicationWindow {
                                         ToolTip.delay: 700
                                         ToolTip.text: "Read-only local model and ASR file checks. No model launch or internet requests; results are not inference tests."
                                     }
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 132
+                                    radius: 13
+                                    color: window.cardColor
+                                    border.color: window.borderColor
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 10
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text { text: "LLM context window"; color: "#D2E6F8"; font.pixelSize: 13; Layout.fillWidth: true }
+                                            ComboBox {
+                                                id: modelContextPicker
+                                                Layout.preferredWidth: 205
+                                                implicitHeight: 36
+                                                model: ["4,096 tokens", "8,192 tokens", "16,384 tokens", "32,768 tokens"]
+                                                currentIndex: [4096, 8192, 16384, 32768].indexOf(ember.brainContextTokens)
+                                                enabled: !ember.brainReady && !ember.brainLaunching
+                                                onActivated: ember.brainContextTokens = [4096, 8192, 16384, 32768][currentIndex]
+                                                contentItem: Text { text: modelContextPicker.displayText; leftPadding: 11; color: "#E6F4FF"; verticalAlignment: Text.AlignVCenter; font.pixelSize: 12 }
+                                                background: Rectangle { radius: 10; color: "#0A1B31"; border.color: "#2B648D" }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text { text: "Model GPU offload"; color: "#D2E6F8"; font.pixelSize: 13; Layout.fillWidth: true }
+                                            ComboBox {
+                                                id: modelGpuPicker
+                                                Layout.preferredWidth: 205
+                                                implicitHeight: 36
+                                                model: ["CPU only · 0", "20 layers", "50 layers", "Max offload · 99"]
+                                                currentIndex: [0, 20, 50, 99].indexOf(ember.brainGpuLayers)
+                                                enabled: !ember.brainReady && !ember.brainLaunching
+                                                onActivated: ember.brainGpuLayers = [0, 20, 50, 99][currentIndex]
+                                                contentItem: Text { text: modelGpuPicker.displayText; leftPadding: 11; color: "#E6F4FF"; verticalAlignment: Text.AlignVCenter; font.pixelSize: 12 }
+                                                background: Rectangle { radius: 10; color: "#0A1B31"; border.color: "#2B648D" }
+                                            }
+                                        }
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Change while the brain is stopped. More context may exceed 12 GB VRAM; CPU mode is slower. Stored chats remain separate from the finite inference window."
+                                    font.pixelSize: 11
+                                    color: "#91AACA"
+                                    wrapMode: Text.WordWrap
                                 }
                                 Repeater {
                                     model: [
