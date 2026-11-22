@@ -201,6 +201,10 @@ EmberBackend::EmberBackend(QObject *parent)
     m_outputVolume = qBound(0, m_settings.value("audio/outputVolume", 85).toInt(), 100);
     m_earlySpeechEnabled = m_settings.value("voice/earlySpeech", true).toBool();
     m_allowSpeechDownloads = m_settings.value("voice/allowDownloads", false).toBool();
+    // An unowned compatible HTTP TTS server is an explicitly less-private
+    // advanced mode. Never assume permission from the ordinary TTS selection.
+    m_allowExternalSpeechProvider = m_settings.value(
+        "voice/allowUnmanagedSpeech", false).toBool();
     m_autoEndOnSilence = m_settings.value("voice/autoEndOnSilence", false).toBool();
     m_localModel = m_settings.value("voice/localModel", "qwen3-tts-0.6b").toString();
     m_localVoice = m_settings.value("voice/localVoice", "vivian").toString();
@@ -848,6 +852,9 @@ void EmberBackend::pollBrain() {
     request.setTransferTimeout(1000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
+    // Reject a preempted localhost port before contacting /health.
+    if (!EmberCore::ownedLoopbackTcpListener(
+            43821, quint64(m_brain.processId()))) return;
     const quint64 session = m_brainSession;
     QNetworkReply *check = m_network.get(request);
     connect(check, &QNetworkReply::finished, this, [this, check, session]() {
@@ -855,7 +862,9 @@ void EmberBackend::pollBrain() {
             check->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200;
         check->deleteLater();
         if (ok && session == m_brainSession &&
-            m_brain.state() == QProcess::Running) {
+            m_brain.state() == QProcess::Running &&
+            EmberCore::ownedLoopbackTcpListener(
+                43821, quint64(m_brain.processId()))) {
             m_healthTimer.stop();
             setBrainReady(true);
             setStatus("Local brain online · RTX acceleration requested.");
@@ -880,6 +889,32 @@ void EmberBackend::setAllowSpeechDownloads(bool value) {
         ? "Speech model catalog downloads explicitly enabled; network may be required."
         : "Speech model downloads blocked. Only installed local GGUF files accepted.");
 }
+void EmberBackend::setAllowExternalSpeechProvider(bool enabled) {
+    if (m_allowExternalSpeechProvider == enabled) return;
+    if (m_busy || m_listening || m_speaking) {
+        setStatus("Finish this reply or recording before changing external TTS trust.");
+        return;
+    }
+    m_allowExternalSpeechProvider = enabled;
+    m_settings.setValue("voice/allowUnmanagedSpeech", enabled);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(enabled
+        ? "External 127.0.0.1:43822 WAV TTS explicitly trusted. "
+          "A different local program may receive the words sent for speech."
+        : "External unmanaged TTS denied. Managed speech.cpp is PID-verified.");
+}
+
+bool EmberBackend::speechEndpointTrusted() const {
+    // A managed speech.cpp process always takes precedence over opt-in.
+    // The opt-in only applies when Ember is NOT running that engine.
+    if (m_speechServer.state() != QProcess::NotRunning)
+        return m_speechServerReady &&
+            EmberCore::ownedLoopbackTcpListener(
+                43822, quint64(m_speechServer.processId()));
+    return m_allowExternalSpeechProvider;
+}
+
 void EmberBackend::startSpeechServer() {
     if (m_speechServer.state() != QProcess::NotRunning) {
         setStatus(m_speechServerReady ? "Native speech engine is ready."
@@ -972,6 +1007,8 @@ void EmberBackend::pollSpeechServer() {
         return;
     if (m_speechServerElapsed.isValid() && m_speechServerElapsed.elapsed() > 180000)
         setStatus("Speech model startup is taking longer than three minutes; check model download/GPU.");
+    if (!EmberCore::ownedLoopbackTcpListener(
+            43822, quint64(m_speechServer.processId()))) return;
     const quint64 session = m_speechServerSession;
     QNetworkRequest request{QUrl("http://127.0.0.1:43822/health")};
     request.setTransferTimeout(1000);
@@ -983,7 +1020,9 @@ void EmberBackend::pollSpeechServer() {
             reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200;
         reply->deleteLater();
         if (ok && session == m_speechServerSession &&
-            m_speechServer.state() == QProcess::Running) {
+            m_speechServer.state() == QProcess::Running &&
+            EmberCore::ownedLoopbackTcpListener(
+                43822, quint64(m_speechServer.processId()))) {
             m_speechHealthTimer.stop();
             setSpeechServerReady(true);
             setStatus("Native local speech model ready on 127.0.0.1:43822.");
@@ -1138,6 +1177,15 @@ void EmberBackend::submit(const QString &raw, bool voice) {
     }
     if (m_busy || m_listening || text.isEmpty() || text.size() > 4096) {
         if (text.size() > 4096) setStatus("Message exceeds the 4,096-character input limit.");
+        return;
+    }
+    // No prompt, image, or conversation text leaves Ember unless the kernel
+    // says the listener is the exact managed llama-server PID on 127.0.0.1.
+    // The cached /health readiness flag does not establish endpoint identity.
+    if (!EmberCore::ownedLoopbackTcpListener(
+            43821, quint64(m_brain.processId()))) {
+        setBrainReady(false);
+        setStatus("Local brain endpoint identity changed. Your prompt was not sent.");
         return;
     }
     // A PCM voice may still be playing after the LLM is done. Abort the
@@ -1695,6 +1743,8 @@ void EmberBackend::transcribeViaNativeServer() {
     const QString address = "http://127.0.0.1:43822/v1/audio/transcriptions";
     if (!EmberCore::allowedLocalAsrEndpoint(address) ||
         !m_speechServerReady || m_speechServer.state() != QProcess::Running ||
+        !EmberCore::ownedLoopbackTcpListener(
+            43822, quint64(m_speechServer.processId())) ||
         m_nativeAsrReply) {
         failTranscription("Native local Qwen3-ASR is not ready for transcription.");
         return;
@@ -1995,7 +2045,8 @@ void EmberBackend::resetPcmPlayback() {
 void EmberBackend::synthesizeStreamingPcm(const QString &text) {
     const QString url = "http://127.0.0.1:43822/v1/audio/speech";
     if (!EmberCore::allowedLocalSpeechEndpoint(url) || m_pcmSink ||
-        !m_speechServerReady || m_speechServer.state() != QProcess::Running) {
+        !m_speechServerReady || m_speechServer.state() != QProcess::Running ||
+        !speechEndpointTrusted()) {
         stopSpeechOnError("The managed local PCM speech service is not ready.");
         return;
     }
@@ -2239,8 +2290,10 @@ void EmberBackend::pumpPcmPlayback() {
 void EmberBackend::synthesizeViaLocalServer(const QString &text) {
     constexpr qsizetype maxWavBytes = 8 * 1024 * 1024;
     const QString url = "http://127.0.0.1:43822/v1/audio/speech";
-    if (!EmberCore::allowedLocalSpeechEndpoint(url) || !m_work || !m_work->isValid()) {
-        stopSpeechOnError("Invalid private work folder or local speech service endpoint.");
+    if (!EmberCore::allowedLocalSpeechEndpoint(url) ||
+        !m_work || !m_work->isValid() || !speechEndpointTrusted()) {
+        stopSpeechOnError("Untrusted local TTS port. Start managed speech.cpp "
+                          "or explicitly allow an external compatible WAV service.");
         return;
     }
     QNetworkRequest request{QUrl(url)};
