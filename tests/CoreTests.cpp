@@ -468,10 +468,10 @@ private slots:
         // code and RU/EN text, rather than silently hiding or losing it.
         const QString pattern = QString::fromUtf8(
             "Ярнам: исследование. A hunter writes code: "
-            "if (health < 3) { dodge(); }\\n");
+            "if (health < 3) { dodge(); }\n");
         const QString suffix = QStringLiteral(
-            "\\n```\\nFINAL_LINE_64K_<img src='https://never-load.invalid/x'>");
-        QString reply = QStringLiteral("```cpp\\n");
+            "\n```\nFINAL_LINE_64K_<img src='https://never-load.invalid/x'>");
+        QString reply = QStringLiteral("```cpp\n");
         while (reply.size() < 65536)
             reply += pattern;
         reply = reply.left(65536 - suffix.size()) + suffix;
