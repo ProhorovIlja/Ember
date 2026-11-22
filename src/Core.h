@@ -133,6 +133,11 @@ QString archivedStreamedReply(const QString &visibleText, bool interrupted,
 // Half-duplex user-controlled voice interruption; never interrupt active ASR.
 bool captureAllowedWithInterruption(bool busy, bool listening,
                                     bool speechActive, bool recognitionActive);
+// Stopping the optional text LLM must not erase independent RU/EN dictation.
+// Only a genuine dictation capture or transcription is preserved; spoken
+// question/reply turns still require the text brain and must be stopped.
+bool brainStopKeepsDictation(bool listening, bool captureIsDictation,
+                            bool transcribingDictation);
 // A recording must never exceed its scratch quota or end on a partial PCM frame.
 qint64 allowedCaptureBytes(qint64 alreadyWritten, qint64 requested,
                            int bytesPerFrame, qint64 quota = 1024LL * 1024 * 1024);
