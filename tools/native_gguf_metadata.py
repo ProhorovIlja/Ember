@@ -10,6 +10,7 @@ GGUF layout and keys: speech.cpp reference/qwen3-{tts,asr}/convert.py.
 """
 import argparse
 import json
+import re
 from pathlib import Path
 import struct
 import tempfile
@@ -21,7 +22,8 @@ MAX_KEY_BYTES = 256
 MAX_VALUE_BYTES = 64 * 1024 * 1024
 KEEP_KEYS = {
     "general.architecture", "general.size_label", "general.languages",
-    "speech.task", "speech.layout", "speech.sample_rate", "speech.voices",
+    "speech.task", "speech.layout", "speech.requires",
+    "speech.sample_rate", "speech.voices",
     "speech.voice_languages", "speech.voice_genders",
 }
 # GGUFValueType from gguf-py: unsigned/signed scalar and UTF-8 string values,
@@ -161,6 +163,17 @@ def model_identity(path, alias, *, selected_voice=None):
             raise InvalidSpeechGGUF(
                 f"Wrong GGUF {key}: expected {expected!r}; "
                 f"found {str(meta.get(key))[:64]!r}")
+    # speech.cpp converters set a minimum engine version in GGUF. A future
+    # model layout must not silently pass validation against Ember's pinned
+    # v0.11.2 runtime, even if someone relabels its GGUF file.
+    required = meta.get("speech.requires")
+    if not isinstance(required, str) or not re.fullmatch(
+            r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}", required):
+        raise InvalidSpeechGGUF("Missing or malformed speech.cpp minimum version")
+    version = tuple(map(int, required.split(".")))
+    if version > (0, 11, 2):
+        raise InvalidSpeechGGUF(
+            f"Native model requires speech.cpp {required}; Ember pins v0.11.2")
     languages = meta.get("general.languages")
     if not isinstance(languages, list) or "en" not in languages:
         raise InvalidSpeechGGUF("Speech model does not declare English support")
@@ -194,7 +207,7 @@ def model_identity(path, alias, *, selected_voice=None):
         "architecture": family, "size_label": size[:-1].upper() + "B",
         "task": task, "languages": sorted(set(languages)),
         "english_speakers": english_voices,
-        "sample_rate_hz": rate,
+        "sample_rate_hz": rate, "minimum_speechcpp": required,
         "verified_structure_only": True,
     }
 
@@ -211,6 +224,7 @@ def _fixture_gguf(family, size, task, *, langs=("en", "ru"),
         ("general.size_label", 8, size),
         ("speech.task", 8, task),
         ("speech.layout", 4, 1),
+        ("speech.requires", 8, "0.7.0"),
         ("speech.sample_rate", 4, 24000 if task == "synthesis" else 16000),
         ("general.languages", 9, list(langs)),
         ("speech.voices", 9, list(voices)),
@@ -248,6 +262,7 @@ def self_test():
             detail = model_identity(file, alias,
                 selected_voice="vivian" if task == "synthesis" else None)
             assert detail["architecture"] == family
+            assert detail["minimum_speechcpp"] == "0.7.0"
             assert (detail["english_speakers"] == ["vivian", "serena"]
                     if task == "synthesis" else
                     detail["english_speakers"] == [])
@@ -277,6 +292,8 @@ def self_test():
                           voices=("a", "b"), voice_langs=("en",)),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis", duplicated_key=True),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis", truncated=True),
+            _fixture_gguf("qwen3-tts", "0.6B", "synthesis").replace(
+                b"0.7.0", b"0.99.0", 1),
             _fixture_gguf("qwen3-asr", "1.7B", "recognition", langs=("en",)),
             b"GGUF" + struct.pack("<IQQ", 3, 0, 1) + bytes(1024 * 1024),
         ):
