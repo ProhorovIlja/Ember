@@ -979,3 +979,18 @@ both `en` and `ru` in its language list. The same selected-speaker
 preflight runs before manual native PCM trials and before launching
 the voice model. These are consistency and safety checks, **not**
 subjective or objective speech-quality scores.
+
+### Consistent female voice selection at runtime — 22 November 2026
+
+The native Qwen3 GGUF offline preflight already checks for an English
+female voice, but that property must also be enforced **after model
+startup**. The v0.11.2 `speech.cpp` `/v1/models` inventory provides
+each speaker's `name`, `language`, `gender` and `description`. Ember
+now marks the native TTS model Ready only if its *selected* voice is
+both English and `gender=female`. The native voice dropdown exposes
+female English names only, even if the same Qwen3 checkpoint advertises
+male speakers in English. The editable voice ID and native acceptance
+script reject an English male, unknown-gender or unlisted speaker
+rather than silently substituting another voice. English female voice
+identity is a metadata property, **not a blind naturalness score**;
+listening acceptance remains required.
