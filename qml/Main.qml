@@ -948,7 +948,7 @@ ApplicationWindow {
                             }
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: ember.pendingImageUrl.length > 0 ? 227 : 142
+                                Layout.preferredHeight: ember.pendingImageUrl.length > 0 ? 267 : 182
                                 color: window.cardColor
                                 radius: 17
                                 border.color: window.borderColor
@@ -1057,7 +1057,7 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        Text { text: "Ctrl + Enter · send"; color: "#8097A7"; font.pixelSize: 11 }
+                                        spacing: 8
                                         PillButton {
                                             text: "Add text file"
                                             implicitWidth: 115
@@ -1104,6 +1104,12 @@ ApplicationWindow {
                                             enabled: !ember.privateMode && !ember.busy && !ember.listening
                                             onClicked: ember.pasteImage()
                                         }
+                                        Item { Layout.fillWidth: true }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        Text { text: "Ctrl + Enter · send"; color: "#8097A7"; font.pixelSize: 11 }
                                         Item { Layout.fillWidth: true }
                                         PillButton {
                                             text: ember.dictationActive ? "● Dictating…" :
