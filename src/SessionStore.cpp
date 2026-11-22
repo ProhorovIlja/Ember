@@ -294,11 +294,15 @@ bool SessionStore::exportCompactBackup(const QString &path) const {
     }
     QDataStream stream(&file);
     stream.setVersion(QDataStream::Qt_6_5);
+    // Each completed text response may be 65,536 UTF-16 characters.
+    // Its UTF-8 JSON representation (including escaping) can exceed 192 KiB.
+    // Bound both compressed and expanded frames to 512 KiB and keep the
+    // pre-decompression size check for imported, untrusted backup files.
     const auto frame = [&](const QJsonObject &obj) -> bool {
         const QByteArray raw = QJsonDocument(obj).toJson(QJsonDocument::Compact);
-        if (raw.isEmpty() || raw.size() > 192 * 1024) return false;
+        if (raw.isEmpty() || raw.size() > 512 * 1024) return false;
         const QByteArray packed = qCompress(raw, 9);
-        if (packed.size() < 5 || packed.size() > 256 * 1024) return false;
+        if (packed.size() < 5 || packed.size() > 512 * 1024) return false;
         stream << quint32(packed.size());
         return stream.status() == QDataStream::Ok &&
             stream.writeRawData(packed.constData(), int(packed.size())) ==
@@ -370,7 +374,7 @@ bool SessionStore::restoreCompactBackup(const QString &path) {
             ended = file.atEnd();
             break;
         }
-        if (length < 5 || length > 256 * 1024) return fail();
+        if (length < 5 || length > 512 * 1024) return fail();
         QByteArray packed(int(length), char(0));
         if (stream.readRawData(packed.data(), int(length)) != int(length))
             return fail();
@@ -379,7 +383,7 @@ bool SessionStore::restoreCompactBackup(const QString &path) {
         const auto *p = reinterpret_cast<const uchar *>(packed.constData());
         const quint32 expanded = (quint32(p[0]) << 24) |
             (quint32(p[1]) << 16) | (quint32(p[2]) << 8) | quint32(p[3]);
-        if (expanded == 0 || expanded > 192 * 1024) return fail();
+        if (expanded == 0 || expanded > 512 * 1024) return fail();
         const QByteArray raw = qUncompress(packed);
         if (raw.size() != expanded) return fail();
         QJsonParseError parseError;
@@ -416,7 +420,7 @@ bool SessionStore::restoreCompactBackup(const QString &path) {
             const QString role = obj.value("role").toString();
             const QString body = obj.value("body").toString();
             if ((role != "you" && role != "ember") ||
-                body.isEmpty() || body.size() > 32768) return fail();
+                body.isEmpty() || body.size() > 65536) return fail();
             QSqlQuery insert(m_db);
             insert.prepare(
                 "INSERT INTO messages(session_id,role,body,created_at) VALUES(?,?,?,?)");
@@ -498,7 +502,7 @@ bool SessionStore::setNotes(const QString &session, const QString &text) {
 bool SessionStore::append(const QString &session, const QString &role,
                           const QString &body) {
     if (!m_ready || session.isEmpty() || (role != "you" && role != "ember") ||
-        body.isEmpty() || body.size() > 32768) return false;
+        body.isEmpty() || body.size() > 65536) return false;
     if (!m_db.transaction()) return false;
     QSqlQuery insert(m_db);
     insert.prepare("INSERT INTO messages(session_id,role,body,created_at) VALUES(?,?,?,?)");
