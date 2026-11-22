@@ -1,4 +1,5 @@
 #include "EmberBackend.h"
+#include "LocalTextImport.h"
 
 #include <QAudioDevice>
 #include <QAudioFormat>
@@ -1154,6 +1155,26 @@ QString EmberBackend::messageText(const QString &body) const {
 }
 bool EmberBackend::submitText(const QString &text) {
     return submit(text, false);
+}
+QString EmberBackend::chooseLocalTextFile(const QString &existingDraft) {
+    if (m_busy || m_listening) {
+        setStatus("Finish the active task before importing a text file.");
+        return {};
+    }
+    // Native OS picker only, always user-triggered. Do not give a model
+    // autonomous access to the filesystem or silently transmit a path.
+    const QString path = QFileDialog::getOpenFileName(
+        nullptr, "Select local text or code to review",
+        QDir::homePath(),
+        "Text and code (*.txt *.md *.log *.json *.yaml *.yml *.xml *.cpp *.cc *.c *.h *.hpp *.rs *.py *.js *.ts *.qml *.ini *.toml *.cmake *.diff *.patch);;All files (*)");
+    if (path.isEmpty()) return {};
+    const auto result = EmberLocalFiles::importText(path, existingDraft);
+    if (!result.ok()) {
+        setStatus(result.error);
+        return {};
+    }
+    setStatus("Local file added to editable text draft. Review before sending.");
+    return result.draft;
 }
 void EmberBackend::continueIncompleteReply() {
     // User-triggered continuation only: never launch another LLM response

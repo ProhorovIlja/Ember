@@ -75,3 +75,13 @@ remain user-supplied; models/binaries are **not** distributed. The source
 also includes a Windows PowerShell 5.1 text-only staging/check helper,
 with no downloads, subscriptions or scheduled work. This interim
 functionality does not relax the no-public-preview policy.
+
+
+### Local files and future agent capabilities
+
+The Chat composer has an explicit **Add text file** picker to inspect one
+UTF-8 code/log/document file within an 8,192-character editable draft; there
+is no automatic sending or local file execution. See
+[local tools roadmap](docs/LOCAL-TOOLS-ROADMAP.md) for the security and
+confirmation boundaries for planned repository search, GitHub, Google Drive
+and Internet research. These connected actions are **not yet integrated**.

@@ -2,6 +2,7 @@
 #include "SessionStore.h"
 #include "ImageLibrary.h"
 #include "EmberBundle.h"
+#include "LocalTextImport.h"
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
@@ -573,6 +574,47 @@ private slots:
             "No network", {}, QString(8193, QLatin1Char('X')), 2048, 0.25);
         QCOMPARE(bounded.value("messages").toArray().last()
                      .toObject().value("content").toString().size(), 8192);
+    }
+    void selectedLocalTextImportsRequireExplicitEditableDraft() {
+        QTemporaryDir workspace;
+        QVERIFY(workspace.isValid());
+        auto save = [&](const QString &name, const QByteArray &bytes) {
+            const QString path = workspace.filePath(name);
+            QFile file(path);
+            if (!file.open(QIODevice::WriteOnly)) return QString();
+            if (file.write(bytes) != bytes.size()) return QString();
+            file.close();
+            return path;
+        };
+        const QString source = save("compiler.log",
+            QByteArray("error C2143: missing ';' before '}'\n")
+            + QString::fromUtf8("Предупреждение: строка 12\n").toUtf8());
+        QVERIFY(!source.isEmpty());
+        const auto imported = EmberLocalFiles::importText(
+            source, QStringLiteral("Explain this error:"));
+        QVERIFY2(imported.ok(), qPrintable(imported.error));
+        QVERIFY(imported.draft.startsWith("Explain this error:"));
+        QVERIFY(imported.draft.contains("compiler.log"));
+        QVERIFY(imported.draft.contains("Предупреждение"));
+        QVERIFY(imported.draft.contains("End attached local file"));
+        QVERIFY(imported.draft.size() <= 8192);
+        QCOMPARE(EmberLocalFiles::importText(source, QString(8100, 'x')).ok(), false);
+        // No silent truncation or partial draft mutation.
+        QVERIFY(EmberLocalFiles::importText(source, QString(8193, 'x')).error
+                    .contains("Existing draft"));
+        const QString binary = save("binary.txt", QByteArray("hello\0world", 11));
+        QVERIFY(!EmberLocalFiles::importText(binary, {}).ok());
+        const QString brokenUtf8 = save("bad.txt", QByteArray("\xC3\x28", 2));
+        QVERIFY(!EmberLocalFiles::importText(brokenUtf8, {}).ok());
+        const QString oversize = save("big.log", QByteArray(32769, 'x'));
+        QVERIFY(!EmberLocalFiles::importText(oversize, {}).ok());
+        const QString secret = save(".env", "ACCESS_TOKEN=private");
+        QVERIFY(!EmberLocalFiles::importText(secret, {}).ok());
+        const QString bom = save("with-bom.txt", QByteArray("\xEF\xBB\xBFhello"));
+        const auto bomResult = EmberLocalFiles::importText(bom, {});
+        QVERIFY2(bomResult.ok(), qPrintable(bomResult.error));
+        QVERIFY(bomResult.draft.contains("hello"));
+        QVERIFY(!bomResult.draft.contains(QChar(0xFEFF)));
     }
     void historicalReferencesNeverBecomeSystemCommands() {
         const QString previous =

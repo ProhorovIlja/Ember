@@ -1049,6 +1049,22 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         Text { text: "Ctrl + Enter · send"; color: "#8097A7"; font.pixelSize: 11 }
                                         PillButton {
+                                            text: "Add text file"
+                                            implicitWidth: 115
+                                            implicitHeight: 31
+                                            enabled: !ember.busy && !ember.listening
+                                            onClicked: {
+                                                var draft = ember.chooseLocalTextFile(composer.text)
+                                                if (draft.length > 0) {
+                                                    composer.text = draft
+                                                    composer.cursorPosition = composer.length
+                                                }
+                                            }
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Read one selected local UTF-8 text/code file into your editable draft. Nothing is sent until you press Send."
+                                        }
+                                        PillButton {
                                             text: "Add image"
                                             implicitWidth: 97
                                             implicitHeight: 31

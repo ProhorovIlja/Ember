@@ -142,6 +142,7 @@ public:
     Q_INVOKABLE void startSpeechServer();
     Q_INVOKABLE void stopSpeechServer();
     Q_INVOKABLE bool submitText(const QString &text);
+    Q_INVOKABLE QString chooseLocalTextFile(const QString &existingDraft);
     Q_INVOKABLE void continueIncompleteReply();
     Q_INVOKABLE void chooseImage();
     Q_INVOKABLE void pasteImage();
