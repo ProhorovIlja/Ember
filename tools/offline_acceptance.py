@@ -250,7 +250,7 @@ def main():
     result = {"native_text": smoke_text(root, args.context,
                                         args.gpu_layers, args.startup_seconds),
               "native_ru_en_dictation": "NOT TESTED",
-              "real_hardware_validated": False,
+              "two_sample_asr_checked": False,
               "release_approved": False,
               "network_note": ("The Python HTTP probe contacts 127.0.0.1 only; "
                                "network isolation of third-party binaries was "
@@ -260,7 +260,7 @@ def main():
             smoke_whisper(root, args.en_wav, args.en_reference, "en", args.max_wer),
             smoke_whisper(root, args.ru_wav, args.ru_reference, "ru", args.max_wer),
         ]
-        result["real_hardware_validated"] = True
+        result["two_sample_asr_checked"] = True
     content = json.dumps(result, ensure_ascii=False, indent=2)
     if args.report:
         if args.report.exists():
@@ -274,5 +274,5 @@ if __name__ == "__main__":
     try:
         main()
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired,
-            HTTPError, URLError, json.JSONDecodeError) as exc:
+            HTTPError, URLError, json.JSONDecodeError, wave.Error) as exc:
         sys.exit("Offline acceptance failed: " + type(exc).__name__ + ": " + str(exc))

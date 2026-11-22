@@ -1,8 +1,6 @@
-# Offline payload integrity and redistribution
+# Ember — offline, country-resilient Windows distribution
 
 **2026-11-22 structural approval gate:** Approved bundles must contain Ember's exact native text-first default paths: `engines/llama/llama-server.exe` (LLM runtime), `models/llm/model.gguf` (GGUF LLM), `engines/whisper/whisper-cli.exe` (ASR runtime), and `models/stt/ggml-base.bin` (multilingual GGML ASR weights). The matching components must be `llm` or `asr`, not merely arbitrary placeholder labels. For every packaged Windows executable/DLL under `engines/`, the verifier checks MZ/PE/AMD64; for all `models/*.gguf` it checks GGUF v2/v3 and a 1-MiB minimum; the default Whisper model must start with original GGML `lmgg` magic and meet the same size minimum. Synthetic CI assets carry valid *headers* but are intentionally not executable or inference-capable. The test includes rehashed forgery attempts and renamed-file attacks. SHA-256 detects tampering relative to a trusted manifest, not self-consistent forgery. This is only structural preflight: binaries, licenses, CUDA dependencies, actual GGUF tensor contents, multilingual ability, and offline end-to-end inference still require manual validation on the target Windows machine.
-
-## Existing offline distribution guidance
 
 ## Acceptance contract
 
