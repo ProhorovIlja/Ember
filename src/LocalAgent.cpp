@@ -58,7 +58,18 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining, Scope s
                                                   "branches", "forks", "actions", "file"}}
                         }},
                         {"path", QJsonObject{{"type", "string"}}}
-                    }, QJsonArray{"view"})
+                    }, QJsonArray{"view"}),
+                functionDef("github_detail",
+                    "Read ONE issue, pull request or workflow run job/failed "
+                    "step summary in the same user-approved repository. "
+                    "Select kind=issue, pull or run_jobs and positive numeric ID. "
+                    "Cannot rerun workflows or publish anything.",
+                    QJsonObject{
+                        {"kind", QJsonObject{{"type", "string"},
+                            {"enum", QJsonArray{"issue", "pull", "run_jobs"}}}},
+                        {"number", QJsonObject{{"type", "integer"},
+                            {"minimum", 1}}}
+                    }, QJsonArray{"kind", "number"})
             });
         } else {
         request.insert("tools", QJsonArray{
@@ -132,7 +143,7 @@ Decision parseModelResponse(const QByteArray &json, Scope scope) {
         if (call.value("type").toString() != "function" ||
             !callId.match(id).hasMatch() ||
             (scope == Scope::GitHubRepository
-                 ? tool != "github_read"
+                 ? (tool != "github_read" && tool != "github_detail")
                  : (tool != "project_map" && tool != "search_text" &&
                     tool != "read_source"))) {
             answer.error = "Denied an unknown, privileged or invalid model tool call.";
@@ -151,7 +162,21 @@ Decision parseModelResponse(const QByteArray &json, Scope scope) {
             return answer;
         }
         const QJsonObject args = parsed.object();
-        if (tool == "github_read") {
+        if (tool == "github_detail") {
+            static const QSet<QString> kinds{"issue", "pull", "run_jobs"};
+            const double id = args.value("number").toDouble();
+            if (args.size() != 2 ||
+                !args.value("kind").isString() ||
+                !kinds.contains(args.value("kind").toString()) ||
+                !args.value("number").isDouble() || !std::isfinite(id) ||
+                id < 1 || id > 9007199254740991.0 ||
+                std::floor(id) != id) {
+                answer.error = "github_detail needs allowed kind and positive numeric ID.";
+                return answer;
+            }
+            answer.view = args.value("kind").toString();
+            answer.number = qint64(id);
+        } else if (tool == "github_read") {
             static const QSet<QString> kViews{
                 "overview", "issues", "pulls", "branches", "forks",
                 "actions", "file"
@@ -244,7 +269,10 @@ QJsonObject assistantToolMessage(const Decision &decision) {
                 ? (decision.view == "file"
                     ? QJsonObject{{"view", decision.view}, {"path", decision.path}}
                     : QJsonObject{{"view", decision.view}})
-                : QJsonObject{{"path", decision.path},
+                : decision.tool == "github_detail"
+                    ? QJsonObject{{"kind", decision.view},
+                                  {"number", double(decision.number)}}
+                    : QJsonObject{{"path", decision.path},
                               {"start_line", decision.startLine}};
     return QJsonObject{
         {"role", "assistant"}, {"content", QJsonValue::Null},

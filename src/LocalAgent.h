@@ -18,6 +18,7 @@ struct Decision {
     QString path;
     QString view;
     int startLine = 1;
+    qint64 number = 0;
     QString error;
     bool ok() const { return kind != Kind::Error; }
 };

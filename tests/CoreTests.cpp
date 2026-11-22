@@ -8,6 +8,7 @@
 #include "LocalCodeEdit.h"
 #include "PublicGitHub.h"
 #include "GitHubIssueWrite.h"
+#include "GitHubDetailRead.h"
 #include "GitHubCredential.h"
 #include "WikipediaSearch.h"
 #include "DriveRead.h"
@@ -753,6 +754,107 @@ private slots:
         QVERIFY(!EmberLocalSearch::readProjectFile(
             root.path(), "C:/Windows/secret.cpp").ok());
     }
+    void githubAgentDetailReadsAreScopedAndParseRealWorkflowFailures() {
+        using namespace EmberGitHubDetails;
+        const auto issueUrl = detailUrl("ProhorovIlja/Ember", Kind::Issue, 17);
+        QCOMPARE(issueUrl.host(), QString("api.github.com"));
+        QCOMPARE(issueUrl.path(), QString("/repos/ProhorovIlja/Ember/issues/17"));
+        QCOMPARE(detailUrl("ProhorovIlja/Ember", Kind::Pull, 7).path(),
+                 QString("/repos/ProhorovIlja/Ember/pulls/7"));
+        QCOMPARE(detailUrl("ProhorovIlja/Ember", Kind::RunJobs, 90012).path(),
+                 QString("/repos/ProhorovIlja/Ember/actions/runs/90012/jobs"));
+        QVERIFY(detailUrl("../repo", Kind::Issue, 1).isEmpty());
+        QVERIFY(detailUrl("owner/repo", Kind::Issue, -1).isEmpty());
+        QVERIFY(detailUrl("owner/repo", Kind::RunJobs, 0).isEmpty());
+        const QByteArray issue = QJsonDocument(QJsonObject{
+            {"number", 17},
+            {"html_url", "https://github.com/ProhorovIlja/Ember/issues/17"},
+            {"repository_url", "https://api.github.com/repos/ProhorovIlja/Ember"},
+            {"title", "Crash when loading worlds"},
+            {"body", "Stacktrace:\n  at localMain()"},
+            {"state", "open"}
+        }).toJson();
+        const auto preview = parseDetail(
+            "ProhorovIlja/Ember", Kind::Issue, 17, issue);
+        QVERIFY2(preview.ok(), qPrintable(preview.error));
+        QVERIFY(preview.text.contains("Crash when loading worlds"));
+        QVERIFY(preview.text.contains("https://github.com/ProhorovIlja/Ember/issues/17"));
+        QVERIFY(!parseDetail("Other/repo", Kind::Issue, 17, issue).ok());
+        QVERIFY(!parseDetail("ProhorovIlja/Ember", Kind::Issue, 18, issue).ok());
+        const QByteArray pull = QJsonDocument(QJsonObject{
+            {"number", 7},
+            {"html_url", "https://github.com/ProhorovIlja/Ember/pull/7"},
+            {"title", "Fix code sync"}, {"body", "Regression in C++"},
+            {"state", "open"}, {"merged", false},
+            {"head", QJsonObject{{"ref", "fix/code-sync"}}},
+            {"base", QJsonObject{{"ref", "main"},
+                    {"repo", QJsonObject{{"full_name", "ProhorovIlja/Ember"}}}}}
+        }).toJson();
+        QVERIFY(parseDetail("ProhorovIlja/Ember", Kind::Pull, 7, pull).ok());
+        QVERIFY(!parseDetail("Other/repo", Kind::Pull, 7, pull).ok());
+        const QByteArray jobs = QJsonDocument(QJsonObject{
+            {"jobs", QJsonArray{QJsonObject{
+                {"run_id", 90012},
+                {"name", "Build Windows"},
+                {"status", "completed"}, {"conclusion", "failure"},
+                {"steps", QJsonArray{QJsonObject{
+                    {"name", "Compile C++"},
+                    {"conclusion", "failure"}}}}
+            }}}
+        }).toJson();
+        const auto jobPreview = parseDetail(
+            "ProhorovIlja/Ember", Kind::RunJobs, 90012, jobs);
+        QVERIFY2(jobPreview.ok(), qPrintable(jobPreview.error));
+        QVERIFY(jobPreview.text.contains("Failed step: Compile C++"));
+        QVERIFY(jobPreview.text.contains("https://github.com/ProhorovIlja/Ember/actions/runs/90012"));
+        QVERIFY(!parseDetail(
+            "ProhorovIlja/Ember", Kind::RunJobs, 90013, jobs).ok());
+        using namespace EmberAgent;
+        const auto reply = [](const QJsonObject &arguments) {
+            const QJsonObject call{
+                {"id", "call_detail_1"}, {"type", "function"},
+                {"function", QJsonObject{
+                    {"name", "github_detail"},
+                    {"arguments", QString::fromUtf8(
+                        QJsonDocument(arguments).toJson(QJsonDocument::Compact))}
+                }}
+            };
+            return QJsonDocument(QJsonObject{
+                {"choices", QJsonArray{QJsonObject{
+                    {"finish_reason", "tool_calls"},
+                    {"message", QJsonObject{
+                        {"role", "assistant"}, {"content", QJsonValue::Null},
+                        {"tool_calls", QJsonArray{call}}
+                    }}
+                }}}
+            }).toJson();
+        };
+        const auto decision = parseModelResponse(
+            reply(QJsonObject{{"kind", "issue"}, {"number", 17}}),
+            Scope::GitHubRepository);
+        QVERIFY2(decision.ok(), qPrintable(decision.error));
+        QCOMPARE(decision.tool, QString("github_detail"));
+        QCOMPARE(decision.number, qint64(17));
+        QCOMPARE(decision.view, QString("issue"));
+        QCOMPARE(assistantToolMessage(decision)
+                    .value("tool_calls").toArray().size(), 1);
+        QVERIFY(!parseModelResponse(
+            reply(QJsonObject{{"kind", "delete"}, {"number", 17}}),
+            Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            reply(QJsonObject{{"kind", "issue"}, {"number", -1}}),
+            Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            reply(QJsonObject{{"kind", "issue"}, {"number", 1.5}}),
+            Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            reply(QJsonObject{{"kind", "issue"}, {"number", 17},
+                               {"repository", "attacker/private"}}),
+            Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            reply(QJsonObject{{"kind", "issue"}, {"number", 17}}),
+            Scope::LocalProject).ok());
+    }
     void localAgentGitHubScopeNeverGrantsWritesOrHostControl() {
         using namespace EmberAgent;
         const QJsonArray messages{
@@ -762,7 +864,7 @@ private slots:
         const auto request = modelRequest(
             messages, 3, Scope::GitHubRepository);
         const auto tools = request.value("tools").toArray();
-        QCOMPARE(tools.size(), 1);
+        QCOMPARE(tools.size(), 2);
         const auto function = tools.first().toObject().value("function").toObject();
         QCOMPARE(function.value("name").toString(), QString("github_read"));
         QCOMPARE(modelRequest(messages, 0, Scope::GitHubRepository)
