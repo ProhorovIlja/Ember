@@ -71,7 +71,11 @@ bool validOAuthCallback(const QByteArray &headers, quint16 port,
     if (!port || expectedState.isEmpty() || headers.isEmpty() ||
         headers.size() > 4096 || !headers.endsWith("\r\n\r\n"))
         return false;
-    const auto lines = headers.left(headers.size() - 4).split('\n');
+    // Keep the CRLF terminating the last header line while removing the
+    // final empty line; dropping all four bytes would also drop that CRLF.
+    auto lines = headers.left(headers.size() - 2).split('\n');
+    if (lines.isEmpty() || !lines.last().isEmpty()) return false;
+    lines.removeLast();
     if (lines.size() < 2) return false;
     for (const auto &line : lines)
         if (!line.endsWith('\r')) return false;
