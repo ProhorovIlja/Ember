@@ -536,7 +536,12 @@ def self_test():
     for required, component in REQUIRED_TEXT_FIRST.items():
         assert required in skeleton and skeleton[required]["component"] == component
         assert skeleton[required]["redistribution_approved"] is False
-    print("offline_bundle self-test passed (checksums, no overwrites, unsafe paths, licenses)")
+    # The manually invoked Windows acceptance tester has a pure offline
+    # self-test: test the parser and private WAV boundaries without starting
+    # llama-server, whisper-cli or any scheduled task.
+    from offline_acceptance import self_test as acceptance_self_test
+    acceptance_self_test()
+    print("offline_bundle self-test passed (checksums, headers, default paths, no overwrites, unsafe paths, licenses)")
 
 
 def main():
