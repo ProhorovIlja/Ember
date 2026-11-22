@@ -224,6 +224,7 @@ python tools/native_speech_acceptance.py --self-test
 python tools/native_speech_acceptance.py --root D:\EmberComplete
 python tools/native_speech_acceptance.py --root D:\EmberComplete --run --model qwen3-tts-0.6b --device cpu --samples 2 --report D:\ember-speech-cpu.json
 python tools/native_speech_acceptance.py --root D:\EmberComplete --run --model qwen3-tts-0.6b --device gpu --samples 2 --report D:\ember-speech-gpu.json
+python tools/native_speech_acceptance.py --root D:\EmberComplete --run --listen --model qwen3-tts-1.7b --voice serena --device gpu --samples 4
 ```
 
 The default command verifies an **approved** complete voice manifest, content
@@ -233,6 +234,12 @@ host/port and CPU/GPU flags as Ember, and a bounded model-load timeout.
 The test rejects occupied or foreign-owned ports and checks the PID before
 and after private HTTP probes, disables speech.cpp's update check, sends fixed
 non-private English sample sentences and validates returned PCM16 audio.
+Optional `--listen` requires `--run` and plays each non-silent verified PCM
+sample through the default Windows audio output, synchronously and entirely
+in memory using `winsound.SND_MEMORY`. No audio file is created, no cloud
+audio service is contacted, and playback time is excluded from HTTP latency.
+The listener must personally judge naturalness, pronunciation and prosody;
+the script does not claim human approval from an audio signal metric.
 Each trial measures first HTTP audio byte, PCM duration and signal quality;
 the process is stopped in a `finally` block. Output reports contain only
 numeric measurements and model/voice labels, never WAV recordings or user
@@ -240,8 +247,9 @@ chat text, and cannot silently overwrite an existing result.
 
 Only the 0.6B or 1.7B TTS model **actually listed in the approved manifest**
 can pass. The test does not download a model or approve redistribution.
-Passing it is not proof of enjoyable English voice, real audio-device
-playback, microphone accuracy, multi-process RTX 4070 VRAM sufficiency,
+Passing it is not proof of enjoyable English voice or actual device playback
+unless the maintainer explicitly listened, nor of microphone accuracy,
+multi-process RTX 4070 VRAM sufficiency,
 external network isolation of a third-party executable, or a finished app.
 Human blind listening and clean Windows 10 acceptance remain mandatory.
 

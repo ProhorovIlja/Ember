@@ -2,9 +2,10 @@
 """One-shot, local-only Windows speech.cpp acceptance for an approved Ember bundle.
 
 Default: read-only SHA-256/license/header preflight. Explicit --run starts a
-bundled native speech.exe, tests actual GGUF/PCM HTTP inference, stops it and
-reports signal/latency metrics without storing prompts or audio. This is NOT a
-blind listening test, network isolation proof or final release approval.
+bundled native speech.exe, tests GGUF/PCM HTTP inference and stops it.
+Optional --listen (only with --run) plays validated PCM samples on Windows
+synchronously from memory, without writing sound files. Audible playback is
+not a blinded listening assessment or automatic quality certification.
 """
 import argparse
 import hashlib
@@ -14,6 +15,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import struct
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -177,7 +179,30 @@ def wait_for_speech(proc, seconds, alias, voice):
     raise RuntimeError("speech.cpp did not become ready in the bounded time")
 
 
-def probe(root, alias, device, voice, count, seconds):
+def pcm16_mono_wav(pcm, sample_rate):
+    """Wrap validated, bounded PCM in an in-memory canonical RIFF/WAVE buffer."""
+    if (not isinstance(pcm, bytes) or not 0 < len(pcm) <= 12 * 1024 * 1024 or
+            len(pcm) % 2 or type(sample_rate) is not int or
+            not 8000 <= sample_rate <= 96000):
+        raise ValueError("Cannot play malformed PCM16 mono response")
+    return (b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVE"
+            + b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, sample_rate,
+                                     2 * sample_rate, 2, 16)
+            + b"data" + struct.pack("<I", len(pcm)) + pcm)
+
+
+def play_pcm_locally(pcm, sample_rate):
+    """Blocking Windows playback: no temp WAV, player subprocess or network."""
+    if os.name != "nt":
+        raise RuntimeError("Listening requires a native Windows audio output")
+    import winsound
+    # Winsound's SND_MEMORY is synchronous; do not combine it with SND_ASYNC.
+    winsound.PlaySound(pcm16_mono_wav(pcm, sample_rate),
+                       winsound.SND_MEMORY | winsound.SND_SYNC |
+                       winsound.SND_NODEFAULT)
+
+
+def probe(root, alias, device, voice, count, seconds, listen=False):
     if speech_owners():
         raise RuntimeError("Port 43822 is already occupied; stop that process first")
     executable = root / "engines/speech/speech.exe"
@@ -196,9 +221,14 @@ def probe(root, alias, device, voice, count, seconds):
         for i in range(count):
             if proc.poll() is not None:
                 raise RuntimeError("Native speech process exited between trials")
+            if listen:
+                print(f"Manual voice listening sample {i + 1}/{count} "
+                      f"({alias}, {voice}) through Windows default output.",
+                      flush=True)
             sample = measure(ENDPOINT, alias, voice, PROMPTS[i % len(PROMPTS)],
                              "natural", omit_model_id=True, seed=i + 1,
-                             expected_pid=proc.pid)
+                             expected_pid=proc.pid,
+                             on_pcm=play_pcm_locally if listen else None)
             if (not sample["digital_voice_detected"] or
                     sample["audio_seconds"] < 0.2):
                 raise RuntimeError("Native speech returned silence or short PCM")
@@ -211,10 +241,12 @@ def probe(root, alias, device, voice, count, seconds):
             "voice": voice,
             "samples": count,
             "trials": trials,
+            "human_audio_playback_requested": bool(listen),
             "release_approved": False,
-            "caveats": ("PCM signal checks are not acoustic naturalness, "
-                        "audible playback, Windows microphone, GPU contention, "
-                        "or third-party binary network-isolation tests.")
+            "caveats": ("Playback only confirms a listening attempt, not "
+                        "naturalness or voice preference. Windows microphone, "
+                        "GPU contention and third-party binary network isolation "
+                        "remain untested.")
         }
     finally:
         if proc.poll() is None:
@@ -287,6 +319,18 @@ def self_test():
         200, "application/json",
         json.dumps({"object": "list", "data": [broken]}).encode("utf-8"),
         "qwen3-tts-0.6b", "vivian")
+    wav = pcm16_mono_wav(struct.pack("<h", 900) * 24, 24000)
+    assert wav[:4] == b"RIFF" and wav[8:12] == b"WAVE"
+    assert struct.unpack_from("<I", wav, 4)[0] == len(wav) - 8
+    assert struct.unpack_from("<HHI", wav, 20) == (1, 1, 24000)
+    assert wav[36:40] == b"data" and wav[44:] == struct.pack("<h", 900) * 24
+    for invalid, rate in ((b"\0", 24000), (b"\0\0", 0),
+                          (b"", 24000), (b"\0\0", 192000)):
+        try:
+            pcm16_mono_wav(invalid, rate)
+            raise AssertionError("Malformed in-memory speech was playable")
+        except ValueError:
+            pass
     env = startup_environment()
     assert env["SPEECH_NO_UPDATE_CHECK"] == "1"
     assert env["HF_HUB_OFFLINE"] == "1"
@@ -309,6 +353,8 @@ def main():
                         help="Approved, assembled native Windows Ember bundle")
     parser.add_argument("--run", action="store_true",
                         help="Explicitly launch local speech.exe and test real PCM")
+    parser.add_argument("--listen", action="store_true",
+                        help="With --run on Windows, synchronously play verified PCM in RAM")
     parser.add_argument("--model", choices=tuple(MODELS), default="qwen3-tts-0.6b")
     parser.add_argument("--device", choices=("auto", "cpu", "gpu"), default="cpu")
     parser.add_argument("--voice", default="vivian")
@@ -322,6 +368,8 @@ def main():
         return
     if args.root is None:
         parser.error("--root required unless --self-test")
+    if args.listen and not args.run:
+        parser.error("--listen requires explicit --run")
     if (not 1 <= args.samples <= 8 or not 30 <= args.startup_seconds <= 600 or
             not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", args.voice)):
         parser.error("Invalid sample count, startup timeout or voice identifier")
@@ -341,14 +389,14 @@ def main():
     if os.name != "nt":
         parser.error("--run requires native Windows and Windows netstat PID checks")
     report = probe(root, args.model, args.device, args.voice,
-                   args.samples, args.startup_seconds)
+                   args.samples, args.startup_seconds, listen=args.listen)
     output = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.report is not None:
         # Exclusive file creation means a later attempt cannot erase a baseline.
         with args.report.open("x", encoding="utf-8") as stream:
             stream.write(output)
     print(output)
-    print("Live PCM verified; human listening and clean-PC acceptance remain OPEN.")
+    print("Live PCM verified; acoustic quality and clean-PC acceptance remain OPEN.")
 
 
 if __name__ == "__main__":

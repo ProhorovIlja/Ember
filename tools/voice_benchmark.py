@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Local-only voice latency probe. Does not record, save or play any audio."""
+"""Local-only voice latency probe; optional in-memory PCM consumer.
+
+Default measures only and never records or plays audio. A caller-supplied
+callback may consume a complete validated PCM sample in memory; it is never
+persisted by this module, and callback time is excluded from latency.
+"""
 import argparse
 import hashlib
 import json
@@ -128,7 +133,9 @@ def percentile95(values):
 
 
 def measure(endpoint, model, voice, prompt, delivery="natural", omit_model_id=False,
-            seed=1, *, expected_pid=None, _fixture=False):
+            seed=1, *, expected_pid=None, _fixture=False, on_pcm=None):
+    if on_pcm is not None and not callable(on_pcm):
+        raise ValueError("Optional PCM consumer must be callable")
     u = urlsplit(endpoint)
     if (u.scheme != "http" or u.hostname != "127.0.0.1" or
             u.port is None or u.username is not None or
@@ -194,6 +201,10 @@ def measure(endpoint, model, voice, prompt, delivery="natural", omit_model_id=Fa
         raise ValueError("PCM16 response ended with incomplete sample frames")
     duration = count / (2 * rate)
     health = pcm_signal_metrics(sample_bytes, rate)
+    if on_pcm is not None and health["digital_voice_detected"]:
+        # Synchronous local playback/listening, if explicitly requested by
+        # the caller. Never include playback or human latency in HTTP metrics.
+        on_pcm(bytes(sample_bytes), rate)
     return {
         "sample_rate_hz": rate,
         "pcm_bytes": count,
@@ -282,6 +293,23 @@ def self_test():
         assert expressive["clipped_sample_percent"] == 0
         assert expressive["trailing_low_level_pcm_ms"] == 0
         assert expressive["peak_dbfs"] is not None
+        heard = []
+        measure(uri, "qwen3-tts-1.7b", "serena", "Warm hello.",
+                delivery="warm", _fixture=True,
+                on_pcm=lambda raw, rate: heard.append((raw, rate)))
+        assert heard == [(Handler.payload, 24000)]
+        Handler.payload = b"\x00\x00" * 2400
+        measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.",
+                _fixture=True,
+                on_pcm=lambda raw, rate: heard.append((raw, rate)))
+        assert len(heard) == 1  # muted samples must not play
+        Handler.payload = b"\x00\x00" * 1200 + struct.pack("<h", 1000) * 1200
+        try:
+            measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.",
+                    _fixture=True, on_pcm="not-a-callback")
+            raise AssertionError("Invalid playback callback accepted")
+        except ValueError:
+            pass
         clipped = b"\x00\x00" * 100 + struct.pack("<h", 32767) * 100
         clipped += b"\x00\x00" * 100
         metrics = pcm_signal_metrics(clipped, 24000)
