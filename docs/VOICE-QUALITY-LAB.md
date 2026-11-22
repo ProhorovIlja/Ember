@@ -964,3 +964,16 @@ Japanese and Korean respectively. Adding additional licensed English
 voice designs still requires a compatible model/voice adapter and
 actual listening evaluation. Merely displaying more names does not
 improve the acoustic quality of a particular model.
+
+### Validate actual Qwen3 GGUF identity before listening
+
+The offline model preflight now rejects models whose `speech.task`,
+`general.architecture`, size label, layout or minimum runtime
+version disagree with the selected Qwen3 alias. English synthesized
+voice selection must match paired `speech.voices` /
+`speech.voice_languages` metadata in the GGUF, rather than merely
+matching a filename. Optional Qwen3 ASR weight inclusion requires
+both `en` and `ru` in its language list. The same selected-speaker
+preflight runs before manual native PCM trials and before launching
+the voice model. These are consistency and safety checks, **not**
+subjective or objective speech-quality scores.
