@@ -84,7 +84,7 @@ def valid_health_reply(status, content_type, body):
 
 
 def valid_inventory_reply(status, content_type, body, alias, voice):
-    """Verify the actual loaded GGUF family/size and named English voice."""
+    """Verify loaded model identity and selected English female voice."""
     if (status != 200 or not isinstance(body, bytes) or
             not 0 < len(body) <= 65536 or
             content_type.split(";", 1)[0].strip().lower() != "application/json" or
@@ -116,7 +116,8 @@ def valid_inventory_reply(status, content_type, body, alias, voice):
                     not isinstance(info.get("voices"), list) or
                     not any(isinstance(entry, dict) and
                             entry.get("name") == voice and
-                            entry.get("language") == "en"
+                            entry.get("language") == "en" and
+                            entry.get("gender") == "female"
                             for entry in info["voices"])):
                 return False
             matched += 1
@@ -229,7 +230,10 @@ def self_test():
     row = {"id": "local-qwen-gguf", "object": "model",
            "speech": {"task": "synthesis", "architecture": "qwen3-tts",
                       "size_label": "0.6B", "languages": ["en", "ru"],
-                      "voices": [{"name": "vivian", "language": "en"}]}}
+                      "voices": [{"name": "vivian", "language": "en",
+                                  "gender": "female"},
+                                 {"name": "ryan", "language": "en",
+                                  "gender": "male"}]}}
     sample = json.dumps({"object": "list", "data": [row]}).encode("utf-8")
     assert valid_inventory_reply(200, "application/json", sample,
                                  "qwen3-tts-0.6b", "vivian")
@@ -237,6 +241,13 @@ def self_test():
                                      "qwen3-tts-1.7b", "vivian")
     assert not valid_inventory_reply(200, "application/json", sample,
                                      "qwen3-tts-0.6b", "serena")
+    assert not valid_inventory_reply(200, "application/json", sample,
+                                     "qwen3-tts-0.6b", "ryan")
+    no_gender = json.loads(sample)
+    del no_gender["data"][0]["speech"]["voices"][0]["gender"]
+    assert not valid_inventory_reply(
+        200, "application/json", json.dumps(no_gender).encode(),
+        "qwen3-tts-0.6b", "vivian")
     assert not valid_inventory_reply(200, "text/html", sample,
                                      "qwen3-tts-0.6b", "vivian")
     assert not valid_inventory_reply(200, "application/json", b"{}",
