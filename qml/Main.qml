@@ -2413,7 +2413,11 @@ ApplicationWindow {
                                                 color: "#EAF5FF"
                                                 placeholderText: "vivian"
                                                 font.pixelSize: 13
-                                                onEditingFinished: ember.localVoice = text
+                                                onEditingFinished: {
+                                                    ember.localVoice = text
+                                                    // A running native model rejects unknown/non-English voices.
+                                                    text = ember.localVoice
+                                                }
                                                 background: Rectangle {
                                                     color: "#0A192D"
                                                     radius: 9
@@ -2455,30 +2459,58 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: 9
                                             Text {
-                                                text: "More female voices"
+                                                text: "Verified English voices"
                                                 color: "#9AB8CF"
                                                 font.pixelSize: 11
                                                 Layout.fillWidth: true
                                             }
-                                            PillButton {
-                                                text: "Ono Anna · playful"
-                                                implicitWidth: 148
-                                                implicitHeight: 32
+                                            ComboBox {
+                                                id: verifiedNativeVoices
+                                                visible: ember.speechServerReady &&
+                                                         ember.nativeEnglishVoices.length > 0
+                                                Layout.preferredWidth: 190
+                                                implicitHeight: 34
                                                 enabled: !ember.busy && !ember.speaking
-                                                onClicked: {
-                                                    ember.localVoice = "ono_anna"
-                                                    externalVoice.text = "ono_anna"
+                                                model: ember.nativeEnglishVoices
+                                                currentIndex: ember.nativeEnglishVoices.indexOf(ember.localVoice)
+                                                onActivated: {
+                                                    ember.localVoice = currentText
+                                                    externalVoice.text = ember.localVoice
+                                                }
+                                                contentItem: Text {
+                                                    text: verifiedNativeVoices.displayText
+                                                    leftPadding: 12
+                                                    color: "#E6F4FF"
+                                                    font.pixelSize: 12
+                                                    verticalAlignment: Text.AlignVCenter
+                                                }
+                                                background: Rectangle {
+                                                    radius: 9
+                                                    color: "#0A192D"
+                                                    border.color: "#254A73"
+                                                }
+                                                delegate: ItemDelegate {
+                                                    required property int index
+                                                    required property string modelData
+                                                    width: verifiedNativeVoices.width
+                                                    height: 34
+                                                    text: modelData
+                                                    contentItem: Text {
+                                                        text: parent.text
+                                                        color: "#E6F4FF"
+                                                        font.pixelSize: 12
+                                                        verticalAlignment: Text.AlignVCenter
+                                                    }
+                                                    background: Rectangle {
+                                                        color: parent.highlighted ? "#15446A" : "#0C1C31"
+                                                    }
                                                 }
                                             }
-                                            PillButton {
-                                                text: "Sohee · emotive"
-                                                implicitWidth: 144
-                                                implicitHeight: 32
-                                                enabled: !ember.busy && !ember.speaking
-                                                onClicked: {
-                                                    ember.localVoice = "sohee"
-                                                    externalVoice.text = "sohee"
-                                                }
+                                            Text {
+                                                visible: !verifiedNativeVoices.visible
+                                                text: "Available after native model Ready"
+                                                color: "#7898B2"
+                                                font.pixelSize: 11
                                             }
                                         }
                                         RowLayout {
