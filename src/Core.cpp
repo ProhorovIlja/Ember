@@ -73,7 +73,9 @@ bool validManagedHealthResponse(const QByteArray &body,
 bool validNativeSpeechInventory(const QByteArray &body,
                                 const QByteArray &contentType,
                                 const QString &ttsAlias, const QString &asrAlias,
-                                const QString &selectedVoice) {
+                                const QString &selectedVoice,
+                                QStringList *availableEnglishVoices) {
+    if (availableEnglishVoices) availableEnglishVoices->clear();
     const bool needsTts = !ttsAlias.isEmpty();
     const bool needsAsr = !asrAlias.isEmpty();
     if ((!needsTts && !needsAsr) || body.isEmpty() ||
@@ -104,6 +106,7 @@ bool validNativeSpeechInventory(const QByteArray &body,
         data.isEmpty() || data.size() > 8)
         return false;
     bool foundTts = false, foundAsr = false;
+    QStringList englishSpeakers;
     for (const auto &entry : data) {
         if (!entry.isObject()) return false;
         const QJsonObject model = entry.toObject();
@@ -120,11 +123,15 @@ bool validNativeSpeechInventory(const QByteArray &body,
             if (lang.toString() == QStringLiteral("ru")) russian = true;
         }
         for (const auto &item : info.value(QStringLiteral("voices")).toArray()) {
-            if (item.isObject() &&
-                item.toObject().value(QStringLiteral("name")).toString() == selectedVoice &&
-                item.toObject().value(QStringLiteral("language")).toString() ==
-                    QStringLiteral("en"))
-                hasVoice = true;
+            if (!item.isObject()) continue;
+            const QJsonObject speaker = item.toObject();
+            const QString name = speaker.value(QStringLiteral("name")).toString();
+            if (speaker.value(QStringLiteral("language")).toString() !=
+                    QStringLiteral("en") ||
+                name.isEmpty() || name.size() > 80)
+                continue;
+            if (name == selectedVoice) hasVoice = true;
+            if (!englishSpeakers.contains(name)) englishSpeakers.append(name);
         }
         if (task == QStringLiteral("synthesis")) {
             if (foundTts || !needsTts || architecture != QStringLiteral("qwen3-tts") ||
@@ -138,7 +145,10 @@ bool validNativeSpeechInventory(const QByteArray &body,
             foundAsr = true;
         }
     }
-    return foundTts == needsTts && foundAsr == needsAsr;
+    const bool matched = foundTts == needsTts && foundAsr == needsAsr;
+    if (matched && availableEnglishVoices && needsTts)
+        *availableEnglishVoices = englishSpeakers;
+    return matched;
 }
 QString nativeSpeechDeviceArg(int deviceIndex) {
     if (deviceIndex == 0) return QStringLiteral("auto");
