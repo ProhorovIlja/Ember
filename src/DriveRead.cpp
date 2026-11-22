@@ -548,7 +548,8 @@ void Client::getDrive(const QUrl &url, ResponseKind kind,
     request.setTransferTimeout(15000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
-    request.setRawHeader("Accept", "application/json");
+    request.setRawHeader("Accept", kind == ResponseKind::FileText
+                                     ? "text/plain" : "application/json");
     request.setRawHeader("Authorization", "Bearer " + m_accessToken);
     request.setRawHeader("User-Agent", "EmberLocalDrive/0.1");
     QNetworkReply *reply = m_network.get(request);

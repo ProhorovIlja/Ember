@@ -131,15 +131,18 @@ full articles. Wikimedia connectivity is required; the LLM itself remains
 fully local. See `docs/LOCAL-TOOLS-ROADMAP.md`.
 
 
-**Google Drive (metadata-only)**: The Chat toolbar provides an explicit
-Connect / List folder / Disconnect flow. Desktop OAuth uses the system
-browser, loopback localhost and PKCE, with Google refresh tokens stored
-in Windows Credential Manager. The user must provide a registered
-Google Cloud **Desktop** OAuth client ID and grant
-`drive.metadata.readonly` consent. The native client can list up to
-20 metadata entries in the selected folder (including `root`); the
-reviewed preview may then be inserted into the local model's text draft.
-This does not download document contents, modify Drive, sync
-automatically or create scheduled work. No Google account has been
-signed in or physically accepted yet; testing with actual credentials
-and on the user's Windows machine remains required.
+**Google Drive (manual read-only)**: The Chat toolbar provides Connect,
+List folder, Read one text/Google Doc, and Disconnect operations. Desktop
+OAuth uses the system browser, loopback localhost and PKCE, with the
+refresh token in Windows Credential Manager. Supply a Google Cloud
+**Desktop** OAuth client ID; grant the `drive.readonly` scope deliberately.
+The old metadata-only credential is **not** reused: consent is required
+again. The client shows up to 20 entries in a chosen folder, or reads
+one explicitly selected UTF-8 text file / Google Doc (Google Docs
+exported to plain text). Files are screened by type and size (96 KiB),
+then shown in a review dialog with an excerpt limited to 12,000 characters.
+This is not a Drive search, image/PDF/Sheets reader, agent tool, write
+connection, scheduled sync or backup. No real account sign-in or target
+Windows hardware acceptance is verified by CI alone. Broad Drive read
+permissions may require appropriate Google consent-screen verification
+or test-user setup.

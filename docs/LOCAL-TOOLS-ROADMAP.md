@@ -128,28 +128,29 @@ end remains independent of any cloud API.
 
 ## Initial native Google Drive read-only OAuth workflow
 
-The Chat composer now includes **Google Drive**: Connect, List folder, or
-Disconnect. Results appear in the same read-only review dialog used for
-GitHub and Wikipedia. This is metadata only: users explicitly choose the
-folder ID; no file contents are downloaded. A dedicated Qt
-`EmberDrive::Client` implements Google Desktop OAuth through
-the operating system's default browser and IPv4 loopback callback, with
-random PKCE S256 verifier, CSRF state and exact redirect/host checks. It
-asks only for `drive.metadata.readonly`; no file contents or modification
-scopes are requested. Long-lived refresh credentials are saved using the
-Windows Credential Manager, never plaintext INI or SQLite. It supports
-explicit user-triggered metadata listing of one folder (20 entries max),
-account-email verification through Drive about, and local disconnect.
-Token exchanges go only to oauth2.googleapis.com; API metadata GETs go
-only to www.googleapis.com. There is no scheduled sync, polling or
-credential transmission to the local LLM. A Desktop OAuth application ID
-created in Google Cloud and corresponding Google consent are necessary.
-The native UI is wired, but **no real user Google OAuth sign-in or Drive
-API response has yet been verified**, and a registered Desktop OAuth client
-and relevant consent screen/test-user configuration are prerequisites.
-The Google sign-in step uses the system browser per Google's native-app
-OAuth security guidance, not an embedded WebView2 login. CI only covers
-pure URL/token validation, mock JSON and isolated Windows credential tests.
+The Chat composer includes **Google Drive**: Connect, List folder,
+Read one text/Google Doc, and Disconnect. Results appear in the same
+review-before-chat dialog used for GitHub and Wikipedia. A dedicated Qt
+`EmberDrive::Client` uses Google Desktop OAuth with system-browser
+consent, IPv4 loopback callback, PKCE S256, CSRF state and strict callback
+Host validation. Reading document contents now requires an explicitly
+granted `drive.readonly` scope; the prior metadata-only Windows credential
+is separated by a distinct credential target and never silently upgraded.
+The only outbound API hosts are oauth2.googleapis.com and
+www.googleapis.com. An explicit folder request returns at most 20 metadata
+entries. An explicit file-ID request reads metadata first, requires a
+supported text/*, JSON, XML, YAML or Google Docs MIME type, rejects files
+over 96 KiB when size is advertised, and caps response size and the text
+preview. Google Docs are exported as text/plain; non-native text uses
+Drive files.get alt=media. UTF-8 is validated and NUL rejected. File
+contents are **untrusted** and are not sent to the model until reviewed.
+No uploads, edits, automatic search, cloud history sync, polling, scheduled
+tasks or agent-wide Drive browsing are implemented. Google Cloud Desktop
+OAuth credentials and an appropriate consent screen/test user are needed;
+the broader read-only scope may require Google verification.
+**Real sign-in, network behavior, and target Windows acceptance remain
+unverified**; regression tests use mock data and URL contracts.
+The sign-in uses the system browser, not WebView2 or an embedded OAuth page.
 
 
 ### 22 Nov 2026 — Google OAuth account continuity and callback hardening
