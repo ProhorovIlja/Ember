@@ -55,10 +55,13 @@ QString offlineSpeechModelFile(const QString &applicationRoot, const QString &al
     };
     if (!allowed.contains(alias)) return {};
     const QFileInfo folder(QDir(applicationRoot).filePath("models/speech"));
-    if (!folder.isDir() || folder.isSymLink()) return {};
+    if (!folder.isDir() || folder.isSymLink() || folder.isJunction()) return {};
     const QString canonicalFolder = folder.canonicalFilePath();
     const QFileInfo candidate(QDir(folder.absoluteFilePath()).filePath(alias + ".gguf"));
-    if (!candidate.isFile() || candidate.isSymLink() || candidate.size() < 64) return {};
+    // Model path is user-supplied. A tiny GGUF-looking test file must not
+    // convince the UI it has an offline model ready for speech.cpp.
+    if (!candidate.isFile() || candidate.isSymLink() || candidate.isJunction() ||
+        candidate.size() < 1024 * 1024) return {};
     const QString canonical = candidate.canonicalFilePath();
     // Qt normalizes native separators differently across Windows backends.
     const QString normalizedFolder = QDir::fromNativeSeparators(canonicalFolder);
@@ -66,7 +69,16 @@ QString offlineSpeechModelFile(const QString &applicationRoot, const QString &al
     if (!normalizedModel.startsWith(normalizedFolder + QLatin1Char('/'),
                                     Qt::CaseInsensitive)) return {};
     QFile file(canonical);
-    if (!file.open(QIODevice::ReadOnly) || file.read(4) != "GGUF") return {};
+    if (!file.open(QIODevice::ReadOnly)) return {};
+    const QByteArray header = file.read(8);
+    if (header.size() != 8 || header.left(4) != "GGUF") return {};
+    const quint32 version =
+        quint32(quint8(header[4])) | (quint32(quint8(header[5])) << 8) |
+        (quint32(quint8(header[6])) << 16) |
+        (quint32(quint8(header[7])) << 24);
+    if (version != 2 && version != 3) return {};
+    // Structural preflight only: license, tensor completeness, tokenizer and
+    // native inference compatibility still require explicit real-model QA.
     return canonical;
 }
 bool captureAllowedWithInterruption(bool busy, bool listening,
