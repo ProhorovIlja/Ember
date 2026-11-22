@@ -312,3 +312,27 @@ models are never merged into the TTS voice list. Changing a permitted
 speaker does not secretly restart or download a model. These measures
 do not add any voice weights to the installer or guarantee the claimed
 speaker identity sounds natural.
+
+### Portable Windows runtime dependency closure — 22 November 2026
+
+The self-contained installer workflow now runs
+`python tools/windows_pe_audit.py --root <complete-payload-folder>`
+**before** Inno Setup. This standard-library-only tool reads the native
+Windows AMD64 PE import and delay-import tables of every EXE/DLL/PYD/DRV
+in the payload without loading or executing those programs. An imported
+compiler, Qt, Vulkan or model runtime DLL must be in the root application
+directory or alongside its importer unless its name belongs to the explicit
+Windows 10 system DLL/API-set list. A missing non-system dependency rejects
+the installer preflight instead of silently relying on developer-machine
+DLLs. Reparse-point payload paths, broken x64 PE headers and oversized
+files are rejected. The Windows development CI also tests synthetic PE
+fixtures and checks the deployed Qt application directory.
+
+This detects only **static** imports (including standard PE delay-load).
+Runtime `LoadLibrary` calls, plugin-discovered graphics backends, CUDA
+driver versions, actual Windows 10 build compatibility, and DLL signature
+or license trust remain unverified. A portable package is **not** approved
+until its real LLM/ASR/TTS binaries and their dependent DLLs are staged,
+hash-verified, license-reviewed, and tested on an independent disconnected
+Windows 10 machine. Do not assume that passing on GitHub's Windows Server
+2022 runner proves compatibility with every Windows 10 installation.
