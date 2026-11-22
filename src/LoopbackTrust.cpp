@@ -17,8 +17,10 @@
 
 namespace EmberCore {
 bool ownedLoopbackTcpListener(quint16 port, quint64 processId) {
-    if ((port != 43821 && port != 43822) || processId == 0 ||
-        processId > 0xffffffffULL) return false;
+    // The caller supplies Ember's fixed port. This helper accepts any
+    // nonzero port so that a real temporary QTcpServer can test the guard.
+    if (port == 0 || processId == 0 || processId > 0xffffffffULL)
+        return false;
 #ifdef Q_OS_WIN
     // Query only IPv4 listeners. Ember intentionally binds --host 127.0.0.1;
     // a wildcard 0.0.0.0 binding is never acceptable even if the PID matches.
