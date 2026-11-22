@@ -24,6 +24,7 @@ from offline_bundle import (
 )
 from localhost_owner import listening_owner_pids, require_owned_speech_listener
 from voice_benchmark import ENDPOINT, PROMPTS, measure
+from private_worker_env import private_worker_environment
 
 PORT = 43822
 HEALTH = "http://127.0.0.1:43822/health"
@@ -53,20 +54,8 @@ def speech_owners():
 
 
 def startup_environment():
-    """Do not leak shell API credentials or permit speech.cpp update checks."""
-    env = os.environ.copy()
-    for name in list(env):
-        upper = name.upper()
-        if (any(term in upper for term in
-                ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY",
-                 "PRIVATE_KEY")) or
-                upper.startswith(("AWS_", "GITHUB_", "OPENAI_", "GOOGLE_",
-                                  "AZURE_"))):
-            env.pop(name, None)
-    env["SPEECH_NO_UPDATE_CHECK"] = "1"
-    env["HF_HUB_OFFLINE"] = "1"
-    env["TRANSFORMERS_OFFLINE"] = "1"
-    return env
+    """Never leak shell secrets to the third-party native speech worker."""
+    return private_worker_environment()
 
 
 def model_path(root, alias):
@@ -185,6 +174,8 @@ def self_test():
     env = startup_environment()
     assert env["SPEECH_NO_UPDATE_CHECK"] == "1"
     assert env["HF_HUB_OFFLINE"] == "1"
+    from private_worker_env import self_test as verify_private_env
+    verify_private_env()
     assert set(MODELS) == {"qwen3-tts-0.6b", "qwen3-tts-1.7b"}
     try:
         model_path(Path("."), "../unlisted")
