@@ -6,6 +6,7 @@ Input must be user-owned 16-kHz mono PCM16 WAV referenced by a validated manifes
 Neither model is downloaded, and the Qwen endpoint is fixed to loopback.
 """
 import argparse
+from functools import partial
 import json
 import subprocess
 import tempfile
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from asr_benchmark import MODELS, transcribe
 from asr_corpus import evaluate
+from localhost_owner import require_owned_speech_listener
 
 
 def whisper_adapter(executable, model, vad=None, *, runner=subprocess.run,
@@ -209,6 +211,8 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--qwen-model", choices=MODELS, default=MODELS[0])
+    parser.add_argument("--speech-pid", type=int,
+                        help="Required trusted Windows speech.exe PID at 127.0.0.1:43822")
     parser.add_argument("--omit-qwen-model-id", action="store_true")
     parser.add_argument("--order", choices=("whisper-first", "qwen-first"),
                         default="whisper-first", help="Alternate to identify cache/order bias")
@@ -222,11 +226,15 @@ def main():
         return
     if not all((args.manifest, args.whisper_exe, args.whisper_model)):
         parser.error("--manifest, --whisper-exe and --whisper-model are required")
+    if not args.speech_pid or args.speech_pid <= 0:
+        parser.error("--speech-pid is required before reading private ASR recordings")
     try:
+        require_owned_speech_listener(args.speech_pid)
         recognizer = whisper_adapter(args.whisper_exe, args.whisper_model,
                                      args.whisper_vad_model)
         result = comparison_report(args.manifest, args.qwen_model, recognizer,
                                    omit_qwen_model=args.omit_qwen_model_id,
+                                   qwen_recognize=partial(transcribe, expected_pid=args.speech_pid),
                                    order=args.order)
         output = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
         if args.output:
