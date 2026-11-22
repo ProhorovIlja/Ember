@@ -301,3 +301,14 @@ Upstream protocol:
 https://github.com/nyosegawa/speech.cpp/blob/v0.11.2/docs/server.md
 and model metadata:
 https://github.com/nyosegawa/speech.cpp/blob/v0.11.2/docs/c-api.md .
+
+### Local voice inventory and English-only speaker controls
+
+The managed Windows UI now reads `speech.cpp`'s verified
+`speech.voices[].name` and `language` model metadata. Only advertised
+English speakers are exposed for live switching; unsupported speaker
+IDs are rejected while native TTS is Ready. Speakers from recognition
+models are never merged into the TTS voice list. Changing a permitted
+speaker does not secretly restart or download a model. These measures
+do not add any voice weights to the installer or guarantee the claimed
+speaker identity sounds natural.
