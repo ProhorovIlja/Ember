@@ -25,6 +25,7 @@ from offline_bundle import (
 from localhost_owner import listening_owner_pids, require_owned_speech_listener
 from voice_benchmark import ENDPOINT, PROMPTS, measure
 from private_worker_env import private_worker_environment
+from native_gguf_metadata import model_identity, self_test as native_gguf_self_test
 
 PORT = 43822
 HEALTH = "http://127.0.0.1:43822/health"
@@ -164,6 +165,7 @@ def probe(root, alias, device, voice, count, seconds):
         raise RuntimeError("Port 43822 is already occupied; stop that process first")
     executable = root / "engines/speech/speech.exe"
     weights = model_path(root, alias)
+    model_identity(weights, alias, selected_voice=voice)
     verify_windows_amd64_pe(executable, "engines/speech/speech.exe")
     args = [str(executable), "serve", str(weights), "--host", "127.0.0.1",
             "--port", str(PORT), "--device", device, "--threads", "4"]
@@ -208,6 +210,7 @@ def probe(root, alias, device, voice, count, seconds):
 
 
 def self_test():
+    native_gguf_self_test()
     fixture = ("TCP    127.0.0.1:43822    0.0.0.0:0    LISTENING    2480\n"
                "TCP    127.0.0.1:43822    127.0.0.1:5100    ESTABLISHED    2480\n"
                "TCP    0.0.0.0:43822     0.0.0.0:0    LISTENING    9999\n"
@@ -290,8 +293,10 @@ def main():
     verify(root, root / "offline-assets.json", approved=True, require_voice=True)
     if not (root / "Ember.exe").is_file():
         raise ValueError("Missing native Ember.exe in the assembled payload")
-    model_path(root, args.model)
-    print("Approved complete offline manifest and speech model header: PASS")
+    model_identity(model_path(root, args.model), args.model,
+                   selected_voice=args.voice)
+    print("Approved offline manifest, actual Qwen3 GGUF task/size and "
+          "selected English voice metadata: PASS")
     if not args.run:
         print("PREFLIGHT ONLY. No models, microphone or executable launched.")
         return
