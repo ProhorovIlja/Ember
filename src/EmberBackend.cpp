@@ -393,6 +393,7 @@ EmberBackend::EmberBackend(QObject *parent)
         m_speechHealthTimer.stop();
         setSpeechServerReady(false);
         m_speechInventoryPending = false;
+        m_speechEnglishVoices.clear();
         const bool startupTimedOut = m_speechStartupTimedOut;
         const bool inventoryInvalid = m_speechInventoryInvalid;
         m_speechStartupTimedOut = false;
@@ -818,6 +819,12 @@ void EmberBackend::setLocalVoice(const QString &value) {
     if (!safe.match(value).hasMatch() || m_localVoice == value) return;
     if (m_busy || m_speaking || m_listening) {
         setStatus("Finish speaking before changing the voice identity.");
+        return;
+    }
+    if (m_voiceEngine == 1 && m_speechServerReady &&
+        !m_speechEnglishVoices.contains(value)) {
+        setStatus("This voice is not an English speaker in the loaded GGUF. "
+                  "Choose a verified English voice from the list.");
         return;
     }
     m_localVoice = value;
@@ -1301,6 +1308,7 @@ void EmberBackend::startSpeechServer() {
     m_speechStartupTimedOut = false;
     m_speechInventoryPending = false;
     m_speechInventoryInvalid = false;
+    m_speechEnglishVoices.clear();
     setSpeechServerReady(false);
     m_speechServer.setWorkingDirectory(QFileInfo(binary).absolutePath());
     // Even explicit local GGUF file loading can trigger speech.cpp's
@@ -1329,6 +1337,7 @@ void EmberBackend::stopSpeechServer() {
     m_speechStartupTimedOut = false;
     m_speechInventoryPending = false;
     m_speechInventoryInvalid = false;
+    m_speechEnglishVoices.clear();
     m_speechHealthTimer.stop();
     setSpeechServerReady(false);
     if (m_speechSequence && m_voiceEngine == 1)
@@ -1408,18 +1417,20 @@ void EmberBackend::pollSpeechServer() {
                     43822, quint64(m_speechServer.processId())))
                 return;
             if (!responseOk) return; // a transient response can be retried
+            QStringList verifiedEnglishSpeakers;
             const bool expected = EmberCore::validNativeSpeechInventory(
                 body, contentType,
                 m_voiceEngine == 1 ? m_localModel : QString(),
                 m_recognitionEngine > 0
                     ? EmberCore::nativeAsrModel(m_recognitionEngine) : QString(),
-                m_localVoice);
+                m_localVoice, &verifiedEnglishSpeakers);
             if (!expected) {
                 m_speechInventoryInvalid = true;
                 m_speechHealthTimer.stop();
                 m_speechServer.kill(); // fail closed, no silent model fallback
                 return;
             }
+            m_speechEnglishVoices = verifiedEnglishSpeakers;
             m_speechHealthTimer.stop();
             setSpeechServerReady(true);
             setStatus(m_voiceEngine == 1
