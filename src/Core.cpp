@@ -14,6 +14,15 @@
 #include <cstring>
 #include <limits>
 #include <numbers>
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 namespace EmberCore {
 bool validBrainLaunchProfile(int contextTokens, int gpuLayers) {
     const bool contextOk = contextTokens == 4096 || contextTokens == 8192 ||
@@ -60,6 +69,19 @@ QString localSpeechGgufFile(const QString &absoluteFilePath) {
     // shares that might send a private model read over the network.
     const QString absolute = QDir::fromNativeSeparators(candidate.absoluteFilePath());
     if (absolute.startsWith("//")) return {};
+#ifdef Q_OS_WIN
+    // UNC syntax alone misses mapped network drives (e.g. Z:/). Ask Windows
+    // whether the volume is physically local/removable before accepting
+    // user-owned multi-gigabyte GGUF paths. A network drive could otherwise
+    // read or transmit model bytes without the user's intended offline setup.
+    if (absolute.size() < 3 || !absolute.at(0).isLetter() ||
+        absolute.at(1) != ':' || absolute.at(2) != '/') return {};
+    const QString drive = QDir::toNativeSeparators(absolute.left(3));
+    const UINT driveType = ::GetDriveTypeW(
+        reinterpret_cast<LPCWSTR>(drive.utf16()));
+    if (driveType != DRIVE_FIXED && driveType != DRIVE_REMOVABLE &&
+        driveType != DRIVE_CDROM && driveType != DRIVE_RAMDISK) return {};
+#endif
     // A user-chosen filename may reside behind a Windows junction in a
     // parent directory. Reject links across the entire path, not just the
     // final file, before handing it to the native speech model process.

@@ -2548,13 +2548,12 @@ ApplicationWindow {
                                 Rectangle {
                                     visible: ember.voiceEngine === 1 || ember.recognitionEngine > 0
                                     Layout.fillWidth: true
-                                    implicitHeight: (ember.voiceEngine === 1 ? 337 : 278) +
-                                                    (ember.voiceEngine === 1 ? 85 : 0) +
-                                                    (ember.recognitionEngine > 0 ? 85 : 0)
+                                    implicitHeight: nativeSpeechControls.implicitHeight + 30
                                     radius: 14
                                     color: window.cardColor
                                     border.color: window.borderColor
                                     ColumnLayout {
+                                        id: nativeSpeechControls
                                         anchors.fill: parent
                                         anchors.margins: 15
                                         spacing: 11

@@ -100,3 +100,13 @@ speech.cpp release. Genuine offline launch/listening tests on Windows 10,
 including RTX 4070 with Vulkan and English speech/RU-EN recognition, remain
 required before a release claim. See upstream:
 https://github.com/nyosegawa/speech.cpp/blob/main/docs/models.md
+
+Windows manual GGUF selection additionally checks the actual drive type using
+GetDriveTypeW, rejecting UNC and mapped network drives. Fixed, removable,
+optical and local RAM disks are allowed; unknown or remote types fail closed.
+This is a filesystem-location preflight, **not** a general guarantee that an
+installed third-party native executable never performs networking or that a
+volume cannot change after selection. Confirm offline behavior on actual
+Windows hardware. The Settings native speech card now sizes from its Qt
+ColumnLayout content, rather than relying on a hard-coded height that could
+clip the two model pickers at different display scales.
