@@ -1,4 +1,5 @@
 #include "SessionStore.h"
+#include "Core.h"
 #include <QDateTime>
 #include <QDataStream>
 #include <QFile>
@@ -420,7 +421,7 @@ bool SessionStore::restoreCompactBackup(const QString &path) {
             const QString role = obj.value("role").toString();
             const QString body = obj.value("body").toString();
             if ((role != "you" && role != "ember") ||
-                body.isEmpty() || body.size() > 65536) return fail();
+                body.isEmpty() || body.size() > EmberCore::kMaxArchivedChatCharacters) return fail();
             QSqlQuery insert(m_db);
             insert.prepare(
                 "INSERT INTO messages(session_id,role,body,created_at) VALUES(?,?,?,?)");
@@ -502,7 +503,7 @@ bool SessionStore::setNotes(const QString &session, const QString &text) {
 bool SessionStore::append(const QString &session, const QString &role,
                           const QString &body) {
     if (!m_ready || session.isEmpty() || (role != "you" && role != "ember") ||
-        body.isEmpty() || body.size() > 65536) return false;
+        body.isEmpty() || body.size() > EmberCore::kMaxArchivedChatCharacters) return false;
     if (!m_db.transaction()) return false;
     QSqlQuery insert(m_db);
     insert.prepare("INSERT INTO messages(session_id,role,body,created_at) VALUES(?,?,?,?)");
