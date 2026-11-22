@@ -37,6 +37,8 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QString voiceTimings READ voiceTimings NOTIFY voiceTimingsChanged)
     Q_PROPERTY(QVariantList messages READ messages NOTIFY messagesChanged)
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
+    Q_PROPERTY(bool hasOlderSessions READ hasOlderSessions NOTIFY sessionsChanged)
+    Q_PROPERTY(bool hasOlderMessages READ hasOlderMessages NOTIFY messagesChanged)
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY sessionsChanged)
     Q_PROPERTY(bool privateMode READ privateMode WRITE setPrivateMode NOTIFY privateModeChanged)
     Q_PROPERTY(QString continuityNotes READ continuityNotes NOTIFY continuityNotesChanged)
@@ -85,6 +87,12 @@ public:
     QString voiceTimings() const;
     QVariantList messages() const { return m_messages; }
     QVariantList sessions() const { return m_sessions; }
+    bool hasOlderSessions() const { return m_hasOlderSessions; }
+    bool hasOlderMessages() const {
+        return !m_privateMode && m_store && m_store->ready() &&
+               !m_sessionId.isEmpty() &&
+               m_store->totalMessages(m_sessionId) > m_messages.size();
+    }
     QString currentSessionId() const { return m_sessionId; }
     bool privateMode() const { return m_privateMode; }
     QString continuityNotes() const { return m_continuityNotes; }
@@ -185,6 +193,8 @@ public:
     Q_INVOKABLE void setContinuityNotes(const QString &text);
     Q_INVOKABLE void setRecognitionHints(const QString &text);
     Q_INVOKABLE QVariantList searchHistory(const QString &text) const;
+    Q_INVOKABLE void loadOlderSessions();
+    Q_INVOKABLE void loadEarlierMessages();
     Q_INVOKABLE void exportCurrentSession();
     Q_INVOKABLE void exportCompactHistory();
     Q_INVOKABLE void restoreCompactHistory();
@@ -277,6 +287,7 @@ private:
     bool m_lastReplyIncomplete = false;
     bool m_chatPreviewActive = false;
     QVariantList m_sessions;
+    bool m_hasOlderSessions = false;
     std::unique_ptr<SessionStore> m_store;
     std::unique_ptr<ImageLibrary> m_images;
     QVariantList m_imageItems;

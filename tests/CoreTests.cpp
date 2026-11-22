@@ -1006,6 +1006,55 @@ private slots:
         QVERIFY(!resolveGitHubRead("ProhorovIlja/Ember", read,
                                    endpoint, viewNo, path) == false);
     }
+    void localConversationHistoryLoadsOlderPagesWithoutDeletingRecords() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        SessionStore archive(temporary.filePath("long-history.sqlite"));
+        QVERIFY2(archive.ready(), qPrintable(archive.error()));
+        QStringList ids;
+        for (int i = 0; i < 225; ++i) {
+            const QString id = archive.createSession();
+            QVERIFY(!id.isEmpty());
+            ids.append(id);
+        }
+        const auto first = archive.sessions(80, 0);
+        const auto middle = archive.sessions(80, 80);
+        const auto last = archive.sessions(80, 160);
+        QCOMPARE(first.size(), 80);
+        QCOMPARE(middle.size(), 80);
+        QCOMPARE(last.size(), 65);
+        QSet<QString> observed;
+        for (const QVariantList &page : {first, middle, last}) {
+            for (const QVariant &entry : page) {
+                const QString id = entry.toMap().value("id").toString();
+                QVERIFY(!observed.contains(id));
+                observed.insert(id);
+            }
+        }
+        QCOMPARE(observed.size(), 225);
+        QVERIFY(archive.sessions(80, -1).isEmpty());
+        QVERIFY(archive.sessions(80, 225).isEmpty());
+        const QString session = ids.first();
+        for (int i = 1; i <= 340; ++i)
+            QVERIFY(archive.append(session, i % 2 ? "you" : "ember",
+                                   "Archived message " + QString::number(i)));
+        QCOMPARE(archive.totalMessages(session), qint64(340));
+        const auto newer = archive.messages(session, 300);
+        const auto older = archive.messages(session, 100, 300);
+        QCOMPARE(newer.size(), 300);
+        QCOMPARE(older.size(), 40);
+        QCOMPARE(older.first().toMap().value("body").toString(),
+                 QString("Archived message 1"));
+        QCOMPARE(older.last().toMap().value("body").toString(),
+                 QString("Archived message 40"));
+        QCOMPARE(newer.first().toMap().value("body").toString(),
+                 QString("Archived message 41"));
+        QCOMPARE(newer.last().toMap().value("body").toString(),
+                 QString("Archived message 340"));
+        QVERIFY(archive.messages(session, 100, -1).isEmpty());
+        QVERIFY(archive.messages(session, 100, 340).isEmpty());
+        QCOMPARE(archive.totalMessages(session), qint64(340));
+    }
     void localAgentToolContractIsTypedAndStrictlyReadOnly() {
         using namespace EmberAgent;
         const QJsonArray history{

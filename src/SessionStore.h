@@ -14,7 +14,7 @@ public:
     bool ready() const { return m_ready; }
     QString error() const { return m_error; }
     QString createSession();
-    QVariantList sessions(int limit = 80) const;
+    QVariantList sessions(int limit = 80, int offset = 0) const;
     QVariantList search(const QString &text, int limit = 50) const;
     // Small, opt-in-to-this-chat lexical recollection; no embeddings or cloud.
     QString historicalExcerpts(const QString &session, const QString &question,
@@ -24,7 +24,8 @@ public:
     bool exportCompactBackup(const QString &path) const;
     // Transactional restore into new sessions: never replaces existing chats.
     bool restoreCompactBackup(const QString &path);
-    QVariantList messages(const QString &session, int limit = 300) const;
+    QVariantList messages(const QString &session, int limit = 300,
+                          int offset = 0) const;
     bool append(const QString &session, const QString &role, const QString &body);
     bool remove(const QString &session);
     bool exists(const QString &session) const;

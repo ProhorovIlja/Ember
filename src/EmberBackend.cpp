@@ -3534,8 +3534,45 @@ void EmberBackend::setRecognitionHints(const QString &text) {
     setStatus("Recognition terms saved locally for this conversation only.");
 }
 void EmberBackend::refreshSessions() {
-    m_sessions = m_store && m_store->ready() ? m_store->sessions() : QVariantList();
+    const int target = std::max(80, int(m_sessions.size()));
+    m_sessions.clear();
+    m_hasOlderSessions = false;
+    if (m_store && m_store->ready()) {
+        for (int offset = 0; offset < target; offset += 80) {
+            const QVariantList page = m_store->sessions(80, offset);
+            m_sessions.append(page);
+            if (page.size() < 80) break;
+        }
+        m_hasOlderSessions = !m_store->sessions(1, m_sessions.size()).isEmpty();
+    }
     emit sessionsChanged();
+}
+void EmberBackend::loadOlderSessions() {
+    if (m_privateMode || !m_store || !m_store->ready() ||
+        !m_hasOlderSessions) return;
+    const QVariantList page = m_store->sessions(80, m_sessions.size());
+    m_sessions.append(page);
+    m_hasOlderSessions = !m_store->sessions(1, m_sessions.size()).isEmpty();
+    emit sessionsChanged();
+    setStatus(QString("Loaded %1 older local conversations.").arg(page.size()));
+}
+void EmberBackend::loadEarlierMessages() {
+    if (m_privateMode || m_busy || m_listening || m_speaking ||
+        !m_store || !m_store->ready() || m_sessionId.isEmpty()) {
+        setStatus("Finish current work before retrieving older local messages.");
+        return;
+    }
+    if (!hasOlderMessages()) return;
+    const QVariantList older = m_store->messages(
+        m_sessionId, 100, m_messages.size());
+    if (older.isEmpty()) {
+        setStatus("No earlier archived messages found.");
+        return;
+    }
+    for (int i = older.size() - 1; i >= 0; --i)
+        m_messages.prepend(older.at(i));
+    emit messagesChanged();
+    setStatus(QString("Loaded %1 earlier local messages.").arg(older.size()));
 }
 void EmberBackend::rebuildConversationHistory() {
     m_history.clear();

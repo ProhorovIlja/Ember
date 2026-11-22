@@ -22,6 +22,7 @@ ApplicationWindow {
     property string externalReferencePreview: ""
     property string externalReferenceSource: "GitHub"
     property string localEditPreview: ""
+    property bool preserveOlderScroll: false
     Dialog {
         id: localCodeEditDialog
         parent: Overlay.overlay
@@ -509,6 +510,19 @@ ApplicationWindow {
                     }
                     PillButton {
                         Layout.fillWidth: true
+                        text: "Load older conversations"
+                        implicitHeight: 31
+                        visible: ember.hasOlderSessions &&
+                                 window.historyQuery.length === 0 &&
+                                 !ember.privateMode
+                        enabled: ember.localHistoryReady
+                        onClicked: ember.loadOlderSessions()
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 700
+                        ToolTip.text: "Page through all saved sessions, 80 at a time. No cloud, no deletion."
+                    }
+                    PillButton {
+                        Layout.fillWidth: true
                         text: "Export selected chat"
                         implicitHeight: 37
                         enabled: ember.localHistoryReady && ember.currentSessionId.length > 0 && !ember.busy
@@ -983,6 +997,20 @@ ApplicationWindow {
                                     onClicked: ember.clearConversation()
                                 }
                             }
+                            PillButton {
+                                Layout.fillWidth: true
+                                text: "Load earlier messages"
+                                implicitHeight: 31
+                                visible: ember.hasOlderMessages && !ember.privateMode
+                                enabled: !ember.busy && !ember.listening && !ember.speaking
+                                onClicked: {
+                                    window.preserveOlderScroll = true
+                                    ember.loadEarlierMessages()
+                                }
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 700
+                                ToolTip.text: "Retrieve the next 100 archived messages from this chat. No records are erased."
+                            }
                             ListView {
                                 id: timeline
                                 Layout.fillWidth: true
@@ -1069,7 +1097,14 @@ ApplicationWindow {
                                 }
                                 Connections {
                                     target: ember
-                                    function onMessagesChanged() { timeline.positionViewAtEnd() }
+                                    function onMessagesChanged() {
+                                        if (window.preserveOlderScroll) {
+                                            timeline.positionViewAtBeginning()
+                                            window.preserveOlderScroll = false
+                                        } else {
+                                            timeline.positionViewAtEnd()
+                                        }
+                                    }
                                 }
                             }
                             Rectangle {

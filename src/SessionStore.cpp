@@ -96,13 +96,15 @@ QString SessionStore::createSession() {
     }
     return id;
 }
-QVariantList SessionStore::sessions(int limit) const {
+QVariantList SessionStore::sessions(int limit, int offset) const {
     QVariantList result;
     if (!m_ready) return result;
     QSqlQuery query(m_db);
+    if (offset < 0) return result;
     query.prepare("SELECT id,title,updated_at FROM sessions "
-                  "ORDER BY updated_at DESC, rowid DESC LIMIT ?");
+                  "ORDER BY updated_at DESC, rowid DESC LIMIT ? OFFSET ?");
     query.addBindValue(std::clamp(limit, 1, 200));
+    query.addBindValue(offset);
     if (!query.exec()) return result;
     while (query.next()) {
         result.append(QVariantMap{
@@ -113,14 +115,16 @@ QVariantList SessionStore::sessions(int limit) const {
     }
     return result;
 }
-QVariantList SessionStore::messages(const QString &session, int limit) const {
+QVariantList SessionStore::messages(const QString &session,
+                                    int limit, int offset) const {
     QVariantList reverse;
-    if (!m_ready || session.isEmpty()) return reverse;
+    if (!m_ready || session.isEmpty() || offset < 0) return reverse;
     QSqlQuery query(m_db);
     query.prepare("SELECT role,body FROM messages WHERE session_id=? "
-                  "ORDER BY id DESC LIMIT ?");
+                  "ORDER BY id DESC LIMIT ? OFFSET ?");
     query.addBindValue(session);
     query.addBindValue(std::clamp(limit, 1, 500));
+    query.addBindValue(offset);
     if (!query.exec()) return reverse;
     while (query.next()) {
         reverse.append(QVariantMap{{"role", query.value(0).toString()},
