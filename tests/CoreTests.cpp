@@ -16,6 +16,7 @@
 #include "DriveRead.h"
 #include <QTemporaryDir>
 #include <QDir>
+#include <QCryptographicHash>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -582,6 +583,42 @@ private slots:
         QVERIFY(!EmberBundle::restoreComplete(secondary, rehydrated, corrupted, &error));
         QCOMPARE(secondary.sessions().size(), 2);
         QCOMPARE(rehydrated.imageCount(), 1);
+    }
+    void restoredImagesMustDecodeFullyBeforeInstallingArchivedBytes() {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        ImageLibrary source(temp.filePath("source"));
+        ImageLibrary restored(temp.filePath("restored"));
+        QImage noise(128, 128, QImage::Format_ARGB32);
+        quint32 state = 0x8ab341cdu;
+        for (int y = 0; y < noise.height(); ++y) {
+            auto *row = reinterpret_cast<QRgb *>(noise.scanLine(y));
+            for (int x = 0; x < noise.width(); ++x) {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                row[x] = qRgba(int(state & 255u), int((state >> 8) & 255u),
+                               int((state >> 16) & 255u),
+                               64 + int((state >> 24) % 190u));
+            }
+        }
+        const QString id = source.importImage(noise);
+        QVERIFY(!id.isEmpty());
+        const QByteArray complete = source.verifiedBytes(id);
+        QVERIFY(complete.size() > 1000);
+        QVERIFY(complete.startsWith(QByteArray::fromHex("89504e470d0a1a0a")));
+        // Valid PNG signature and IHDR, but not enough pixel bytes. A fresh
+        // matching checksum must not allow the incomplete image into Library.
+        const QByteArray broken = complete.left(64);
+        const QString brokenId = QString::fromLatin1(
+            QCryptographicHash::hash(broken, QCryptographicHash::Sha256).toHex());
+        bool created = true;
+        QVERIFY(!restored.installArchived(brokenId, broken, true, &created));
+        QVERIFY(!created);
+        QCOMPARE(restored.imageCount(), 0);
+        QVERIFY(restored.installArchived(id, complete, true, &created));
+        QVERIFY(created);
+        QCOMPARE(restored.verifiedBytes(id), complete);
     }
     void nativeImageLibraryImportDeduplicatesAndDoesNotUseNetwork() {
         QTemporaryDir dir;

@@ -174,6 +174,12 @@ bool ImageLibrary::installArchived(const QString &id,
         dimensions.height() > 1536 ||
         qint64(dimensions.width()) * dimensions.height() > 2500000 ||
         !reader.canRead()) return false;
+    // Header checks and a matching SHA-256 cannot prove that a full image
+    // decodes: an attacker can compute a new hash for truncated PNG/JPEG data.
+    // Complete decoding stays bounded by the 1536px/2.5M-pixel header guard
+    // and happens before installing any untrusted archived bytes.
+    const QImage decoded = reader.read();
+    if (decoded.isNull() || decoded.size() != dimensions) return false;
     // An identical digest already installed under the other extension should
     // be reused, not stored as a second copy.
     if (!filePath(id).isEmpty()) return verifiedBytes(id) == encoded;
