@@ -350,8 +350,9 @@ tensor weights or starting any executable. For the allowed Qwen3-TTS
 0.6B/1.7B aliases, it requires the matching
 `general.architecture`, `general.size_label`, task
 `speech.task=synthesis`, layout 1, compatible `speech.requires`,
-English in `general.languages`, paired `speech.voices` and
-`speech.voice_languages`, and at least one English speaker. When the
+English in `general.languages`, paired `speech.voices`,
+`speech.voice_languages`, `speech.voice_genders` and
+`speech.voice_descriptions`, and at least one English female speaker. When the
 user selects a specific speaker in the manual native TTS acceptance
 utility, its identity must already appear as English in the GGUF.
 
