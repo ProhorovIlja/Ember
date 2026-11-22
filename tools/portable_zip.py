@@ -64,18 +64,18 @@ def archive(root, output):
 
 
 def self_test():
-    from offline_bundle import inventory, stage, assemble
+    from offline_bundle import inventory, stage, assemble, fake_pe64, fake_gguf, fake_whisper
     import json
     with tempfile.TemporaryDirectory() as temp:
         base = Path(temp)
         raw = base / "source"
         for name, body, component in (
-            ("engines/llama/a.exe", b"llama", "llm"),
-            ("models/llm/a.gguf", b"llm", "llm"),
-            ("engines/whisper/a.exe", b"whisper", "asr"),
-            ("models/stt/a.bin", b"asr", "asr"),
-            ("engines/speech/a.exe", b"speech", "tts"),
-            ("models/speech/a.gguf", b"tts", "tts"),
+            ("engines/llama/llama-server.exe", fake_pe64(), "llm"),
+            ("models/llm/model.gguf", fake_gguf(), "llm"),
+            ("engines/whisper/whisper-cli.exe", fake_pe64(), "asr"),
+            ("models/stt/ggml-base.bin", fake_whisper(), "asr"),
+            ("engines/speech/speech.exe", fake_pe64(), "tts"),
+            ("models/speech/qwen3-tts-0.6b.gguf", fake_gguf(), "tts"),
             ("licenses/all.txt", b"synthetic testing license", "license"),
         ):
             target = raw / name
@@ -107,15 +107,15 @@ def self_test():
         assert count >= 10 and len(sha) == 64
         with zipfile.ZipFile(base / "portable.zip") as zipped:
             assert zipped.read("Ember.exe") == b"mock app"
-            assert zipped.read("models/llm/a.gguf") == b"llm"
-            assert zipped.getinfo("models/llm/a.gguf").compress_type == zipfile.ZIP_STORED
+            assert zipped.read("models/llm/model.gguf")[:8] == fake_gguf()[:8]
+            assert zipped.getinfo("models/llm/model.gguf").compress_type == zipfile.ZIP_STORED
             assert "offline-assets.json" in zipped.namelist()
         try:
             archive(complete, base / "portable.zip")
             raise AssertionError("Overwriting a ZIP was allowed")
         except ValueError:
             pass
-    print("portable_zip ZIP64 packaging self-test passed (licensed local model fixtures)")
+    print("portable_zip ZIP64 packaging self-test passed (synthetic PE/GGUF/GGML headers; not real weights)")
 
 
 def main():
