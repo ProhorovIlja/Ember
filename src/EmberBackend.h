@@ -156,6 +156,7 @@ public:
     Q_INVOKABLE void setLocalModel(const QString &value);
     Q_INVOKABLE void setInputDeviceIndex(int index);
     Q_INVOKABLE void setOutputDeviceIndex(int index);
+    Q_INVOKABLE QString inspectOfflineSetup() const;
     Q_INVOKABLE void startBrain();
     Q_INVOKABLE void stopBrain();
     Q_INVOKABLE void startSpeechServer();

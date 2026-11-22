@@ -44,6 +44,18 @@ Then open Ember.exe, select **Start brain**, wait for local health readiness,
 choose **Troubleshooting** or **Development**, and send a test prompt. Text
 conversation is independent of ASR, TTS or an Internet connection.
 
+## Native, read-only offline setup check
+
+In Ember Settings, click **Check offline setup** to see a local-only file
+preflight for llama-server, GGUF v2/v3, multilingual Whisper binary and
+Windows microphone detection. The check validates a native x64 PE signature,
+GGUF format header, reasonable file size and rejects English-only `.en.bin`
+for the RU/EN dictation milestone. It never executes the engine, reads
+entire model weights, talks to an external host, or downloads packages.
+A green preflight only means the selected paths look plausible; a real
+RTX 4070 inference session, correct CUDA dependencies, model checksum,
+license evidence and RU/EN microphone acceptance remain required.
+
 ## What is and is not verified
 
 The new text-first profiles request up to 2048 completion tokens for coding

@@ -7,6 +7,7 @@
 #include "LocalAgent.h"
 #include "ProjectTestRun.h"
 #include "LocalCodeEdit.h"
+#include "LocalSetupAudit.h"
 #include "PublicGitHub.h"
 #include "GitHubIssueWrite.h"
 #include "GitHubDetailRead.h"
@@ -57,6 +58,67 @@ private slots:
 #else
         QVERIFY(!EmberCore::ownedLoopbackTcpListener(43821, 1234));
 #endif
+    }
+    void localOfflineSetupPreflightChecksActualFileHeadersWithoutExecution() {
+        using namespace EmberLocalSetup;
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        QDir root(temporary.path());
+        auto writeNativeExe = [&](const QString &name, quint16 machine = 0x8664) {
+            QFile file(root.filePath(name));
+            if (!file.open(QIODevice::WriteOnly)) return false;
+            QByteArray bytes(512, char(0));
+            bytes[0] = 'M'; bytes[1] = 'Z';
+            bytes[0x3c] = char(0x80);
+            bytes.replace(0x80, 4, QByteArray("PE\0\0", 4));
+            bytes[0x84] = char(machine & 0xff);
+            bytes[0x85] = char(machine >> 8);
+            return file.write(bytes) == bytes.size();
+        };
+        QVERIFY(writeNativeExe("llama-server.exe"));
+        QVERIFY(writeNativeExe("whisper-cli.exe"));
+        QVERIFY(writeNativeExe("x86.exe", 0x014c));
+        auto writeWeight = [&](const QString &name, const QByteArray &header) {
+            QFile file(root.filePath(name));
+            if (!file.open(QIODevice::WriteOnly)) return false;
+            if (file.write(header) != header.size()) return false;
+            return file.resize(1024 * 1024 + 128);
+        };
+        QByteArray gguf(8, char(0));
+        gguf.replace(0, 4, "GGUF");
+        gguf[4] = char(3);
+        QVERIFY(writeWeight("language.gguf", gguf));
+        QVERIFY(writeWeight("ggml-base.bin", QByteArray("synthetic mock ASR")));
+        QVERIFY(writeWeight("ggml-base.en.bin", QByteArray("synthetic mock ASR")));
+        Inputs input{root.filePath("llama-server.exe"),
+                     root.filePath("language.gguf"),
+                     root.filePath("whisper-cli.exe"),
+                     root.filePath("ggml-base.bin"), true, true};
+        const auto ready = inspect(input);
+        QVERIFY2(ready.textFilesReady, qPrintable(ready.text));
+        QVERIFY2(ready.dictationFilesReady, qPrintable(ready.text));
+        QVERIFY(ready.text.contains("NOT a passing inference"));
+        QVERIFY(ready.text.contains("No engine launched"));
+        input.microphoneDetected = false;
+        QVERIFY(inspect(input).textFilesReady);
+        QVERIFY(!inspect(input).dictationFilesReady);
+        input.microphoneDetected = true;
+        input.whisperModel = root.filePath("ggml-base.en.bin");
+        QVERIFY(!inspect(input).dictationFilesReady); // Russian is not supported by .en
+        input.whisperModel = root.filePath("ggml-base.bin");
+        input.brainExe = root.filePath("x86.exe");
+        QVERIFY(!inspect(input).textFilesReady);
+        QVERIFY(inspect(input).dictationFilesReady);
+        input.brainExe = root.filePath("llama-server.exe");
+        input.brainModel = root.filePath("ggml-base.bin");
+        QVERIFY(!inspect(input).textFilesReady); // Wrong model format
+        input.brainModel = root.filePath("language.gguf");
+        input.whisperSelected = false;
+        QVERIFY(!inspect(input).dictationFilesReady); // native server not tested
+        QVERIFY(inspect(input).textFilesReady);
+        input.whisperSelected = true;
+        input.whisperExe = root.filePath("missing.exe");
+        QVERIFY(!inspect(input).dictationFilesReady);
     }
     void textFirstDictationNeverImplicitlySends() {
         using EmberCore::maySendCompletedDictation;

@@ -139,6 +139,14 @@ attempt rollback, but an abrupt power failure is not cross-file atomic.
 Tests remain independently approved. This is a bounded capability, not
 unrestricted autonomous programming.
 
+**Offline installation self-check:** Settings → **Check offline setup** now
+inspects the selected Windows x64 PE engine headers, the local GGUF v2/v3
+magic and multilingual Whisper model file presence, and the selected input
+microphone. It runs no engines, downloads nothing and never contacts the
+Internet. The on-screen report explicitly distinguishes file readiness from
+verified inference, ASR quality, CUDA dependencies and licensing; choose
+models directly with Browse even if their directory is not writable.
+
 **Text-first milestone (November 2026):** The app starts on the **Chat**
 page. Full duplex live Voice is deferred, but its implementation is preserved
 for future work and does not need to run. **Start dictation** records offline

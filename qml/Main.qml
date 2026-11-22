@@ -22,7 +22,35 @@ ApplicationWindow {
     property string externalReferencePreview: ""
     property string externalReferenceSource: "GitHub"
     property string localEditPreview: ""
+    property string offlineSetupReport: ""
     property bool preserveOlderScroll: false
+    Dialog {
+        id: offlineSetupDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(window.width - 70, 755)
+        height: Math.min(window.height - 70, 540)
+        modal: true
+        title: "Offline setup · local readiness check"
+        standardButtons: Dialog.Close
+        background: Rectangle {
+            color: "#091522"
+            radius: 16
+            border.color: "#2A6292"
+        }
+        contentItem: ScrollView {
+            TextArea {
+                readOnly: true
+                selectByMouse: true
+                text: window.offlineSetupReport
+                font.family: "Consolas"
+                font.pixelSize: 12
+                color: "#DBE9F6"
+                wrapMode: TextEdit.Wrap
+                background: Rectangle { color: "#0B192A"; radius: 8 }
+            }
+        }
+    }
     Dialog {
         id: localCodeEditDialog
         parent: Overlay.overlay
@@ -1494,7 +1522,23 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                Text { text: "MODEL ROUTING"; color: "#D9ECFF"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { text: "MODEL ROUTING"; color: "#D9ECFF"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                                    Item { Layout.fillWidth: true }
+                                    PillButton {
+                                        text: "Check offline setup"
+                                        implicitWidth: 176
+                                        implicitHeight: 36
+                                        onClicked: {
+                                            window.offlineSetupReport = ember.inspectOfflineSetup()
+                                            offlineSetupDialog.open()
+                                        }
+                                        ToolTip.visible: hovered
+                                        ToolTip.delay: 700
+                                        ToolTip.text: "Read-only local model and ASR file checks. No model launch or internet requests; results are not inference tests."
+                                    }
+                                }
                                 Repeater {
                                     model: [
                                         { key: "brainExe", label: "llama-server executable" },

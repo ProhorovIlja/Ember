@@ -1,5 +1,6 @@
 #include "EmberBackend.h"
 #include "LocalTextImport.h"
+#include "LocalSetupAudit.h"
 #include "LocalRepoSearch.h"
 #include "PublicGitHub.h"
 #include "GitHubIssueWrite.h"
@@ -871,6 +872,16 @@ void EmberBackend::appendMessage(const QString &role, const QString &text) {
     emit messagesChanged();
 }
 
+QString EmberBackend::inspectOfflineSetup() const {
+    const EmberLocalSetup::Inputs input{
+        configPath("brainExe"), configPath("brainModel"),
+        configPath("asrExe"), configPath("asrModel"),
+        m_recognitionEngine == 0,
+        !activeInput().isNull()
+    };
+    const auto report = EmberLocalSetup::inspect(input);
+    return report.text;
+}
 void EmberBackend::startBrain() {
     if (m_brain.state() != QProcess::NotRunning) {
         setStatus(m_brainReady ? "Local brain is already running." : "The model is still loading.");
