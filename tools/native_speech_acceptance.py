@@ -58,7 +58,8 @@ def startup_environment():
     for name in list(env):
         upper = name.upper()
         if (any(term in upper for term in
-                ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY")) or
+                ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY",
+                 "PRIVATE_KEY")) or
                 upper.startswith(("AWS_", "GITHUB_", "OPENAI_", "GOOGLE_",
                                   "AZURE_"))):
             env.pop(name, None)
@@ -78,6 +79,19 @@ def model_path(root, alias):
     return path
 
 
+def valid_health_reply(status, content_type, body):
+    """The documented speech.cpp readiness contract, not a generic HTTP 200."""
+    if (status != 200 or not isinstance(body, bytes) or
+            not 0 < len(body) <= 4096 or
+            content_type.split(";", 1)[0].strip().lower() != "application/json"):
+        return False
+    try:
+        payload = json.loads(body.decode("utf-8", "strict"))
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return isinstance(payload, dict) and payload.get("status") == "ok"
+
+
 def wait_for_speech(proc, seconds):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -91,7 +105,9 @@ def wait_for_speech(proc, seconds):
             try:
                 with HTTP.open(Request(HEALTH, method="GET"), timeout=3) as reply:
                     body = reply.read(4097)
-                    if reply.status == 200 and len(body) <= 4096:
+                    if valid_health_reply(
+                            reply.status, reply.headers.get("Content-Type", ""),
+                            body):
                         require_owned_speech_listener(proc.pid, PORT)
                         return
                     if len(body) > 4096:
@@ -157,6 +173,15 @@ def self_test():
                "TCP    127.0.0.1:43821    0.0.0.0:0    LISTENING    5000\n")
     assert listening_owner_pids(fixture, PORT) == {2480}
     assert listening_owner_pids("", PORT) == set()
+    assert valid_health_reply(200, "application/json", b'{"status":"ok"}')
+    assert valid_health_reply(
+        200, "application/json; charset=utf-8", b'{"status":"ok"}')
+    assert not valid_health_reply(200, "application/json", b'{"status":"loading"}')
+    assert not valid_health_reply(200, "application/json", b'{}')
+    assert not valid_health_reply(200, "text/html", b'{"status":"ok"}')
+    assert not valid_health_reply(503, "application/json", b'{"status":"ok"}')
+    assert not valid_health_reply(200, "application/json", b'x' * 4097)
+    assert not valid_health_reply(200, "application/json", b'{')
     env = startup_environment()
     assert env["SPEECH_NO_UPDATE_CHECK"] == "1"
     assert env["HF_HUB_OFFLINE"] == "1"
