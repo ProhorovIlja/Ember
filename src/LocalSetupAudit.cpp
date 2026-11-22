@@ -145,3 +145,4 @@ Report inspect(const Inputs &input) {
     report.text = lines.join("\n");
     return report;
 }
+} // namespace EmberLocalSetup
