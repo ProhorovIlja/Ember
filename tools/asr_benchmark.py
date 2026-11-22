@@ -5,6 +5,7 @@ import http.client
 import io
 import json
 import re
+import subprocess
 import threading
 import time
 import wave
@@ -207,7 +208,7 @@ def main():
         p.error("--speech-pid is mandatory for private live ASR")
     try:
         require_owned_speech_listener(args.speech_pid)
-    except (ValueError, OSError, __import__("subprocess").TimeoutExpired) as exc:
+    except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
         p.error("Trusted local ASR process check failed: " + str(exc))
     if args.file.stat().st_size > MAX_WAV:
         p.error("WAV is larger than the 25 MiB service limit")
