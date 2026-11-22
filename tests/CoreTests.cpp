@@ -93,8 +93,12 @@ private slots:
                 {"task", task}, {"architecture", family}, {"size_label", size},
                 {"languages", QJsonArray{"en", "ru"}},
                 {"voices", QJsonArray{
-                    QJsonObject{{"name", "vivian"}, {"language", "en"}},
-                    QJsonObject{{"name", "serena"}, {"language", "en"}}
+                    QJsonObject{{"name", "vivian"}, {"language", "en"},
+                                {"gender", "female"}},
+                    QJsonObject{{"name", "serena"}, {"language", "en"},
+                                {"gender", "female"}},
+                    QJsonObject{{"name", "ryan"}, {"language", "en"},
+                                {"gender", "male"}}
                 }}
             };
             return QJsonObject{{"id", task + "-local-gguf"},
@@ -121,6 +125,9 @@ private slots:
             both, "application/json", "qwen3-tts-0.6b",
             "qwen3-asr-1.7b", "vivian", &advertised));
         QCOMPARE(advertised, QStringList({"vivian", "serena"}));
+        // An English male voice may be present in the actual upstream model,
+        // but is never an English female preset or a valid selected persona.
+        QVERIFY(!valid(ttsOnly, "qwen3-tts-0.6b", "", "ryan"));
         // Only synthesis metadata may expose selectable output speakers.
         QJsonObject fakeAsrVoices = asr;
         QJsonObject fakeInfo = fakeAsrVoices.value("speech").toObject();
@@ -147,6 +154,32 @@ private slots:
         QVERIFY(!valid(asrOnly, "", "qwen3-asr-0.6b"));
         QVERIFY(!valid(ttsOnly, "qwen3-tts-0.6b", "", "unknown-voice"));
         QVERIFY(!valid(ttsOnly, "qwen3-tts-0.6b", "", "Vivian"));
+        // A missing/unknown gender cannot silently count as an English
+        // female voice, even if its language and ID are correct.
+        QJsonObject missingGenderModel = tts;
+        QJsonObject missingGenderInfo = tts.value("speech").toObject();
+        missingGenderInfo.insert("voices", QJsonArray{
+            QJsonObject{{"name", "vivian"}, {"language", "en"}}
+        });
+        missingGenderModel.insert("speech", missingGenderInfo);
+        QVERIFY(!valid(inventory(QJsonArray{missingGenderModel}),
+                       "qwen3-tts-0.6b", "", "vivian"));
+        QJsonObject wrongGenderInfo = missingGenderInfo;
+        wrongGenderInfo.insert("voices", QJsonArray{
+            QJsonObject{{"name", "vivian"}, {"language", "en"},
+                        {"gender", "male"}},
+            QJsonObject{{"name", "serena"}, {"language", "en"},
+                        {"gender", "female"}}
+        });
+        QJsonObject mixedGenderModel = tts;
+        mixedGenderModel.insert("speech", wrongGenderInfo);
+        QStringList femaleOnly;
+        QVERIFY(validNativeSpeechInventory(
+            inventory(QJsonArray{mixedGenderModel}), "application/json",
+            "qwen3-tts-0.6b", "", "serena", &femaleOnly));
+        QCOMPARE(femaleOnly, QStringList({"serena"}));
+        QVERIFY(!valid(inventory(QJsonArray{mixedGenderModel}),
+                       "qwen3-tts-0.6b", "", "vivian"));
         QVERIFY(!valid(both, "", ""));
         QVERIFY(!valid(both, "qwen3-tts-0.6b", ""));
         QVERIFY(!valid(ttsOnly, "qwen3-tts-custom", ""));
