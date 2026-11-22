@@ -21,6 +21,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 from offline_bundle import verify
 from asr_benchmark import metrics
 from text_benchmark import ENDPOINT, measure
+from private_worker_env import private_worker_environment as restricted_environment
 
 PORT = 43821
 HEALTH = "http://127.0.0.1:43821/health"
@@ -82,17 +83,6 @@ def wait_for_server(process, seconds):
                 pass  # 503 while the GGUF is still being loaded
         time.sleep(1)
     raise RuntimeError("Local model was not ready before the bounded timeout")
-
-
-def restricted_environment():
-    env = os.environ.copy()
-    for key in list(env):
-        upper = key.upper()
-        if (any(marker in upper for marker in
-                ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY")) or
-                upper.startswith(("AWS_", "GITHUB_", "OPENAI_", "GOOGLE_", "AZURE_"))):
-            env.pop(key, None)
-    return env
 
 
 def parse_token_ids(doc):
@@ -275,6 +265,8 @@ def self_test():
     """
     assert netstat_listening_pids(fixture) == {1234}
     assert netstat_listening_pids("") == set()
+    from private_worker_env import self_test as verify_private_env
+    verify_private_env()
     assert netstat_listening_pids(fixture.replace("1234", "9999")) == {9999}
     assert parse_token_ids({"tokens": [10, 42, 5000]}) == 3
     for invalid in ({"tokens": []}, {"tokens": [1, -1]},
