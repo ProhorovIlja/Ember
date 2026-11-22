@@ -354,7 +354,10 @@ QString safeMarkdownHtml(const QString &markdown) {
     // Qt Quick RichText can fetch remote images when directly given LLM text.
     // Build only self-contained formatting tags, with NO img/a/style/script
     // tags, user-defined attributes, links, images or file URLs.
-    const QStringList lines = markdown.left(32768).split(QLatin1Char('\n'));
+    // The local LLM stream can legitimately produce up to 65,536 UTF-16
+    // characters for longer coding/story replies. A smaller renderer cap
+    // silently concealed the tail of otherwise completed messages.
+    const QStringList lines = markdown.left(65536).split(QLatin1Char('\n'));
     QString html = QStringLiteral("<div style=\"color:#EEF3F9\">");
     bool fenced = false;
     QChar fenceMarker;
