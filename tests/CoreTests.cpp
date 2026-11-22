@@ -1769,14 +1769,14 @@ private slots:
         QVERIFY(textContentUrl(id, "application/vnd.google-apps.spreadsheet").isEmpty());
         QVERIFY(textContentUrl("../escape", "text/plain").isEmpty());
         const auto preview = parseTextContent(id, "Personal notes", "text/plain",
-                                               "line one\\nline two");
+                                               "line one\nline two");
         QVERIFY2(preview.ok(), qPrintable(preview.error));
         QCOMPARE(preview.characters, 17);
         QVERIFY(preview.text.contains("line two"));
         QVERIFY(preview.text.contains("UNTRUSTED"));
         QVERIFY(!preview.truncated);
-        QVERIFY(!parseTextContent(id, "notes", "text/plain", "\\xff").ok());
-        QVERIFY(!parseTextContent(id, "notes", "text/plain", QByteArray("a\\0b", 3)).ok());
+        QVERIFY(!parseTextContent(id, "notes", "text/plain", "\xff").ok());
+        QVERIFY(!parseTextContent(id, "notes", "text/plain", QByteArray("a\0b", 3)).ok());
         QVERIFY(!parseTextContent(id, "notes", "image/png", "not text").ok());
         QVERIFY(!parseTextContent(id, "notes", "text/plain", QByteArray(100000, 'x')).ok());
         const auto large = parseTextContent(id, "notes", "text/plain",
