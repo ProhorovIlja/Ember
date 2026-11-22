@@ -85,6 +85,10 @@ bool captureAllowedWithInterruption(bool busy, bool listening,
                                     bool speechActive, bool recognitionActive) {
     return !listening && !recognitionActive && (!busy || speechActive);
 }
+bool brainStopKeepsDictation(bool listening, bool captureIsDictation,
+                            bool transcribingDictation) {
+    return (listening && captureIsDictation) || transcribingDictation;
+}
 AudioLevel pcmLevel(const char *data, qsizetype length, const QAudioFormat &format) {
     AudioLevel out;
     const int frameBytes = format.bytesPerFrame();
