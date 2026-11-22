@@ -492,6 +492,11 @@ private slots:
                 QStringLiteral("NOT_VISIBLE_BEYOND_ARCHIVE_CAP"))
                 .contains(QStringLiteral("NOT_VISIBLE_BEYOND_ARCHIVE_CAP")));
 
+        // Three-byte UTF-8 characters exceed the former 192-KiB raw
+        // backup-frame cap even though there are only 65,536 UTF-16 units.
+        const QString unicodeHeavy(EmberCore::kMaxVisibleChatCharacters,
+                                   QChar(0x2605));
+        QCOMPARE(unicodeHeavy.toUtf8().size(), qsizetype(196608));
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
         QString originalSession;
@@ -503,12 +508,15 @@ private slots:
                                  "Continue the bilingual code story."));
             QVERIFY(store.append(originalSession, "ember", reply));
             QVERIFY(store.append(originalSession, "ember", archived));
+            QVERIFY(store.append(originalSession, "ember", unicodeHeavy));
             QVERIFY(!store.append(originalSession, "ember",
                 QString(EmberCore::kMaxArchivedChatCharacters + 1,
                         QLatin1Char('X'))));
-            QCOMPARE(store.totalMessages(originalSession), qint64(3));
-            QCOMPARE(store.messages(originalSession).last().toMap()
+            QCOMPARE(store.totalMessages(originalSession), qint64(4));
+            QCOMPARE(store.messages(originalSession).at(2).toMap()
                      .value("body").toString(), archived);
+            QCOMPARE(store.messages(originalSession).last().toMap()
+                     .value("body").toString(), unicodeHeavy);
 
             const QString markdown = temp.filePath("export.md");
             QVERIFY(store.exportMarkdown(originalSession, markdown));
@@ -528,11 +536,13 @@ private slots:
             .value("id").toString();
         QVERIFY(!restoredId.isEmpty());
         QVERIFY(restoredId != originalSession);
-        QCOMPARE(restored.messages(restoredId).size(), 3);
+        QCOMPARE(restored.messages(restoredId).size(), 4);
         QCOMPARE(restored.messages(restoredId).at(1).toMap()
                  .value("body").toString(), reply);
-        QCOMPARE(restored.messages(restoredId).last().toMap()
+        QCOMPARE(restored.messages(restoredId).at(2).toMap()
                  .value("body").toString(), archived);
+        QCOMPARE(restored.messages(restoredId).last().toMap()
+                 .value("body").toString(), unicodeHeavy);
     }
 
     void measuresCaptureEnergyAcrossWindowsPcmFormats() {
