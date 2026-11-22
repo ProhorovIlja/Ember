@@ -53,6 +53,9 @@ QString encodeRepoUrl(const QString &repository, View view, const QString &fileP
     case View::Issues: return base + "/issues?state=open&per_page=12";
     case View::PullRequests: return base + "/pulls?state=open&per_page=12";
     case View::File: return base + "/contents/" + filePath;
+    case View::Branches: return base + "/branches?per_page=12";
+    case View::Forks: return base + "/forks?per_page=12";
+    case View::WorkflowRuns: return base + "/actions/runs?per_page=12";
     }
     return {};
 }
@@ -114,7 +117,53 @@ Preview parsePublicResponse(const QString &repository, View view,
         if (!count) out += "No entries in this page.\n";
         out += "GitHub: https://github.com/" + repository +
             (view == View::Issues ? "/issues" : "/pulls") + "\n";
-    } else {
+    } else if (view == View::Branches || view == View::Forks) {
+        if (!doc.isArray()) return {{}, "Expected a GitHub branches/forks list."};
+        out += view == View::Branches ? "Repository branches:\n" : "Repository forks:\n";
+        int shown = 0;
+        for (const QJsonValue &value : doc.array()) {
+            if (!value.isObject()) continue;
+            const QJsonObject item = value.toObject();
+            if (view == View::Branches) {
+                const QString name = jsonString(item, "name", 140);
+                const QString sha = jsonString(item.value("commit").toObject(), "sha", 42);
+                if (name.isEmpty() || sha.size() != 40) continue;
+                out += "Branch: " + name + " · Commit: " + sha + "\n";
+            } else {
+                const QString fork = jsonString(item, "full_name", 150);
+                const QUrl check = publicRequestUrl(fork, View::Overview);
+                if (check.isEmpty()) continue;
+                out += "Fork: " + fork +
+                    " · Default branch: " + jsonString(item, "default_branch", 100) +
+                    "\n";
+            }
+            if (++shown >= 12) break;
+        }
+        if (!shown) out += "No entries available.\n";
+        out += "GitHub: https://github.com/" + repository +
+            (view == View::Branches ? "/branches" : "/forks") + "\n";
+    } else if (view == View::WorkflowRuns) {
+        if (!doc.isObject() || !doc.object().value("workflow_runs").isArray())
+            return {{}, "Expected GitHub Actions workflow_runs response."};
+        out += "Recent GitHub Actions workflow runs (not live monitoring):\n";
+        int shown = 0;
+        for (const QJsonValue &value :
+             doc.object().value("workflow_runs").toArray()) {
+            if (!value.isObject()) continue;
+            const auto run = value.toObject();
+            const qint64 id = qint64(run.value("id").toDouble());
+            if (id <= 0 || id > 9007199254740991LL) continue;
+            out += "Run " + QString::number(id) + " | " +
+                jsonString(run, "name", 100) + " | " +
+                jsonString(run, "head_branch", 100) + " | " +
+                jsonString(run, "status", 50) + " / " +
+                jsonString(run, "conclusion", 50) + "\n" +
+                "https://github.com/" + repository + "/actions/runs/" +
+                QString::number(id) + "\n";
+            if (++shown >= 12) break;
+        }
+        if (!shown) out += "No workflow runs available.\n";
+    } else if (view == View::File) {
         if (!doc.isObject()) return {{}, "Expected a GitHub file response."};
         const QJsonObject obj = doc.object();
         if (obj.value("type").toString() != "file" ||
@@ -141,6 +190,8 @@ Preview parsePublicResponse(const QString &repository, View view,
         out += "File: " + filePath + "\n";
         out += body + "\n";
         out += "GitHub: https://github.com/" + repository + "/blob/HEAD/" + filePath + "\n";
+    } else {
+        return {{}, "Unsupported GitHub view."};
     }
     if (out.size() > kMaxPreviewChars) {
         out = out.left(kMaxPreviewChars);

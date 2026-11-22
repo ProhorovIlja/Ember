@@ -1446,8 +1446,10 @@ void EmberBackend::inspectPublicGitHub() {
     const QStringList choices{
         "Public: Overview", "Public: Open issues",
         "Public: Open pull requests", "Public: Source file",
+        "Public: Branches", "Public: Forks", "Public: Actions runs",
         "Connected: Overview", "Connected: Open issues",
         "Connected: Open pull requests", "Connected: Source file",
+        "Connected: Branches", "Connected: Forks", "Connected: Actions runs",
         "Connect / replace GitHub read token", "Disconnect GitHub read token"
     };
     const QString choice = QInputDialog::getItem(
@@ -1456,11 +1458,11 @@ void EmberBackend::inspectPublicGitHub() {
     if (!accepted) return;
     const int index = choices.indexOf(choice);
     if (index < 0) return;
-    if (index == 8) {
+    if (index == 14) {
         QString secret = QInputDialog::getText(
             nullptr, "Connect GitHub personal access token",
             "Enter a fine-grained GitHub token with ONLY read permissions "
-            "(Contents / Issues / Pull requests). Saved to Windows Credential Manager:",
+            "(Contents / Issues / Pull requests / Actions). Saved to Windows Credential Manager:",
             QLineEdit::Password, {}, &accepted);
         if (!accepted) { secret.fill(QChar(0)); return; }
         QByteArray token = secret.toLatin1();
@@ -1474,18 +1476,18 @@ void EmberBackend::inspectPublicGitHub() {
               "Nothing was stored.");
         return;
     }
-    if (index == 9) {
+    if (index == 15) {
         const bool removed = EmberCredential::deleteGitHubToken();
         setStatus(removed ? "Connected GitHub credential cleared from Windows."
                           : "Could not clear GitHub credential from Windows.");
         return;
     }
-    const bool authenticated = index >= 4;
+    const bool authenticated = index >= 7;
     const QString repository = QInputDialog::getText(
         nullptr, "GitHub repository", "Owner/repository:",
         QLineEdit::Normal, "ProhorovIlja/Ember", &accepted).trimmed();
     if (!accepted) return;
-    const auto view = static_cast<EmberGitHub::View>(index % 4);
+    const auto view = static_cast<EmberGitHub::View>(index % 7);
     QString filePath;
     if (view == EmberGitHub::View::File) {
         filePath = QInputDialog::getText(

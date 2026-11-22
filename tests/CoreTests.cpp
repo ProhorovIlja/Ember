@@ -855,6 +855,50 @@ private slots:
         QVERIFY(QString::fromLatin1(EmberCredential::kGitHubCredentialTarget) !=
                 QString::fromLatin1(EmberCredential::kGitHubIssuesWriteTarget));
     }
+    void publicGitHubBranchForkAndActionsListsRemainReadOnly() {
+        using namespace EmberGitHub;
+        QCOMPARE(publicRequestUrl("owner/repo", View::Branches).host(),
+                 QString("api.github.com"));
+        QCOMPARE(publicRequestUrl("owner/repo", View::Forks).path(),
+                 QString("/repos/owner/repo/forks"));
+        QCOMPARE(publicRequestUrl("owner/repo", View::WorkflowRuns).path(),
+                 QString("/repos/owner/repo/actions/runs"));
+        QVERIFY(publicRequestUrl("owner/repo", View::Branches,
+                                 "README.md").isEmpty());
+        const auto branches = parsePublicResponse(
+            "owner/repo", View::Branches, {},
+            QJsonDocument(QJsonArray{QJsonObject{
+                {"name", "feature/agent"},
+                {"commit", QJsonObject{{"sha", QString(40,'a')}}}
+            }}).toJson());
+        QVERIFY2(branches.ok(), qPrintable(branches.error));
+        QVERIFY(branches.text.contains("feature/agent"));
+        QVERIFY(branches.text.contains(QString(40,'a')));
+        QVERIFY(!parsePublicResponse(
+            "owner/repo", View::Branches, {}, "{}").ok());
+        const auto forks = parsePublicResponse(
+            "owner/repo", View::Forks, {},
+            QJsonDocument(QJsonArray{QJsonObject{
+                {"full_name", "researcher/fork"},
+                {"default_branch", "main"}
+            }, QJsonObject{{"full_name", "attacker/fork?redirect=bad"}}}).toJson());
+        QVERIFY2(forks.ok(), qPrintable(forks.error));
+        QVERIFY(forks.text.contains("researcher/fork"));
+        QVERIFY(!forks.text.contains("redirect=bad"));
+        const auto actions = parsePublicResponse(
+            "owner/repo", View::WorkflowRuns, {},
+            QJsonDocument(QJsonObject{{"workflow_runs", QJsonArray{QJsonObject{
+                {"id", 554321},
+                {"name", "Windows CI"}, {"head_branch", "main"},
+                {"status", "completed"}, {"conclusion", "success"},
+                {"html_url", "https://attacker.example/evil"}
+            }}}}).toJson());
+        QVERIFY2(actions.ok(), qPrintable(actions.error));
+        QVERIFY(actions.text.contains("https://github.com/owner/repo/actions/runs/554321"));
+        QVERIFY(!actions.text.contains("attacker.example"));
+        QVERIFY(!parsePublicResponse(
+            "owner/repo", View::WorkflowRuns, {}, "[]").ok());
+    }
     void publicGitHubReadOnlyRequestsAndUntrustedPreviews() {
         using namespace EmberGitHub;
         QVERIFY(!publicRequestUrl("owner/repo", View::Overview).isEmpty());

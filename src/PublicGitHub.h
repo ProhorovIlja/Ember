@@ -4,7 +4,8 @@
 #include <QUrl>
 
 namespace EmberGitHub {
-enum class View { Overview = 0, Issues = 1, PullRequests = 2, File = 3 };
+enum class View { Overview = 0, Issues = 1, PullRequests = 2, File = 3,
+                  Branches = 4, Forks = 5, WorkflowRuns = 6 };
 struct Preview {
     QString text;
     QString error;
