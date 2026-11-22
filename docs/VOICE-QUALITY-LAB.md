@@ -972,7 +972,9 @@ The offline model preflight now rejects models whose `speech.task`,
 version disagree with the selected Qwen3 alias. English synthesized
 voice selection must match paired `speech.voices` /
 `speech.voice_languages` metadata in the GGUF, rather than merely
-matching a filename. Optional Qwen3 ASR weight inclusion requires
+matching a filename. Stable bundled Qwen3 voice also requires
+female-gender metadata for at least one English speaker, with matching
+voice descriptions per the upstream v0.11.2 reader. Optional Qwen3 ASR weight inclusion requires
 both `en` and `ru` in its language list. The same selected-speaker
 preflight runs before manual native PCM trials and before launching
 the voice model. These are consistency and safety checks, **not**
