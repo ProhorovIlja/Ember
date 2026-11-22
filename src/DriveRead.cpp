@@ -65,6 +65,62 @@ bool validDesktopClientId(const QString &clientId) {
         "^[A-Za-z0-9-]{10,170}\\.apps\\.googleusercontent\\.com$"));
     return rx.match(clientId).hasMatch();
 }
+bool validOAuthCallback(const QByteArray &headers, quint16 port,
+                        const QByteArray &expectedState, QString *code) {
+    if (code) code->clear();
+    if (!port || expectedState.isEmpty() || headers.isEmpty() ||
+        headers.size() > 4096 || !headers.endsWith("\r\n\r\n"))
+        return false;
+    const auto lines = headers.left(headers.size() - 4).split('\n');
+    if (lines.size() < 2) return false;
+    for (const auto &line : lines)
+        if (!line.endsWith('\r')) return false;
+    QByteArray requestLine = lines.first();
+    requestLine.chop(1);
+    const auto parts = requestLine.split(' ');
+    if (parts.size() != 3 || parts.at(0) != "GET" ||
+        parts.at(2) != "HTTP/1.1" || !parts.at(1).startsWith("/?") ||
+        parts.at(1).contains('#') || parts.at(1).contains('\\'))
+        return false;
+    const QByteArray expectedHost =
+        "127.0.0.1:" + QByteArray::number(port);
+    int hostCount = 0;
+    for (int i = 1; i < lines.size(); ++i) {
+        QByteArray line = lines.at(i);
+        line.chop(1);
+        const qsizetype colon = line.indexOf(':');
+        if (colon < 1) return false;
+        if (line.left(colon).trimmed().toLower() == "host") {
+            ++hostCount;
+            if (line.mid(colon + 1).trimmed() != expectedHost)
+                return false;
+        }
+    }
+    if (hostCount != 1) return false;
+    const QUrl callback = QUrl::fromEncoded(
+        "http://127.0.0.1" + parts.at(1), QUrl::StrictMode);
+    if (!callback.isValid() || callback.path() != "/" ||
+        callback.host() != "127.0.0.1" || callback.port(-1) != -1 ||
+        !callback.fragment().isEmpty() || !callback.userInfo().isEmpty())
+        return false;
+    const QUrlQuery query(callback);
+    int states = 0, codes = 0;
+    for (const auto &item : query.queryItems()) {
+        if (item.first == "state") ++states;
+        if (item.first == "code") ++codes;
+    }
+    if (states != 1 || codes != 1 ||
+        query.queryItemValue("state") != QString::fromLatin1(expectedState))
+        return false;
+    const QString result = query.queryItemValue("code");
+    if (result.size() < 8 || result.size() > 2048)
+        return false;
+    for (const QChar c : result)
+        if (c.unicode() < 0x20 || c.unicode() == 0x7F)
+            return false;
+    if (code) *code = result;
+    return true;
+}
 bool validSecret(const QByteArray &value) {
     if (value.size() < 16 || value.size() > 2048) return false;
     for (const char c : value) {
@@ -220,10 +276,22 @@ Client::Client(QObject *parent) : QObject(parent) {
     m_network.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     connect(&m_listener, &QTcpServer::newConnection,
             this, &Client::acceptOAuthConnection);
+    m_authTimeout.setSingleShot(true);
+    connect(&m_authTimeout, &QTimer::timeout, this, [this]() {
+        m_listener.close();
+        m_verifier.fill('\0');
+        m_verifier.clear();
+        m_state.fill('\0');
+        m_state.clear();
+        m_clientId = m_previousClientId;
+        m_previousClientId.clear();
+        emit status("Google consent timed out. Previous account credentials remain unchanged.");
+    });
 }
 Client::~Client() {
     if (m_request) m_request->abort();
     m_listener.close();
+    m_authTimeout.stop();
     m_accessToken.fill('\0');
     m_verifier.fill('\0');
     m_state.fill('\0');
@@ -241,12 +309,10 @@ bool Client::connectAccount(const QString &clientId) {
         emit status("Could not listen on IPv4 loopback for Google consent.");
         return false;
     }
-    // Reconnecting explicitly replaces the locally stored account. No
-    // refresh token may be silently reused from a different account.
-    deleteRefreshToken();
-    m_accessToken.fill('\0');
-    m_accessToken.clear();
-    m_accessExpires = 0;
+    // Keep the existing credential until the new OAuth exchange succeeds:
+    // cancel, browser failure, timeout and token errors must not log out
+    // the previously connected account.
+    m_previousClientId = m_clientId;
     m_clientId = clientId;
     m_verifier = randomPkceSecret();
     m_state = randomPkceSecret();
@@ -255,9 +321,16 @@ bool Client::connectAccount(const QString &clientId) {
                                        m_verifier, m_state);
     if (auth.isEmpty() || !QDesktopServices::openUrl(auth)) {
         m_listener.close();
+        m_clientId = m_previousClientId;
+        m_previousClientId.clear();
+        m_verifier.fill('\0');
+        m_verifier.clear();
+        m_state.fill('\0');
+        m_state.clear();
         emit status("Could not open the official Google consent page in the system browser.");
         return false;
     }
+    m_authTimeout.start(180000);
     emit status("Google consent opened in system browser. Return to Ember "
                 "after choosing an account. No passwords enter Ember.");
     return true;
@@ -280,33 +353,9 @@ void Client::acceptOAuthConnection() {
             const qsizetype delimiter = body->indexOf("\r\n\r\n");
             if (delimiter < 0) return;
             *handled = true;
-            const QByteArray firstLine = body->left(body->indexOf("\r\n"));
-            const QString line = QString::fromLatin1(firstLine);
-            const QStringList tokens = line.split(' ');
-            const QByteArray lower = body->left(delimiter).toLower();
-            const QByteArray host = QByteArray("\r\nhost: 127.0.0.1:") +
-                                    QByteArray::number(m_listener.serverPort());
-            bool authorized = tokens.size() == 3 && tokens.at(0) == "GET" &&
-                              tokens.at(1).startsWith("/?") &&
-                              lower.contains(host);
             QString code;
-            if (authorized) {
-                const QUrl url("http://127.0.0.1" + tokens.at(1));
-                QUrlQuery query(url);
-                const auto items = query.queryItems();
-                int stateCount = 0, codeCount = 0;
-                for (const auto &part : items) {
-                    if (part.first == "state") ++stateCount;
-                    if (part.first == "code") ++codeCount;
-                }
-                authorized = url.isValid() && url.path() == "/" &&
-                    stateCount == 1 && codeCount == 1 &&
-                    query.queryItemValue("state") == QString::fromLatin1(m_state);
-                code = query.queryItemValue("code");
-                if (code.size() < 8 || code.size() > 2048 ||
-                    code.contains('\r') || code.contains('\n'))
-                    authorized = false;
-            }
+            const bool authorized = validOAuthCallback(
+                body->left(delimiter + 4), m_listener.serverPort(), m_state, &code);
             const QByteArray message = authorized
                 ? QByteArray("Google Drive authorization received. Return to Ember.")
                 : QByteArray("Invalid local authorization callback.");
@@ -323,6 +372,7 @@ void Client::acceptOAuthConnection() {
             socket->disconnectFromHost();
             if (authorized) {
                 m_listener.close();
+                m_authTimeout.stop();
                 m_state.fill('\0');
                 m_state.clear();
                 exchangeAuthorizationCode(code);
@@ -375,6 +425,10 @@ void Client::postToken(const QByteArray &form, bool refresh) {
             emit status("Google OAuth token exchange failed. Verify Desktop "
                         "OAuth client, consent and network access.");
             m_folderAfterRefresh.clear();
+            if (!refresh) {
+                m_clientId = m_previousClientId;
+                m_previousClientId.clear();
+            }
             return;
         }
         m_accessToken.fill('\0');
@@ -382,8 +436,16 @@ void Client::postToken(const QByteArray &form, bool refresh) {
         m_accessExpires = QDateTime::currentSecsSinceEpoch() +
             qMax(30, obj.value("expires_in").toInt(3600) - 60);
         bool stored = true;
-        if (!newRefresh.isEmpty())
-            stored = saveRefreshToken(newRefresh);
+        if (refresh) {
+            if (!newRefresh.isEmpty()) stored = saveRefreshToken(newRefresh);
+        } else {
+            // A new account must never reuse an old account's refresh token.
+            // If consent omitted offline access, clear the old credential.
+            stored = newRefresh.isEmpty()
+                ? deleteRefreshToken() : saveRefreshToken(newRefresh);
+            if (!stored) deleteRefreshToken();
+            m_previousClientId.clear();
+        }
         if (!stored)
             emit status("Connected for this session, but Windows could not "
                         "save the Google refresh credential.");
@@ -499,7 +561,9 @@ void Client::disconnectLocal() {
         reply->abort();
     }
     m_listener.close();
+    m_authTimeout.stop();
     m_clientId.clear();
+    m_previousClientId.clear();
     m_redirect.clear();
     m_verifier.fill('\0');
     m_verifier.clear();

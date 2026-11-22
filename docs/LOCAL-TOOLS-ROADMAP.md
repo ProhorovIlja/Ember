@@ -150,3 +150,8 @@ and relevant consent screen/test-user configuration are prerequisites.
 The Google sign-in step uses the system browser per Google's native-app
 OAuth security guidance, not an embedded WebView2 login. CI only covers
 pure URL/token validation, mock JSON and isolated Windows credential tests.
+
+
+### 22 Nov 2026 — Google OAuth account continuity and callback hardening
+
+The loopback callback now has a separate unit-tested HTTP/1.1 validator: exactly one canonical IPv4 Host header matching the assigned port, a single valid CSRF state and authorization code, no duplicate parameters, and no embedded control characters. Requests that only contain a forged Host substring are rejected. Consent listener expires after 180 seconds (no polling or scheduled account actions). A cancelled, timed-out or unsuccessful new account connection preserves the prior Windows Credential Manager refresh credential and in-session token. A successful new consent replaces the old credential or removes it when no new refresh token is supplied. This is an implementation safeguard, **not** proof of a real Google OAuth flow or Drive API access. Keep real user authorization and on-device QA as release blockers.

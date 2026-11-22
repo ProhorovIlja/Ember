@@ -806,6 +806,48 @@ private slots:
         QVERIFY(!hostile.text.contains("Source: https://evil.example"));
         QVERIFY(hostile.text.contains("Source: https://en.wikipedia.org/wiki/"));
     }
+    void googleDriveOAuthCallbackRejectsSpoofedRequests() {
+        using namespace EmberDrive;
+        const QByteArray state(43, 's');
+        const QByteArray validPath = "/?state=" + state + "&code=sampleCode12345";
+        const auto request = [](const QByteArray &path,
+                                const QByteArray &headers = "Host: 127.0.0.1:43839") {
+            return "GET " + path + " HTTP/1.1\r\n" +
+                headers + "\r\n\r\n";
+        };
+        QString code("not cleared");
+        QVERIFY(validOAuthCallback(request(validPath), 43839, state, &code));
+        QCOMPARE(code, QString("sampleCode12345"));
+        QVERIFY(!validOAuthCallback(request(validPath, "Host: evil.example"),
+                                    43839, state, &code));
+        QVERIFY(code.isEmpty());
+        QVERIFY(!validOAuthCallback(request(validPath, "X-Host: 127.0.0.1:43839"),
+                                    43839, state));
+        QVERIFY(!validOAuthCallback(request(validPath,
+            "Host: evil.example\r\nX-Test: host: 127.0.0.1:43839"),
+            43839, state));
+        QVERIFY(!validOAuthCallback(request(validPath,
+            "Host: 127.0.0.1:43839\r\nHost: 127.0.0.1:43839"),
+            43839, state));
+        QVERIFY(!validOAuthCallback(request(validPath,
+            "Host: 127.0.0.1:43840"), 43839, state));
+        QVERIFY(!validOAuthCallback(request("/?state=wrong&code=sampleCode12345"),
+                                    43839, state));
+        QVERIFY(!validOAuthCallback(request(validPath + "&state=duplicate"),
+                                    43839, state));
+        QVERIFY(!validOAuthCallback(request(validPath + "&code=duplicate"),
+                                    43839, state));
+        QVERIFY(!validOAuthCallback(request("/bad?state=" + state +
+                                          "&code=sampleCode12345"), 43839, state));
+        QVERIFY(!validOAuthCallback(request("/?state=" + state +
+                                          "&code=%0Aattack12345"), 43839, state));
+        QVERIFY(!validOAuthCallback(
+            QByteArray("POST ") + validPath +
+            " HTTP/1.1\r\nHost: 127.0.0.1:43839\r\n\r\n",
+            43839, state));
+        QVERIFY(!validOAuthCallback(request(validPath).left(12), 43839, state));
+        QVERIFY(!validOAuthCallback(request(validPath), 0, state));
+    }
     void googleDriveNativePkceAndReadOnlyFolderContract() {
         using namespace EmberDrive;
         const QString clientId =
