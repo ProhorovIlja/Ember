@@ -59,6 +59,32 @@ private slots:
         QVERIFY(!EmberCore::ownedLoopbackTcpListener(43821, 1234));
 #endif
     }
+    void stripsPrivateCredentialsFromAllNativeChildProcesses() {
+        QProcessEnvironment environment;
+        for (const QString &key : {"PATH", "SystemRoot", "VK_ICD_FILENAMES",
+                                   "CUDA_PATH", "HF_HOME"})
+            environment.insert(key, "preserved");
+        for (const QString &key : {"GITHUB_TOKEN", "HF_TOKEN",
+                                   "OPENAI_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS",
+                                   "AWS_SECRET_ACCESS_KEY", "AZURE_CLIENT_SECRET",
+                                   "my_password", "session_private_key",
+                                   "CUSTOM_CREDENTIAL_STORE"})
+            environment.insert(key, "must-not-leak");
+        const auto sanitized =
+            EmberCore::sanitizedChildProcessEnvironment(environment);
+        for (const QString &key : {"PATH", "SystemRoot", "VK_ICD_FILENAMES",
+                                   "CUDA_PATH", "HF_HOME"})
+            QCOMPARE(sanitized.value(key), QString("preserved"));
+        for (const QString &key : {"GITHUB_TOKEN", "HF_TOKEN",
+                                   "OPENAI_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS",
+                                   "AWS_SECRET_ACCESS_KEY", "AZURE_CLIENT_SECRET",
+                                   "my_password", "session_private_key",
+                                   "CUSTOM_CREDENTIAL_STORE"})
+            QVERIFY2(!sanitized.contains(key), qPrintable(key));
+        const auto speech = EmberCore::speechProcessEnvironment(environment);
+        QCOMPARE(speech.value("SPEECH_NO_UPDATE_CHECK"), QString("1"));
+        QVERIFY(!speech.contains("HF_TOKEN"));
+    }
     void rejectsInvalidNativeModelHealthResponses() {
         using EmberCore::validManagedHealthResponse;
         QVERIFY(validManagedHealthResponse(
