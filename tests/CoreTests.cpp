@@ -1616,7 +1616,7 @@ private slots:
             }}}).toJson();
         };
         const auto call = completion("wikipedia_search",
-                                     R"({"query":"  Магнетар  ","language":"ru"})");
+                                     QStringLiteral("{\"query\":\"  Магнетар  \",\"language\":\"ru\"}"));
         const auto decision = parseModelResponse(
             call, Scope::WikipediaResearch);
         QVERIFY2(decision.ok(), qPrintable(decision.error));
@@ -1637,22 +1637,22 @@ private slots:
         QVERIFY(!parseModelResponse(call, Scope::LocalProject).ok());
         QVERIFY(!parseModelResponse(call, Scope::GitHubRepository).ok());
         QVERIFY(!parseModelResponse(completion(
-            "wikipedia_search", R"({"query":"Magnetar","language":"de"})"),
+            "wikipedia_search", QStringLiteral("{\"query\":\"Magnetar\",\"language\":\"de\"}")),
             Scope::WikipediaResearch).ok());
         QVERIFY(!parseModelResponse(completion(
-            "wikipedia_search", R"({"query":"Magnetar","language":"en","url":"https://evil.example"})"),
+            "wikipedia_search", QStringLiteral("{\"query\":\"Magnetar\",\"language\":\"en\",\"url\":\"https://evil.example\"}")),
             Scope::WikipediaResearch).ok());
         QVERIFY(!parseModelResponse(completion(
-            "wikipedia_search", R"({"query":"x","language":"en"})"),
+            "wikipedia_search", QStringLiteral("{\"query\":\"x\",\"language\":\"en\"}")),
             Scope::WikipediaResearch).ok());
         QVERIFY(!parseModelResponse(completion(
-            "wikipedia_search", R"({"query":"foo\nbad","language":"en"})"),
+            "wikipedia_search", QStringLiteral("{\"query\":\"foo\\nbad\",\"language\":\"en\"}")),
             Scope::WikipediaResearch).ok());
         QVERIFY(!parseModelResponse(completion(
-            "github_read", R"({"view":"issues"})"),
+            "github_read", QStringLiteral("{\"view\":\"issues\"}")),
             Scope::WikipediaResearch).ok());
         QVERIFY(!parseModelResponse(completion(
-            "wikipedia_search", R"({"query":123,"language":"en"})"),
+            "wikipedia_search", QStringLiteral("{\"query\":123,\"language\":\"en\"}")),
             Scope::WikipediaResearch).ok());
     }
     void wikipediaSearchIsBoundedCitedAndOnlyUserRequested() {
