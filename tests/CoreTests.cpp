@@ -128,6 +128,32 @@ private slots:
         // An English male voice may be present in the actual upstream model,
         // but is never an English female preset or a valid selected persona.
         QVERIFY(!valid(ttsOnly, "qwen3-tts-0.6b", "", "ryan"));
+        // Ambiguous speaker identities must never permit a male voice to
+        // masquerade as an approved English female voice.
+        const QJsonObject female{
+            {"name", "vivian"}, {"language", "en"}, {"gender", "female"}};
+        const QJsonObject sameNameMale{
+            {"name", "vivian"}, {"language", "en"}, {"gender", "male"}};
+        const auto rejectSpeakers = [&](const QJsonArray &voices) {
+            QJsonObject changed = tts;
+            QJsonObject speech = tts.value("speech").toObject();
+            speech.insert("voices", voices);
+            changed.insert("speech", speech);
+            return !valid(inventory(QJsonArray{changed}), "qwen3-tts-0.6b", "");
+        };
+        QVERIFY(rejectSpeakers(QJsonArray{female, sameNameMale}));
+        QVERIFY(rejectSpeakers(QJsonArray{female, female}));
+        QVERIFY(rejectSpeakers(QJsonArray{female, QJsonObject{
+            {"name", "other"}, {"language", "ja"}, {"gender", "female"}}}));
+        QVERIFY(rejectSpeakers(QJsonArray{female, QJsonObject{
+            {"name", "other"}, {"language", "en"}, {"gender", "unknown"}}}));
+        QVERIFY(rejectSpeakers(QJsonArray{female, QJsonValue("invalid")}));
+        QJsonObject unexpected = asr;
+        QJsonObject unexpectedInfo = asr.value("speech").toObject();
+        unexpectedInfo.insert("task", "other");
+        unexpected.insert("speech", unexpectedInfo);
+        QVERIFY(!valid(inventory(QJsonArray{tts, unexpected}),
+                       "qwen3-tts-0.6b", ""));
         // Only synthesis metadata may expose selectable output speakers.
         QJsonObject fakeAsrVoices = asr;
         QJsonObject fakeInfo = fakeAsrVoices.value("speech").toObject();

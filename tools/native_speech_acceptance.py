@@ -114,11 +114,27 @@ def valid_inventory_reply(status, content_type, body, alias, voice):
                     not isinstance(info.get("languages"), list) or
                     "en" not in info["languages"] or
                     not isinstance(info.get("voices"), list) or
-                    not any(isinstance(entry, dict) and
-                            entry.get("name") == voice and
-                            entry.get("language") == "en" and
-                            entry.get("gender") == "female"
-                            for entry in info["voices"])):
+                    not 1 <= len(info["voices"]) <= 128):
+                return False
+            seen = set()
+            selected_female = False
+            for entry in info["voices"]:
+                if not isinstance(entry, dict):
+                    return False
+                name = entry.get("name")
+                language = entry.get("language")
+                gender = entry.get("gender")
+                if (not isinstance(name, str) or
+                        not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", name) or
+                        name in seen or
+                        not isinstance(language, str) or
+                        language not in info["languages"] or
+                        gender not in ("female", "male")):
+                    return False
+                seen.add(name)
+                if name == voice and language == "en" and gender == "female":
+                    selected_female = True
+            if not selected_female:
                 return False
             matched += 1
     return matched == 1
@@ -243,6 +259,17 @@ def self_test():
                                      "qwen3-tts-0.6b", "serena")
     assert not valid_inventory_reply(200, "application/json", sample,
                                      "qwen3-tts-0.6b", "ryan")
+    for extra in (
+            {"name": "vivian", "language": "en", "gender": "male"},
+            {"name": "vivian", "language": "en", "gender": "female"},
+            {"name": "other", "language": "ja", "gender": "female"},
+            {"name": "other", "language": "en", "gender": "unknown"},
+            "invalid"):
+        inconsistent = json.loads(sample)
+        inconsistent["data"][0]["speech"]["voices"].append(extra)
+        assert not valid_inventory_reply(
+            200, "application/json", json.dumps(inconsistent).encode(),
+            "qwen3-tts-0.6b", "vivian")
     no_gender = json.loads(sample)
     del no_gender["data"][0]["speech"]["voices"][0]["gender"]
     assert not valid_inventory_reply(

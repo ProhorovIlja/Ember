@@ -195,15 +195,18 @@ def model_identity(path, alias, *, selected_voice=None):
                 len(voices) != len(genders) or len(voices) != len(descriptions)):
             raise InvalidSpeechGGUF(
                 "TTS GGUF is missing paired voice/language/gender/description metadata")
+        seen_voices = set()
         for voice, lang, gender, desc in zip(voices, voice_langs, genders, descriptions):
             if (not isinstance(voice, str) or
+                    voice in seen_voices or
                     not 1 <= len(voice) <= 80 or
                     not all(ch.isascii() and (ch.isalnum() or ch in "_-")
                             for ch in voice) or
                     not isinstance(lang, str) or lang not in languages or
                     gender not in ("female", "male") or
                     not isinstance(desc, str) or not 1 <= len(desc) <= 1024):
-                raise InvalidSpeechGGUF("Malformed native voice identity metadata")
+                raise InvalidSpeechGGUF("Malformed or duplicated native voice metadata")
+            seen_voices.add(voice)
             if lang == "en" and voice not in english_voices:
                 english_voices.append(voice)
             if lang == "en" and gender == "female" and voice not in english_female_voices:
@@ -323,6 +326,11 @@ def self_test():
                           voices=("a", "b"), voice_langs=("en",)),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
                           genders=("male", "male")),
+            _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
+                          voices=("vivian", "vivian"),
+                          genders=("female", "male")),
+            _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
+                          voices=("vivian", "vivian")),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
                           genders=("female",)),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis", duplicated_key=True),

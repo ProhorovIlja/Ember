@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QRegularExpression>
+#include <QSet>
 #include <QUrl>
 #include <algorithm>
 #include <cmath>
@@ -123,22 +124,32 @@ bool validNativeSpeechInventory(const QByteArray &body,
             if (lang.toString() == QStringLiteral("ru")) russian = true;
         }
         if (task == QStringLiteral("synthesis")) {
-            for (const auto &item : info.value(QStringLiteral("voices")).toArray()) {
-                if (!item.isObject()) continue;
+            // The pinned Qwen3 converter emits exactly one row per speaker ID.
+            // Do not accept a forged or corrupted model inventory that labels
+            // the same ID both male and female (or hides invalid extra rows).
+            const QJsonArray voices = info.value(QStringLiteral("voices")).toArray();
+            if (voices.isEmpty() || voices.size() > 128) return false;
+            static const QRegularExpression safeSpeaker(
+                QStringLiteral("^[A-Za-z0-9_-]{1,80}$"));
+            QSet<QString> seenSpeakers;
+            for (const auto &item : voices) {
+                if (!item.isObject()) return false;
                 const QJsonObject speaker = item.toObject();
                 const QString name = speaker.value(QStringLiteral("name")).toString();
-                // speech.cpp v0.11.2 includes both language and gender
-                // for each loaded CustomVoice speaker. Ember's selected
-                // spoken persona is explicitly English female; an English
-                // male voice must never appear as a verified alternative.
-                if (speaker.value(QStringLiteral("language")).toString() !=
-                        QStringLiteral("en") ||
-                    speaker.value(QStringLiteral("gender")).toString() !=
-                        QStringLiteral("female") ||
-                    name.isEmpty() || name.size() > 80)
-                    continue;
+                const QString language =
+                    speaker.value(QStringLiteral("language")).toString();
+                const QString gender =
+                    speaker.value(QStringLiteral("gender")).toString();
+                if (!safeSpeaker.match(name).hasMatch() ||
+                    seenSpeakers.contains(name) ||
+                    !languages.contains(QJsonValue(language)) ||
+                    (gender != QStringLiteral("female") &&
+                     gender != QStringLiteral("male"))) return false;
+                seenSpeakers.insert(name);
+                if (language != QStringLiteral("en") ||
+                    gender != QStringLiteral("female")) continue;
                 if (name == selectedVoice) hasVoice = true;
-                if (!englishSpeakers.contains(name)) englishSpeakers.append(name);
+                englishSpeakers.append(name);
             }
         }
         if (task == QStringLiteral("synthesis")) {
@@ -151,6 +162,8 @@ bool validNativeSpeechInventory(const QByteArray &body,
                 size.compare(asrSize, Qt::CaseInsensitive) != 0 ||
                 !english || !russian) return false;
             foundAsr = true;
+        } else {
+            return false; // unknown task cannot establish speech readiness
         }
     }
     const bool matched = foundTts == needsTts && foundAsr == needsAsr;
