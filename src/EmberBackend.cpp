@@ -1250,6 +1250,11 @@ void EmberBackend::startSpeechServer() {
     m_speechStartupTimedOut = false;
     setSpeechServerReady(false);
     m_speechServer.setWorkingDirectory(QFileInfo(binary).absolutePath());
+    // Even explicit local GGUF file loading can trigger speech.cpp's
+    // once-daily upstream update notice. Disable that network check for
+    // every Ember-managed speech process, independently of catalog opt-in.
+    m_speechServer.setProcessEnvironment(EmberCore::speechProcessEnvironment(
+        QProcessEnvironment::systemEnvironment()));
     m_speechServer.setProgram(binary);
     models << "--host" << "127.0.0.1" << "--port" << "43822"
            << "--device" << "auto" << "--threads" << "4";

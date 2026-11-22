@@ -459,6 +459,18 @@ private slots:
         bytes.close();
         QVERIFY(gallery.dataUri(id).isEmpty()); // integrity fails closed
     }
+    void nativeSpeechLaunchAlwaysSuppressesUpstreamVersionCheck() {
+        // The managed child must not phone home even when a previous
+        // environment setting enabled upstream's terminal update notice.
+        QProcessEnvironment inherited;
+        inherited.insert("SPEECH_NO_UPDATE_CHECK", "0");
+        inherited.insert("EMBER_SENTINEL", "kept");
+        const auto safe = EmberCore::speechProcessEnvironment(inherited);
+        QCOMPARE(safe.value("SPEECH_NO_UPDATE_CHECK"), QString("1"));
+        QCOMPARE(safe.value("EMBER_SENTINEL"), QString("kept"));
+        QVERIFY(!inherited.value("SPEECH_NO_UPDATE_CHECK").isEmpty());
+        QCOMPARE(inherited.value("SPEECH_NO_UPDATE_CHECK"), QString("0"));
+    }
     void manuallySelectedNativeGgufDoesNotCopyAndRejectsBadLocalFiles() {
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());

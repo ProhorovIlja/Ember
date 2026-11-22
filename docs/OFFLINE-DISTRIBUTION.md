@@ -130,3 +130,20 @@ genuine no-VPN clean-install test. These are distinct manual evidence records
 in release/verify_release.py; neither a model header nor a fake local server
 is enough. The text-first preparation tools remain useful for internal
 development and must not be advertised as the complete public edition.
+
+
+## Disable speech.cpp's independent version-check network path
+
+Upstream speech.cpp documents a once-daily command-line update notice:
+https://github.com/nyosegawa/speech.cpp/blob/main/docs/install.md
+This check is **separate** from GGUF catalog/model downloading. Ember's native
+QProcess environment now forces `SPEECH_NO_UPDATE_CHECK=1` on every
+user-started managed speech process, regardless of whether the user separately
+enabled catalog downloads. A Qt regression verifies the inherited environment
+cannot override the opt-out and that other process variables are preserved.
+
+This removes the documented upstream *version-check* request path; it is
+not a proof that every unknown native binary cannot initiate arbitrary
+network activity. Run a genuine fresh-install disconnected-network test with
+trusted/pinned speech.cpp binaries and explicit GGUF paths before any public
+release, and ensure no unexpected process-level network access occurs.

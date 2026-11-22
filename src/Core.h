@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QJsonObject>
 #include <QList>
+#include <QProcessEnvironment>
 #include <QString>
 #include <QStringList>
 class QFile;
@@ -159,6 +160,9 @@ QString offlineSpeechModelFile(const QString &applicationRoot, const QString &al
 // Explicit user-picked file on any local drive. Only a structural GGUF
 // preflight; compatible model family, provenance and license need real QA.
 QString localSpeechGgufFile(const QString &absoluteFilePath);
+// Upstream speech.cpp performs a once-a-day Internet version check by
+// default; disable it for EVERY managed launch, including offline weights.
+QProcessEnvironment speechProcessEnvironment(QProcessEnvironment inherited);
 bool validSpeechWav(const QByteArray &wav);
 // Suppress hallucinations only for *digitally near-silent* canonical 16kHz
 // mono PCM16 input; never gate ordinary quiet voices or unrecognized WAVs.

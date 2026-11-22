@@ -57,6 +57,14 @@ bool discardPrivateVoiceScratch(QFile &microphone, const QString &folder) {
     }
     return success;
 }
+QProcessEnvironment speechProcessEnvironment(QProcessEnvironment inherited) {
+    // Upstream docs/install.md: a terminal speech.cpp invocation otherwise
+    // checks for a newer release, independent of the selected GGUF being
+    // purely local. Never ask for Internet contact during model startup.
+    inherited.insert(QStringLiteral("SPEECH_NO_UPDATE_CHECK"),
+                     QStringLiteral("1"));
+    return inherited;
+}
 QString localSpeechGgufFile(const QString &absoluteFilePath) {
     const QFileInfo candidate(absoluteFilePath);
     if (!candidate.isAbsolute() || !candidate.isFile() ||
