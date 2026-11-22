@@ -375,3 +375,17 @@ gates.
 
 Converter reference: https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-tts
 and https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-asr
+
+### Runtime gender enforcement for selected English speaker
+
+The stable full-voice package already requires at least one English
+female speaker in the approved Qwen3-TTS GGUF. The runtime now also
+enforces that the **actually selected** voice has
+`language=en` and `gender=female` in the real process-owned
+`speech.cpp /v1/models` response. The Settings dropdown displays
+only verified English female speakers; an installed checkpoint that
+contains both female and male English voices does not cause male
+voices to appear in Ember's female voice list. The manual
+`tools/native_speech_acceptance.py` rechecks the selected voice
+against both GGUF and live inventory metadata before PCM trials.
+This does not establish voice naturalness or licence provenance.
