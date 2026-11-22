@@ -61,6 +61,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(int outputVolume READ outputVolume WRITE setOutputVolume NOTIFY configurationChanged)
     Q_PROPERTY(bool earlySpeechEnabled READ earlySpeechEnabled WRITE setEarlySpeechEnabled NOTIFY configurationChanged)
     Q_PROPERTY(bool allowSpeechDownloads READ allowSpeechDownloads WRITE setAllowSpeechDownloads NOTIFY configurationChanged)
+    Q_PROPERTY(bool allowExternalSpeechProvider READ allowExternalSpeechProvider WRITE setAllowExternalSpeechProvider NOTIFY configurationChanged)
     Q_PROPERTY(QString localVoice READ localVoice WRITE setLocalVoice NOTIFY configurationChanged)
     Q_PROPERTY(QString voiceSample READ voiceSample WRITE setVoiceSample NOTIFY configurationChanged)
     Q_PROPERTY(QString localModel READ localModel WRITE setLocalModel NOTIFY configurationChanged)
@@ -109,6 +110,7 @@ public:
     int outputVolume() const { return m_outputVolume; }
     bool earlySpeechEnabled() const { return m_earlySpeechEnabled; }
     bool allowSpeechDownloads() const { return m_allowSpeechDownloads; }
+    bool allowExternalSpeechProvider() const { return m_allowExternalSpeechProvider; }
     QString localVoice() const { return m_localVoice; }
     QString voiceSample() const { return m_voiceSample; }
     QString localModel() const { return m_localModel; }
@@ -129,6 +131,7 @@ public:
     Q_INVOKABLE void setOutputVolume(int percent);
     Q_INVOKABLE void setEarlySpeechEnabled(bool value);
     Q_INVOKABLE void setAllowSpeechDownloads(bool value);
+    Q_INVOKABLE void setAllowExternalSpeechProvider(bool value);
     Q_INVOKABLE void setLocalVoice(const QString &value);
     Q_INVOKABLE void setVoiceSample(const QString &value);
     Q_INVOKABLE void setLocalModel(const QString &value);
@@ -228,6 +231,7 @@ private:
     QString workFile(const QString &name) const;
     bool isRegularFile(const QString &path) const;
     void interruptCapture(const QString &reason, bool allowDictationRecovery);
+    bool speechEndpointTrusted() const;
     void releaseCapture();
     void retryCancelledAudioCleanup(quint64 revision, int retriesLeft);
     QAudioDevice activeInput() const;
@@ -268,6 +272,7 @@ private:
     bool m_voiceEarlyActive = false, m_voiceEarlyFailed = false;
     bool m_earlySpeechEnabled = true;
     bool m_allowSpeechDownloads = false; // user explicit opt-in, not assumed
+    bool m_allowExternalSpeechProvider = false; // no unowned TTS by default
     bool m_speechTtsPathMode = false, m_speechAsrPathMode = false;
     qsizetype m_liveSpeechCursor = 0;
     bool m_speechServerReady = false;
