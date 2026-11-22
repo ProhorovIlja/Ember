@@ -2415,7 +2415,7 @@ ApplicationWindow {
                                                 font.pixelSize: 13
                                                 onEditingFinished: {
                                                     ember.localVoice = text
-                                                    // A running native model rejects unknown/non-English voices.
+                                                    // A running native model rejects unverified or non-female English voices.
                                                     text = ember.localVoice
                                                 }
                                                 background: Rectangle {
@@ -2463,7 +2463,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: 9
                                             Text {
-                                                text: "Verified English voices"
+                                                text: "Verified English female voices"
                                                 color: "#9AB8CF"
                                                 font.pixelSize: 11
                                                 Layout.fillWidth: true
