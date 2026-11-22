@@ -5,6 +5,7 @@
 #include "EmberBundle.h"
 #include "DriveRead.h"
 #include "LocalCodeEdit.h"
+#include "LocalAgent.h"
 #include <QFile>
 #include <QLockFile>
 #include <QAudioDevice>
@@ -13,6 +14,7 @@
 #include <QAudioSource>
 #include <QAudioSink>
 #include <QIODevice>
+#include <QJsonArray>
 #include <QBuffer>
 #include <QElapsedTimer>
 #include <QMediaDevices>
@@ -149,6 +151,7 @@ public:
     Q_INVOKABLE bool submitText(const QString &text);
     Q_INVOKABLE QString chooseLocalTextFile(const QString &existingDraft);
     Q_INVOKABLE QString searchLocalCodeFolder(const QString &existingDraft);
+    Q_INVOKABLE bool researchLocalProject(const QString &goal);
     Q_INVOKABLE QString stageLocalCodeEdit();
     Q_INVOKABLE bool applyStagedLocalCodeEdit();
     Q_INVOKABLE void discardStagedLocalCodeEdit();
@@ -212,6 +215,7 @@ signals:
     void publicGitHubExcerptReady(const QString &text);
     void wikipediaExcerptReady(const QString &text);
     void driveExcerptReady(const QString &text);
+    void localAgentResultReady(const QString &text);
 private:
     void setStatus(const QString &text);
     void setBusy(bool value);
@@ -226,6 +230,8 @@ private:
     void transcribeNextChunk();
     void completeTranscription();
     void failTranscription(const QString &reason);
+    void requestLocalAgentStep();
+    void endLocalAgent(const QString &error = {}, const QString &result = {});
     void refreshSessions();
     void rebuildConversationHistory();
     void renderChatStream();
@@ -336,6 +342,10 @@ private:
     QByteArray m_wikipediaBuffer;
     bool m_wikipediaOversize = false;
     QPointer<QNetworkReply> m_reply;
+    QPointer<QNetworkReply> m_agentReply;
+    QJsonArray m_agentMessages;
+    QString m_agentRoot, m_agentGoal, m_agentTrace;
+    int m_agentCalls = 0;
     QPointer<QNetworkReply> m_speechReply;
     QPointer<QNetworkReply> m_nativeAsrReply;
     QProcess m_brain, m_whisper, m_tts, m_speechServer;

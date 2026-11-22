@@ -135,6 +135,11 @@ ApplicationWindow {
             window.externalReferencePreview = excerpt
             externalReferenceDialog.open()
         }
+        function onLocalAgentResultReady(excerpt) {
+            window.externalReferenceSource = "Local project agent"
+            window.externalReferencePreview = excerpt
+            externalReferenceDialog.open()
+        }
     }
 
     Dialog {
@@ -1211,6 +1216,19 @@ ApplicationWindow {
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
                                             ToolTip.text: "Choose a local folder, then map source filenames or search literal text. Review the editable result; no code is executed."
+                                        }
+                                        PillButton {
+                                            text: "Investigate"
+                                            implicitWidth: 120
+                                            implicitHeight: 31
+                                            enabled: ember.brainReady && !ember.busy &&
+                                                     !ember.listening &&
+                                                     composer.text.trim().length > 0 &&
+                                                     composer.text.length <= 2048
+                                            onClicked: ember.researchLocalProject(composer.text)
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Select one local project root. The local model may call only project_map/search_text up to three times; no writes, shell, Git or Internet."
                                         }
                                         PillButton {
                                             text: "Edit source"

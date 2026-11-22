@@ -4,6 +4,7 @@
 #include "EmberBundle.h"
 #include "LocalTextImport.h"
 #include "LocalRepoSearch.h"
+#include "LocalAgent.h"
 #include "LocalCodeEdit.h"
 #include "PublicGitHub.h"
 #include "GitHubIssueWrite.h"
@@ -685,6 +686,107 @@ private slots:
         QVERIFY(!parseSingleSearchReplaceBlock(
             "<<<<<<< SEARCH\nfoo\n=======\nbar").ok());
         QVERIFY(!parseSingleSearchReplaceBlock(QString(200001, 'x')).ok());
+    }
+    void localAgentToolContractIsTypedAndStrictlyReadOnly() {
+        using namespace EmberAgent;
+        const QJsonArray history{
+            QJsonObject{{"role", "system"}, {"content", "Read-only"}},
+            QJsonObject{{"role", "user"}, {"content", "Find entry points"}}
+        };
+        const QJsonObject active = modelRequest(history, 3);
+        QVERIFY(active.value("stream") == false);
+        QCOMPARE(active.value("tool_choice").toString(), QString("auto"));
+        QCOMPARE(active.value("parallel_tool_calls").toBool(), false);
+        const auto tools = active.value("tools").toArray();
+        QCOMPARE(tools.size(), 2);
+        QCOMPARE(tools.at(0).toObject().value("function").toObject()
+                     .value("name").toString(), QString("project_map"));
+        QCOMPARE(tools.at(1).toObject().value("function").toObject()
+                     .value("name").toString(), QString("search_text"));
+        QCOMPARE(modelRequest(history, 0).value("tool_choice").toString(),
+                 QString("none"));
+        QVERIFY(!modelRequest(history, 0).contains("tools"));
+        const auto completion = [&](const QJsonObject &message,
+                                    const QString &reason) {
+            return QJsonDocument(QJsonObject{{"choices", QJsonArray{
+                QJsonObject{{"message", message}, {"finish_reason", reason}}
+            }}}).toJson();
+        };
+        const auto call = [&](const QString &name, const QString &arguments) {
+            return QJsonObject{{"role", "assistant"}, {"content", QJsonValue::Null},
+                {"tool_calls", QJsonArray{QJsonObject{
+                    {"id", "call_1"}, {"type", "function"},
+                    {"function", QJsonObject{{"name", name},
+                                              {"arguments", arguments}}}
+                }}}
+            };
+        };
+        const auto mapped = parseModelResponse(
+            completion(call("project_map", "{}"), "tool_calls"));
+        QVERIFY2(mapped.ok(), qPrintable(mapped.error));
+        QCOMPARE(mapped.kind, Decision::Kind::Call);
+        QCOMPARE(mapped.tool, QString("project_map"));
+        QCOMPARE(assistantToolMessage(mapped).value("role").toString(),
+                 QString("assistant"));
+        QCOMPARE(toolResultMessage(mapped, "read-only").value("role").toString(),
+                 QString("tool"));
+        const auto searched = parseModelResponse(completion(
+            call("search_text", "{\"query\":\"TEST_MARKER\"}"), "tool_calls"));
+        QVERIFY2(searched.ok(), qPrintable(searched.error));
+        QCOMPARE(searched.query, QString("TEST_MARKER"));
+        QVERIFY(!parseModelResponse(completion(
+            call("write_file", "{}"), "tool_calls")).ok());
+        QVERIFY(!parseModelResponse(completion(
+            call("shell", "{}"), "tool_calls")).ok());
+        QVERIFY(!parseModelResponse(completion(
+            call("search_text", "{\"query\":\"a\\nb\"}"), "tool_calls")).ok());
+        QVERIFY(!parseModelResponse(completion(
+            call("project_map", "{\"path\":\"C:/\"}"), "tool_calls")).ok());
+        QVERIFY(!parseModelResponse(completion(
+            call("search_text", "{\"query\":\"a\",\"path\":\"/\"}"),
+            "tool_calls")).ok());
+        QVERIFY(!parseModelResponse(completion(
+            QJsonObject{{"role", "assistant"}, {"content", "truncated"}},
+            "length")).ok());
+        QVERIFY(!parseModelResponse(completion(
+            QJsonObject{{"role", "assistant"},
+                        {"content", "A grounded summary."}}, "stop")).error.size());
+        QVERIFY(!parseModelResponse("not-json").ok());
+    }
+    void localAgentToolsCannotReadCredentialsOrEditFiles() {
+        using namespace EmberAgent;
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const QDir root(temp.path());
+        QVERIFY(root.mkpath("src"));
+        QVERIFY(root.mkpath("node_modules"));
+        auto writeFile = [&](const QString &name, const QByteArray &data) {
+            QFile file(root.filePath(name));
+            if (!file.open(QIODevice::WriteOnly)) return false;
+            return file.write(data) == data.size();
+        };
+        QVERIFY(writeFile("src/logic.cpp", "// TEST_MARKER in source\n"));
+        QVERIFY(writeFile(".env", "TEST_MARKER SECRET_PASSWORD\n"));
+        QVERIFY(writeFile("node_modules/ignored.js", "TEST_MARKER in dependency\n"));
+        Decision tool;
+        tool.kind = Decision::Kind::Call;
+        tool.tool = "project_map";
+        tool.callId = "call_1";
+        const QString map = executeReadOnly(root.path(), tool);
+        QVERIFY(map.contains("src/logic.cpp"));
+        QVERIFY(!map.contains(".env"));
+        QVERIFY(!map.contains("node_modules"));
+        tool.tool = "search_text";
+        tool.query = "TEST_MARKER";
+        const QString found = executeReadOnly(root.path(), tool);
+        QVERIFY(found.contains("src/logic.cpp:1"));
+        QVERIFY(!found.contains("SECRET_PASSWORD"));
+        QVERIFY(!found.contains("dependency"));
+        tool.kind = Decision::Kind::Error;
+        QVERIFY(executeReadOnly(root.path(), tool).contains("denied"));
+        QFile verify(root.filePath("src/logic.cpp"));
+        QVERIFY(verify.open(QIODevice::ReadOnly));
+        QCOMPARE(verify.readAll(), QByteArray("// TEST_MARKER in source\n"));
     }
     void localSourceEditRequiresExactMatchApprovalAndKeepsBackup() {
         using namespace EmberLocalEdit;
