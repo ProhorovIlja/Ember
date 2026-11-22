@@ -46,6 +46,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Native unit tests failed.' }
           windeployqt --release --qmldir qml build/Release/Ember.exe
           if ($LASTEXITCODE -ne 0) { throw 'Qt dependency deployment failed.' }
+          # Stage only official signed VS 2022 app-local CRT DLLs locally;
+          # do not assume a clean Windows 10 machine has MSVC installed.
+          pwsh -NoProfile -File release/stage-msvc-applocal.ps1 -PayloadDirectory build/Release -PruneDevelopmentTools
+          if ($LASTEXITCODE -ne 0) { throw 'Stable release blocked: official app-local VC CRT runtime missing.' }
           # Stable distribution must be COMPLETE. Until licensed engine and
           # weights assets are staged, deliberately FAIL rather than publish
           # an EXE that tries to fetch geoblocked weights at first launch.
