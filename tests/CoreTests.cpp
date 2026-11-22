@@ -481,9 +481,16 @@ private slots:
         QVERIFY(rendered.contains(QStringLiteral("FINAL_LINE_64K_")));
         QVERIFY(rendered.contains(QStringLiteral("&lt;img")));
         QVERIFY(!rendered.contains(QStringLiteral("<img")));
+        const QString archived = EmberCore::archivedStreamedReply(reply, true, true);
+        QVERIFY(archived.size() > EmberCore::kMaxVisibleChatCharacters);
+        QVERIFY(archived.size() <= EmberCore::kMaxArchivedChatCharacters);
+        QVERIFY(EmberCore::safeMarkdownHtml(archived)
+                .contains(QStringLiteral("[Response reached local model token limit]")));
+        // The renderer remains bounded even for imported, untrusted text.
         QVERIFY(!EmberCore::safeMarkdownHtml(
-            reply + QStringLiteral("NOT_VISIBLE_PAST_64K"))
-                .contains(QStringLiteral("NOT_VISIBLE_PAST_64K")));
+            reply + QString(128, QLatin1Char('W')) +
+                QStringLiteral("NOT_VISIBLE_BEYOND_ARCHIVE_CAP"))
+                .contains(QStringLiteral("NOT_VISIBLE_BEYOND_ARCHIVE_CAP")));
 
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
@@ -495,11 +502,13 @@ private slots:
             QVERIFY(store.append(originalSession, "you",
                                  "Continue the bilingual code story."));
             QVERIFY(store.append(originalSession, "ember", reply));
+            QVERIFY(store.append(originalSession, "ember", archived));
             QVERIFY(!store.append(originalSession, "ember",
-                                  reply + QLatin1Char('X')));
-            QCOMPARE(store.totalMessages(originalSession), qint64(2));
+                QString(EmberCore::kMaxArchivedChatCharacters + 1,
+                        QLatin1Char('X'))));
+            QCOMPARE(store.totalMessages(originalSession), qint64(3));
             QCOMPARE(store.messages(originalSession).last().toMap()
-                     .value("body").toString(), reply);
+                     .value("body").toString(), archived);
 
             const QString markdown = temp.filePath("export.md");
             QVERIFY(store.exportMarkdown(originalSession, markdown));
@@ -519,9 +528,11 @@ private slots:
             .value("id").toString();
         QVERIFY(!restoredId.isEmpty());
         QVERIFY(restoredId != originalSession);
-        QCOMPARE(restored.messages(restoredId).size(), 2);
-        QCOMPARE(restored.messages(restoredId).last().toMap()
+        QCOMPARE(restored.messages(restoredId).size(), 3);
+        QCOMPARE(restored.messages(restoredId).at(1).toMap()
                  .value("body").toString(), reply);
+        QCOMPARE(restored.messages(restoredId).last().toMap()
+                 .value("body").toString(), archived);
     }
 
     void measuresCaptureEnergyAcrossWindowsPcmFormats() {
