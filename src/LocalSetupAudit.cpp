@@ -97,7 +97,15 @@ Check inspectWhisperWeights(const QString &path) {
     if (filename.endsWith(".en.bin")) {
         return {false, "English-only .en.bin model selected. Use multilingual ggml-*.bin for RU/EN."};
     }
-    return {true, "Whisper model file exists (over 1 MiB); actual format and RU/EN quality NOT verified."};
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {false, "Cannot open Whisper GGML weights."};
+    }
+    // whisper.cpp legacy GGML magic 0x67676d6c (little endian: lmgg).
+    if (file.read(4) != QByteArray("lmgg", 4)) {
+        return {false, "Whisper GGML model signature is invalid. Choose a multilingual ggml-*.bin."};
+    }
+    return {true, "Whisper GGML header present; complete weights and RU/EN accuracy NOT verified."};
 }
 } // namespace
 
