@@ -1627,6 +1627,13 @@ private slots:
                  QString("assistant"));
         QCOMPARE(toolResultMessage(decision, "untrusted snippets")
                      .value("role").toString(), QString("tool"));
+        // Never truncate a bounded Wikipedia source URL at the generic
+        // local-code excerpt limit; still enforce a finite cap.
+        const QString substantialResult(3900, QLatin1Char('S'));
+        QCOMPARE(toolResultMessage(decision, substantialResult)
+                     .value("content").toString().size(), 3900);
+        QCOMPARE(toolResultMessage(decision, QString(10000, QLatin1Char('S')))
+                     .value("content").toString().size(), 4096);
         QVERIFY(!parseModelResponse(call, Scope::LocalProject).ok());
         QVERIFY(!parseModelResponse(call, Scope::GitHubRepository).ok());
         QVERIFY(!parseModelResponse(completion(

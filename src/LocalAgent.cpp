@@ -15,6 +15,9 @@
 namespace EmberAgent {
 namespace {
 constexpr int kMaxToolResult = 2500;
+// MediaWiki returns a bounded 3900-char preview. Keep entire source URLs
+// intact rather than cutting one of the citations at the generic cap.
+constexpr int kMaxWikipediaToolResult = 4096;
 constexpr int kMaxFinalText = 5200;
 QJsonObject functionDef(const QString &name, const QString &description,
                         const QJsonObject &properties,
@@ -387,7 +390,8 @@ QJsonObject toolResultMessage(const Decision &decision, const QString &result) {
     return QJsonObject{
         {"role", "tool"},
         {"tool_call_id", decision.callId},
-        {"content", result.left(kMaxToolResult)}
+        {"content", result.left(decision.tool == "wikipedia_search"
+                                 ? kMaxWikipediaToolResult : kMaxToolResult)}
     };
 }
 QString executeReadOnly(const QString &selectedRoot, const Decision &decision) {
