@@ -34,7 +34,7 @@ def linked(path):
         hasattr(path, "is_junction") and path.is_junction()
     ) or (
         os.name == "nt" and path.exists() and
-        bool(path.stat(follow_symlinks=False).st_file_attributes & 1024)
+        bool(path.lstat().st_file_attributes & 1024)
     )
 
 
