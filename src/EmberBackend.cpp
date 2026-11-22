@@ -1273,7 +1273,8 @@ void EmberBackend::searchWikipedia() {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
     request.setRawHeader("Accept", "application/json");
-    request.setRawHeader("User-Agent", "EmberLocalResearch/0.1 (manual)");
+    request.setRawHeader("User-Agent",
+        "Ember/0.1 (https://github.com/ProhorovIlja/Ember)");
     m_wikipediaBuffer.clear();
     m_wikipediaOversize = false;
     QNetworkReply *reply = m_wikipediaNetwork.get(request);
@@ -2244,7 +2245,8 @@ void EmberBackend::requestAgentWikipediaRead(const EmberAgent::Decision &decisio
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::ManualRedirectPolicy);
     request.setRawHeader("Accept", "application/json");
-    request.setRawHeader("User-Agent", "EmberLocalWikiAgent/0.1");
+    request.setRawHeader("User-Agent",
+        "Ember/0.1 (https://github.com/ProhorovIlja/Ember)");
     m_agentWikipediaBuffer.clear();
     m_agentWikipediaOversize = false;
     QNetworkReply *reply = m_wikipediaNetwork.get(request);
