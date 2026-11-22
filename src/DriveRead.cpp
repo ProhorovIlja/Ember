@@ -50,6 +50,16 @@ bool folderIdOkay(const QString &id) {
 bool fileIdOkay(const QString &id) {
     return id != "root" && folderIdOkay(id);
 }
+bool deleteLegacyMetadataToken() {
+#ifdef Q_OS_WIN
+    // Explicit disconnect also removes the old metadata-only credential.
+    if (CredDeleteW(L"Ember.Local.GoogleDrive.MetadataOnly",
+                    CRED_TYPE_GENERIC, 0)) return true;
+    return GetLastError() == ERROR_NOT_FOUND;
+#else
+    return true;
+#endif
+}
 bool supportedTextMime(const QString &mime) {
     return mime == "application/vnd.google-apps.document" ||
            mime.startsWith("text/") || mime == "application/json" ||
@@ -323,7 +333,7 @@ FolderPreview parseFolder(const QString &folderId, const QByteArray &data) {
         const QString name = clean(obj.value("name").toString(), 150);
         const QString type = clean(obj.value("mimeType").toString(), 85);
         const QString modified = clean(obj.value("modifiedTime").toString(), 45);
-        const QString line = QString("\n%1. %2\nType: %3 | Modified: %4\n"
+        const QString line = QString("\n%1. %2\nID: %5 | Type: %3 | Modified: %4\n"
                                      "Open: https://drive.google.com/open?id=%5\n")
             .arg(result.count + 1).arg(name, type, modified, id);
         if (result.text.size() + line.size() > 6500) break;
@@ -704,7 +714,8 @@ void Client::disconnectLocal() {
     m_folderAfterRefresh.clear();
     m_fileAfterRefresh.clear();
     const bool cleared = deleteRefreshToken();
-    emit status(cleared
+    const bool oldCleared = deleteLegacyMetadataToken();
+    emit status(cleared && oldCleared
         ? "Google Drive credential removed locally. Revoke access in your "
           "Google Account separately if desired."
         : "Could not clear the stored Google Drive credential.");

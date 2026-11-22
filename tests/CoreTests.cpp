@@ -1726,6 +1726,7 @@ private slots:
         QVERIFY2(preview.ok(), qPrintable(preview.error));
         QCOMPARE(preview.count, 1);
         QVERIFY(preview.text.contains("Ember notes"));
+        QVERIFY(preview.text.contains("ID: abcDEF012345"));
         QVERIFY(preview.text.contains("https://drive.google.com/open?id=abcDEF012345"));
         QVERIFY(!parseFolder("root", "not json").ok());
         QVERIFY(!parseFolder("../danger", payload).ok());
