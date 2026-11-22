@@ -61,6 +61,19 @@ def listener_owners():
     return netstat_listening_pids(done.stdout.decode("ascii", "ignore"))
 
 
+def valid_text_health_reply(status, content_type, body):
+    """Require documented llama.cpp ready JSON, not merely HTTP 200."""
+    if (status != 200 or not isinstance(body, bytes) or
+            not 0 < len(body) <= 4096 or
+            content_type.split(";", 1)[0].strip().lower() != "application/json"):
+        return False
+    try:
+        state = json.loads(body.decode("utf-8", "strict"))
+    except (ValueError, UnicodeError):
+        return False
+    return isinstance(state, dict) and state.get("status") == "ok"
+
+
 def wait_for_server(process, seconds):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -76,8 +89,12 @@ def wait_for_server(process, seconds):
                         body = result.read(4097)
                         if len(body) > 4096:
                             raise RuntimeError("Local health response is oversized")
-                        state = json.loads(body)
-                        if state.get("status") == "ok":
+                        if valid_text_health_reply(
+                                result.status,
+                                result.headers.get("Content-Type", ""), body):
+                            if listener_owners() != {process.pid}:
+                                raise RuntimeError(
+                                    "Text model port owner changed during readiness")
                             return
             except (HTTPError, URLError, TimeoutError):
                 pass  # 503 while the GGUF is still being loaded
@@ -265,6 +282,14 @@ def self_test():
     """
     assert netstat_listening_pids(fixture) == {1234}
     assert netstat_listening_pids("") == set()
+    assert valid_text_health_reply(200, "application/json", b'{"status":"ok"}')
+    assert valid_text_health_reply(
+        200, "application/json; charset=utf-8", b'{"status":"ok"}')
+    assert not valid_text_health_reply(200, "application/json", b'[]')
+    assert not valid_text_health_reply(200, "application/json", b'{"status":"loading"}')
+    assert not valid_text_health_reply(200, "text/html", b'{"status":"ok"}')
+    assert not valid_text_health_reply(503, "application/json", b'{"status":"ok"}')
+    assert not valid_text_health_reply(200, "application/json", b'x' * 4097)
     from private_worker_env import self_test as verify_private_env
     verify_private_env()
     assert netstat_listening_pids(fixture.replace("1234", "9999")) == {9999}
