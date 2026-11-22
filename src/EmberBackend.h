@@ -335,6 +335,7 @@ private:
     bool m_autoEndOnSilence = false;
     bool m_brainReady = false, m_busy = false, m_listening = false;
     bool m_brainStartupTimedOut = false;
+    bool m_speechStartupTimedOut = false;
     bool m_privateMode = false; // never stored in QSettings
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
     bool m_cliAsrActive = false;
