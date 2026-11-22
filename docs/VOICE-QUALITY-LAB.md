@@ -927,3 +927,22 @@ failure to load on a specified device is surfaced rather than silently
 pretending another accelerator was used.
 
 Upstream explicit device names: https://github.com/nyosegawa/speech.cpp/blob/main/docs/cli.md
+
+
+### 22 November — prevent healthy-port, wrong-model false positives
+
+Native `speech.cpp` model readiness must now confirm the live task
+inventory as well as HTTP health. Before enabling the English voice
+or RU/EN microphone ASR route, Ember checks `/v1/models` for the exact
+configured Qwen3 family and 0.6B/1.7B size, verifies English TTS
+speaker metadata, and requires RU+EN in ASR language metadata.
+Selecting a non-English or missing voice cannot silently produce a
+nominally Ready system. The manual native TTS probe mirrors this contract;
+unit fixtures cover missing tasks, wrong model family, model size and
+speaker language, oversize JSON and duplicate models.
+
+These tests verify claimed model capabilities and fail-closed configuration,
+**not** speech intelligibility, acoustic naturalness, live microphone
+quality, GPU throughput, VRAM headroom or driver output stability. Only
+actual listening and end-to-end recorded RU/EN accuracy experiments can
+score those properties.
