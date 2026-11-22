@@ -19,14 +19,31 @@ try {
     Mock-File (Join-Path $eng 'llama-server.exe') ([byte[]](77,90))
     Mock-File (Join-Path $eng 'ggml-base.dll') ([byte[]](77,90))
     Mock-File (Join-Path $weights 'local.gguf') ([byte[]](71,71,85,70))
+    Mock-File (Join-Path $eng 'whisper-cli.exe') ([byte[]](77,90))
+    Mock-File (Join-Path $weights 'ggml-base.bin') ([byte[]](108,109,103,103))
     $arguments = @{
         AppDirectory = $app
         LlamaServer = (Join-Path $eng 'llama-server.exe')
         ModelGguf = (Join-Path $weights 'local.gguf')
+        WhisperCli = (Join-Path $eng 'whisper-cli.exe')
+        WhisperModel = (Join-Path $weights 'ggml-base.bin')
     }
     & $prepare @arguments
-    & $prepare -AppDirectory $app -CheckOnly
+    & $prepare -AppDirectory $app -CheckOnly -RequireAsr
     & $prepare @arguments
+    if (-not (Test-Path (Join-Path $app 'engines/whisper/whisper-cli.exe')) -or
+        -not (Test-Path (Join-Path $app 'models/stt/ggml-base.bin'))) {
+        throw 'Multilingual dictation engine/model were not staged.'
+    }
+    $withoutAsr = @{
+        AppDirectory = $app
+        LlamaServer = (Join-Path $eng 'llama-server.exe')
+        ModelGguf = (Join-Path $weights 'local.gguf')
+        RequireAsr = $true
+    }
+    $blocked = $false
+    try { & $prepare @withoutAsr | Out-Null } catch { $blocked = $true }
+    if (-not $blocked) { throw 'Missing RU/EN ASR dependency was silently accepted.' }
     if (-not (Test-Path (Join-Path $app 'engines/llama/ggml-base.dll'))) {
         throw 'Required sibling engine DLL was not staged.'
     }

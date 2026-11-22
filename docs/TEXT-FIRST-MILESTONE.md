@@ -21,15 +21,23 @@ Qt6Core.dll. With Windows PowerShell 5.1 or later, run from the repository:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\release\prepare-text-first.ps1 `
   -AppDirectory 'D:\Games\Ember' `
   -LlamaServer 'C:\Downloaded\llama\llama-server.exe' `
-  -ModelGguf 'C:\Downloaded\models\licensed.gguf'
+  -ModelGguf 'C:\Downloaded\models\licensed.gguf' \
+  -WhisperCli 'C:\Downloaded\whisper\whisper-cli.exe' \
+  -WhisperModel 'C:\Downloaded\models\ggml-base.bin' \
+  -RequireAsr
 ```
 
 The helper copies the local engine EXE and sibling DLLs and the GGUF into
 `engines/llama/llama-server.exe` and `models/llm/model.gguf` under the deployed
-app. It checks EXE/GGUF file signatures, verifies SHA-256 after copy,
+app. When both optional ASR paths are supplied, it also copies the offline
+whisper-cli binary and its DLLs into `engines/whisper/` and a multilingual
+GGML .bin into `models/stt/ggml-base.bin`. The `-RequireAsr` switch
+refuses text-only staging and `-CheckOnly -RequireAsr` validates presence.
+Whisper model compatibility is checked only by the real engine, not this
+file copier. It checks EXE/GGUF file signatures, verifies SHA-256 after copy,
 refuses replacing different existing files, cleans newly staged files on
 failure, and never downloads, executes, schedules or uploads anything.
-Run again with `-AppDirectory 'D:\Games\Ember' -CheckOnly` to
+Run again with `-AppDirectory 'D:\Games\Ember' -CheckOnly -RequireAsr` to
 check presence after staging. Python is not required on the user's PC.
 
 Then open Ember.exe, select **Start brain**, wait for local health readiness,

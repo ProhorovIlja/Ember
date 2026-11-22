@@ -5,6 +5,9 @@ param(
     [Parameter(Mandatory=$true)][string]$AppDirectory,
     [string]$LlamaServer = '',
     [string]$ModelGguf = '',
+    [string]$WhisperCli = '',
+    [string]$WhisperModel = '',
+    [switch]$RequireAsr,
     [switch]$CheckOnly
 )
 Set-StrictMode -Version Latest
@@ -78,11 +81,18 @@ if (($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
 [void](File-Check (Join-Path $root 'Qt6Core.dll') 'Qt runtime')
 $exeTarget = Join-Path $root 'engines\llama\llama-server.exe'
 $modelTarget = Join-Path $root 'models\llm\model.gguf'
+$asrTarget = Join-Path $root 'engines\whisper\whisper-cli.exe'
+$asrModelTarget = Join-Path $root 'models\stt\ggml-base.bin'
 
 if ($CheckOnly) {
     [void](Header-Check $exeTarget ([byte[]](77,90)) 'Staged llama-server.exe')
     [void](Header-Check $modelTarget ([byte[]](71,71,85,70)) 'Staged GGUF model')
-    Write-Host 'Offline text input files are present; no engine was executed.'
+    if ($RequireAsr) {
+        [void](Header-Check $asrTarget ([byte[]](77,90)) 'Staged whisper-cli.exe')
+        $asrItem = File-Check $asrModelTarget 'Staged Whisper multilingual model'
+        if ($asrItem.Length -lt 128) { throw 'Staged multilingual ASR model is too small.' }
+    }
+    Write-Host 'Offline text assets present; ASR was checked only if requested. No engine was executed.'
     Write-Host 'Check does not prove model format compatibility or actual inference.'
     return
 }
@@ -91,6 +101,22 @@ if (-not $LlamaServer -or -not $ModelGguf) {
 }
 $engine = Header-Check $LlamaServer ([byte[]](77,90)) 'Windows llama-server'
 $model = Header-Check $ModelGguf ([byte[]](71,71,85,70)) 'GGUF model'
+if ([bool]$WhisperCli -ne [bool]$WhisperModel) {
+    throw 'Supply both -WhisperCli and -WhisperModel for RU/EN dictation.'
+}
+if ($RequireAsr -and -not $WhisperCli) {
+    throw '-RequireAsr needs explicit -WhisperCli and -WhisperModel paths.'
+}
+$asrExe = $null
+$asrModel = $null
+if ($WhisperCli) {
+    $asrExe = Header-Check $WhisperCli ([byte[]](77,90)) 'Whisper Windows executable'
+    $asrModel = File-Check $WhisperModel 'Multilingual Whisper model'
+    if ($asrExe.Extension -ine '.exe' -or $asrModel.Extension -ine '.bin' -or
+        $asrModel.Length -lt 128) {
+        throw 'Expected whisper-cli.exe and a nonempty multilingual GGML .bin model.'
+    }
+}
 if ($engine.Extension -ine '.exe' -or $model.Extension -ine '.gguf') {
     throw 'Expected a Windows .exe engine and .gguf model.'
 }
@@ -101,6 +127,16 @@ foreach ($dll in $companions) {
         throw "Symlinked engine DLL not accepted: $($dll.FullName)"
     }
 }
+$asrCompanions = @()
+if ($asrExe) {
+    $asrCompanions = @(Get-ChildItem -LiteralPath $asrExe.DirectoryName -File -Filter '*.dll')
+    if ($asrCompanions.Count -gt 256) { throw 'Too many ASR runtime DLLs.' }
+    foreach ($dll in $asrCompanions) {
+        if (($dll.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Symlinked ASR DLL not accepted: $($dll.FullName)"
+        }
+    }
+}
 $created = New-Object 'System.Collections.Generic.List[string]'
 try {
     Stage-File $engine.FullName $exeTarget $created
@@ -108,13 +144,26 @@ try {
         Stage-File $dll.FullName (Join-Path (Split-Path -Parent $exeTarget) $dll.Name) $created
     }
     Stage-File $model.FullName $modelTarget $created
+    if ($asrExe) {
+        Stage-File $asrExe.FullName $asrTarget $created
+        foreach ($dll in $asrCompanions) {
+            Stage-File $dll.FullName (Join-Path (Split-Path -Parent $asrTarget) $dll.Name) $created
+        }
+        Stage-File $asrModel.FullName $asrModelTarget $created
+    }
     [void](Header-Check $exeTarget ([byte[]](77,90)) 'Staged llama-server')
     [void](Header-Check $modelTarget ([byte[]](71,71,85,70)) 'Staged GGUF')
+    if ($asrExe) {
+        [void](Header-Check $asrTarget ([byte[]](77,90)) 'Staged whisper-cli')
+        $writtenModel = File-Check $asrModelTarget 'Staged multilingual ASR model'
+        if ($writtenModel.Length -lt 128) { throw 'Staged ASR model is too small.' }
+    }
 } catch {
     foreach ($createdPath in $created) {
         Remove-Item -LiteralPath $createdPath -Force -ErrorAction SilentlyContinue
     }
     throw
 }
-Write-Host "Offline text files prepared ($($created.Count) new files)."
-Write-Host 'Open Ember.exe and press Start brain. No downloads or processes launched.'
+Write-Host "Offline LLM assets prepared ($($created.Count) new files)."
+Write-Host 'Optional multilingual ASR staged when both paths provided. No downloads or processes launched.'
+Write-Host 'Open Ember.exe and press Start brain for text; dictation needs a real ASR model.'

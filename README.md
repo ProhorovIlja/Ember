@@ -142,7 +142,10 @@ sending. Incomplete/recovered audio never automatically sends; failure or
 cancellation keeps the existing draft. Recognition works through installed
 multilingual whisper.cpp or optional speech.cpp/Qwen3-ASR; these engines and
 weights are separate local installation requirements. Speech quality and
-hardware still require testing.
+hardware still require testing. A PowerShell-only offline setup helper
+`release/prepare-text-first.ps1` now accepts an optional local Whisper CLI
+and multilingual GGML `.bin` in addition to llama-server/GGUF, with
+`-RequireAsr` and hash-checked staging. It never downloads or runs a model.
 
 **Wikipedia agent (on demand):** With the managed local model running, select
 **Wiki agent** after typing a question. Ember asks before allowing up to three
