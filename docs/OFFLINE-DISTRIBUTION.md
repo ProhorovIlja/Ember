@@ -345,8 +345,13 @@ establish that a model can provide speech. Before a human-approved
 --redistribution-required --require-voice`, Ember now inspects the
 metadata written by the pinned upstream `speech.cpp v0.11.2`
 Qwen3 converters. The stdlib-only `tools/native_gguf_metadata.py`
-reads bounded GGUF headers and typed key/value metadata without loading
-tensor weights or starting any executable. For the allowed Qwen3-TTS
+reads bounded GGUF headers, typed key/value metadata and the complete
+tensor descriptor directory without loading weight payloads or starting any
+executable. The reader rejects absent or repeated tensor names, unsupported
+GGML types, impossible dimensions, misaligned offsets, overlapping tensor
+ranges and conservative evidence of truncated tensor data. The
+`general.alignment` metadata is validated (default 32 bytes). For the
+allowed Qwen3-TTS
 0.6B/1.7B aliases, it requires the matching
 `general.architecture`, `general.size_label`, task
 `speech.task=synthesis`, layout 1, compatible `speech.requires`,
@@ -367,11 +372,13 @@ Run `python tools/native_gguf_metadata.py --self-test` to test the
 bounded parser with synthetic files. To inspect an owned local
 weight, run `python tools/native_gguf_metadata.py --model
 models/speech/qwen3-tts-0.6b.gguf --alias qwen3-tts-0.6b --voice vivian`.
-Neither command downloads data or executes a model. The structural
-test **does not prove** model weights exist in full, license
-authenticity, signature trust, GPU support, network isolation,
-acoustic quality or actual inference; those remain explicit release
-gates.
+Neither command downloads data or executes a model. Tensor descriptors
+are read, not tensor content; a malicious padded file can still forge
+apparently valid ranges. This structural validation **does not prove**
+authentic or complete weights, license suitability, signature trust,
+GPU support, network isolation, acoustic quality or inference. A real
+offline engine load and audio test remain mandatory release gates.
+GGUF tensor layout: https://github.com/ggml-org/ggml/blob/master/docs/gguf.md .
 
 Converter reference: https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-tts
 and https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-asr
