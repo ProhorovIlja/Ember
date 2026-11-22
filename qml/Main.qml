@@ -1231,6 +1231,19 @@ ApplicationWindow {
                                             ToolTip.text: "Select one local project root. The local model may map, search and inspect bounded source excerpts up to three times. No writes, shell, Git or Internet."
                                         }
                                         PillButton {
+                                            text: "GitHub agent"
+                                            implicitWidth: 121
+                                            implicitHeight: 31
+                                            enabled: ember.brainReady && !ember.busy &&
+                                                     !ember.listening &&
+                                                     composer.text.trim().length > 0 &&
+                                                     composer.text.length <= 2048
+                                            onClicked: ember.researchGitHubRepository(composer.text)
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Approve one GitHub repo and public or scoped read-only access. The local model investigates up to three views; it cannot publish issues, rerun Actions or edit code."
+                                        }
+                                        PillButton {
                                             text: "Edit source"
                                             implicitWidth: 116
                                             implicitHeight: 31

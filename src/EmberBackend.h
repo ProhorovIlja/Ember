@@ -152,6 +152,7 @@ public:
     Q_INVOKABLE QString chooseLocalTextFile(const QString &existingDraft);
     Q_INVOKABLE QString searchLocalCodeFolder(const QString &existingDraft);
     Q_INVOKABLE bool researchLocalProject(const QString &goal);
+    Q_INVOKABLE bool researchGitHubRepository(const QString &goal);
     Q_INVOKABLE QString stageLocalCodeEdit();
     Q_INVOKABLE bool applyStagedLocalCodeEdit();
     Q_INVOKABLE void discardStagedLocalCodeEdit();
@@ -231,6 +232,7 @@ private:
     void completeTranscription();
     void failTranscription(const QString &reason);
     void requestLocalAgentStep();
+    void requestAgentGitHubRead(const EmberAgent::Decision &decision);
     void endLocalAgent(const QString &error = {}, const QString &result = {});
     void refreshSessions();
     void rebuildConversationHistory();
@@ -342,9 +344,11 @@ private:
     QByteArray m_wikipediaBuffer;
     bool m_wikipediaOversize = false;
     QPointer<QNetworkReply> m_reply;
-    QPointer<QNetworkReply> m_agentReply;
+    QPointer<QNetworkReply> m_agentReply, m_agentGitHubReply;
     QJsonArray m_agentMessages;
-    QString m_agentRoot, m_agentGoal, m_agentTrace;
+    EmberAgent::Scope m_agentScope = EmberAgent::Scope::LocalProject;
+    QString m_agentRoot, m_agentRepository, m_agentGoal, m_agentTrace;
+    bool m_agentAuthenticatedGitHub = false;
     int m_agentCalls = 0;
     QPointer<QNetworkReply> m_speechReply;
     QPointer<QNetworkReply> m_nativeAsrReply;

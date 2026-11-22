@@ -1,5 +1,6 @@
 #include "LocalAgent.h"
 #include "LocalRepoSearch.h"
+#include "PublicGitHub.h"
 
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -8,6 +9,7 @@
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
+#include <QSet>
 
 namespace EmberAgent {
 namespace {
@@ -31,7 +33,7 @@ QJsonObject functionDef(const QString &name, const QString &description,
     };
 }
 }
-QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining) {
+QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining, Scope scope) {
     QJsonObject request{
         {"model", "ember"},
         {"messages", messages},
@@ -41,6 +43,24 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining) {
         {"parallel_tool_calls", false}
     };
     if (callsRemaining > 0) {
+        if (scope == Scope::GitHubRepository) {
+            request.insert("tools", QJsonArray{
+                functionDef("github_read",
+                    "Read exactly one view of the user-authorized GitHub repository "
+                    "using official GitHub REST API. No repository, host, URL, "
+                    "branch, query, or token selection by the model. "
+                    "Allowed views: overview, issues, pulls, branches, forks, "
+                    "actions, file. Only file requires a repository-relative path.",
+                    QJsonObject{
+                        {"view", QJsonObject{
+                            {"type", "string"},
+                            {"enum", QJsonArray{"overview", "issues", "pulls",
+                                                  "branches", "forks", "actions", "file"}}
+                        }},
+                        {"path", QJsonObject{{"type", "string"}}}
+                    }, QJsonArray{"view"})
+            });
+        } else {
         request.insert("tools", QJsonArray{
             functionDef("project_map",
                 "List source filenames and directories inside the user-approved "
@@ -62,6 +82,7 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining) {
                         {"minimum", 1}, {"maximum", 100000}}}
                 }, QJsonArray{"path"})
         });
+        }
         request.insert("tool_choice", "auto");
     } else {
         // Explicit finite budget. Even a model that ignores this is rejected
@@ -70,7 +91,7 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining) {
     }
     return request;
 }
-Decision parseModelResponse(const QByteArray &json) {
+Decision parseModelResponse(const QByteArray &json, Scope scope) {
     Decision answer;
     if (json.isEmpty() || json.size() > 65536) {
         answer.error = "Local model response is empty or exceeds 64 KiB.";
@@ -110,8 +131,10 @@ Decision parseModelResponse(const QByteArray &json) {
         static const QRegularExpression callId("^[A-Za-z0-9_-]{1,100}$");
         if (call.value("type").toString() != "function" ||
             !callId.match(id).hasMatch() ||
-            (tool != "project_map" && tool != "search_text" &&
-             tool != "read_source")) {
+            (scope == Scope::GitHubRepository
+                 ? tool != "github_read"
+                 : (tool != "project_map" && tool != "search_text" &&
+                    tool != "read_source"))) {
             answer.error = "Denied an unknown, privileged or invalid model tool call.";
             return answer;
         }
@@ -128,7 +151,35 @@ Decision parseModelResponse(const QByteArray &json) {
             return answer;
         }
         const QJsonObject args = parsed.object();
-        if (tool == "project_map") {
+        if (tool == "github_read") {
+            static const QSet<QString> kViews{
+                "overview", "issues", "pulls", "branches", "forks",
+                "actions", "file"
+            };
+            if (!args.value("view").isString() ||
+                args.size() < 1 || args.size() > 2 ||
+                !kViews.contains(args.value("view").toString()) ||
+                (args.size() == 2 && !args.contains("path"))) {
+                answer.error = "github_read accepts one allowed view and optional file path.";
+                return answer;
+            }
+            answer.view = args.value("view").toString();
+            if (answer.view == "file") {
+                if (!args.value("path").isString()) {
+                    answer.error = "GitHub file view needs a relative source path.";
+                    return answer;
+                }
+                answer.path = args.value("path").toString();
+                if (answer.path.isEmpty() || answer.path.size() > 200 ||
+                    answer.path.contains(QChar::Null)) {
+                    answer.error = "GitHub source path is invalid or oversized.";
+                    return answer;
+                }
+            } else if (args.contains("path")) {
+                answer.error = "Only GitHub file view may contain a path.";
+                return answer;
+            }
+        } else if (tool == "project_map") {
             if (!args.isEmpty()) {
                 answer.error = "project_map accepts no parameters.";
                 return answer;
@@ -189,8 +240,12 @@ QJsonObject assistantToolMessage(const Decision &decision) {
         ? QJsonObject{} :
         decision.tool == "search_text"
             ? QJsonObject{{"query", decision.query}}
-            : QJsonObject{{"path", decision.path},
-                          {"start_line", decision.startLine}};
+            : decision.tool == "github_read"
+                ? (decision.view == "file"
+                    ? QJsonObject{{"view", decision.view}, {"path", decision.path}}
+                    : QJsonObject{{"view", decision.view}})
+                : QJsonObject{{"path", decision.path},
+                              {"start_line", decision.startLine}};
     return QJsonObject{
         {"role", "assistant"}, {"content", QJsonValue::Null},
         {"tool_calls", QJsonArray{QJsonObject{
@@ -234,5 +289,30 @@ QString executeReadOnly(const QString &selectedRoot, const Decision &decision) {
              result.draft.size() > excerpt.size()
                 ? "\n[Further matches excluded by agent context limit.]"
                 : "");
+}
+bool resolveGitHubRead(const QString &selectedRepository,
+                       const Decision &decision, QUrl &endpoint,
+                       int &viewNumber, QString &filePath) {
+    endpoint = {};
+    viewNumber = -1;
+    filePath.clear();
+    if (decision.kind != Decision::Kind::Call ||
+        decision.tool != "github_read") return false;
+    static const QStringList views{
+        "overview", "issues", "pulls", "file", "branches", "forks", "actions"
+    };
+    const int index = views.indexOf(decision.view);
+    if (index < 0 || (decision.view != "file" && !decision.path.isEmpty()))
+        return false;
+    const auto view = static_cast<EmberGitHub::View>(index);
+    const QUrl url = EmberGitHub::publicRequestUrl(
+        selectedRepository, view,
+        decision.view == "file" ? decision.path : QString());
+    if (url.isEmpty() || url.host() != "api.github.com" ||
+        url.scheme() != "https") return false;
+    viewNumber = index;
+    filePath = decision.view == "file" ? decision.path : QString();
+    endpoint = url;
+    return true;
 }
 }

@@ -753,6 +753,94 @@ private slots:
         QVERIFY(!EmberLocalSearch::readProjectFile(
             root.path(), "C:/Windows/secret.cpp").ok());
     }
+    void localAgentGitHubScopeNeverGrantsWritesOrHostControl() {
+        using namespace EmberAgent;
+        const QJsonArray messages{
+            QJsonObject{{"role", "system"}, {"content", "GitHub research"}},
+            QJsonObject{{"role", "user"}, {"content", "Check failed CI"}}
+        };
+        const auto request = modelRequest(
+            messages, 3, Scope::GitHubRepository);
+        const auto tools = request.value("tools").toArray();
+        QCOMPARE(tools.size(), 1);
+        const auto function = tools.first().toObject().value("function").toObject();
+        QCOMPARE(function.value("name").toString(), QString("github_read"));
+        QCOMPARE(modelRequest(messages, 0, Scope::GitHubRepository)
+                    .value("tool_choice").toString(), QString("none"));
+        const auto completion = [](const QString &name, const QJsonObject &args) {
+            const QJsonObject toolCall{
+                {"id", "call_gh_1"}, {"type", "function"},
+                {"function", QJsonObject{{"name", name},
+                    {"arguments", QString::fromUtf8(QJsonDocument(args).toJson(
+                        QJsonDocument::Compact))}}}
+            };
+            return QJsonDocument(QJsonObject{
+                {"choices", QJsonArray{QJsonObject{
+                    {"finish_reason", "tool_calls"},
+                    {"message", QJsonObject{
+                        {"role", "assistant"}, {"content", QJsonValue::Null},
+                        {"tool_calls", QJsonArray{toolCall}}
+                    }}
+                }}}
+            }).toJson();
+        };
+        const auto read = parseModelResponse(
+            completion("github_read", QJsonObject{{"view", "actions"}}),
+            Scope::GitHubRepository);
+        QVERIFY2(read.ok(), qPrintable(read.error));
+        QCOMPARE(read.view, QString("actions"));
+        QUrl endpoint;
+        int viewNo = -1;
+        QString path;
+        QVERIFY(resolveGitHubRead("ProhorovIlja/Ember", read,
+                                  endpoint, viewNo, path));
+        QCOMPARE(endpoint.scheme(), QString("https"));
+        QCOMPARE(endpoint.host(), QString("api.github.com"));
+        QCOMPARE(endpoint.path(), QString("/repos/ProhorovIlja/Ember/actions/runs"));
+        QVERIFY(!endpoint.hasFragment());
+        QVERIFY(!endpoint.userInfo().size());
+        QCOMPARE(assistantToolMessage(read).value("role").toString(),
+                 QString("assistant"));
+        QVERIFY(!parseModelResponse(
+            completion("shell", QJsonObject{}), Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            completion("write_issue", QJsonObject{}), Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            completion("github_read", QJsonObject{
+                {"view", "actions"}, {"repo", "attacker/private"}}),
+            Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            completion("github_read", QJsonObject{
+                {"view", "https://evil.example"}}),
+            Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            completion("github_read", QJsonObject{
+                {"view", "overview"}, {"path", "README.md"}}),
+            Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            completion("github_read", QJsonObject{
+                {"view", "file"}, {"path", "../secret"}}),
+            Scope::LocalProject).ok());
+        const auto file = parseModelResponse(
+            completion("github_read", QJsonObject{
+                {"view", "file"}, {"path", "src/main.cpp"}}),
+            Scope::GitHubRepository);
+        QVERIFY(file.ok());
+        QVERIFY(resolveGitHubRead("ProhorovIlja/Ember", file,
+                                  endpoint, viewNo, path));
+        QCOMPARE(endpoint.path(),
+                 QString("/repos/ProhorovIlja/Ember/contents/src/main.cpp"));
+        QCOMPARE(path, QString("src/main.cpp"));
+        QCOMPARE(viewNo, int(EmberGitHub::View::File));
+        auto forged = file;
+        forged.path = "../secret";
+        QVERIFY(!resolveGitHubRead("ProhorovIlja/Ember", forged,
+                                   endpoint, viewNo, path));
+        QVERIFY(!resolveGitHubRead("owner/repo?x=y", file,
+                                   endpoint, viewNo, path));
+        QVERIFY(!resolveGitHubRead("ProhorovIlja/Ember", read,
+                                   endpoint, viewNo, path) == false);
+    }
     void localAgentToolContractIsTypedAndStrictlyReadOnly() {
         using namespace EmberAgent;
         const QJsonArray history{
