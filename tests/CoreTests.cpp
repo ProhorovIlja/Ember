@@ -105,6 +105,8 @@ private slots:
         QVERIFY(!validManagedHealthResponse(
             R"({"status":"ok"})", "text/plain"));
         QVERIFY(!validManagedHealthResponse(
+            R"({"status":"ok"})", "application/jsonp"));
+        QVERIFY(!validManagedHealthResponse(
             R"({"status":"ok")", "application/json"));
         QVERIFY(!validManagedHealthResponse(
             QByteArray(4097, 'x'), "application/json"));
