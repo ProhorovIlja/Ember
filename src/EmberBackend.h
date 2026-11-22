@@ -164,6 +164,7 @@ public:
     Q_INVOKABLE bool proposeLocalProjectFix(const QString &goal);
     Q_INVOKABLE void runApprovedProjectTests();
     Q_INVOKABLE bool researchGitHubRepository(const QString &goal);
+    Q_INVOKABLE bool researchWikipedia(const QString &goal);
     Q_INVOKABLE QString stageLocalCodeEdit();
     Q_INVOKABLE bool applyStagedLocalCodeEdit();
     Q_INVOKABLE void discardStagedLocalCodeEdit();
@@ -250,6 +251,7 @@ private:
     void collectProjectTestOutput();
     void requestLocalAgentStep();
     void requestAgentGitHubRead(const EmberAgent::Decision &decision);
+    void requestAgentWikipediaRead(const EmberAgent::Decision &decision);
     void endLocalAgent(const QString &error = {}, const QString &result = {});
     void refreshSessions();
     void rebuildConversationHistory();
@@ -362,7 +364,9 @@ private:
     QByteArray m_wikipediaBuffer;
     bool m_wikipediaOversize = false;
     QPointer<QNetworkReply> m_reply;
-    QPointer<QNetworkReply> m_agentReply, m_agentGitHubReply;
+    QPointer<QNetworkReply> m_agentReply, m_agentGitHubReply, m_agentWikipediaReply;
+    QByteArray m_agentWikipediaBuffer;
+    bool m_agentWikipediaOversize = false;
     QJsonArray m_agentMessages;
     EmberAgent::Scope m_agentScope = EmberAgent::Scope::LocalProject;
     QString m_agentRoot, m_agentRepository, m_agentGoal, m_agentTrace;

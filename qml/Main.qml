@@ -1348,6 +1348,19 @@ ApplicationWindow {
                                             ToolTip.text: "Manually review and publish one GitHub issue with a separate Issues-write credential; never publish in the background."
                                         }
                                         PillButton {
+                                            text: "Wiki agent"
+                                            implicitWidth: 113
+                                            implicitHeight: 31
+                                            enabled: ember.brainReady && !ember.busy &&
+                                                     !ember.listening &&
+                                                     composer.text.trim().length > 0 &&
+                                                     composer.text.length <= 2048
+                                            onClicked: ember.researchWikipedia(composer.text)
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Approve up to three model-selected English/Russian Wikipedia searches. Fixed official endpoints and source-linked snippets only; review before chat."
+                                        }
+                                        PillButton {
                                             text: "Wikipedia"
                                             implicitWidth: 110
                                             implicitHeight: 31

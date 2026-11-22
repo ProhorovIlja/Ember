@@ -131,6 +131,15 @@ full articles. Wikimedia connectivity is required; the LLM itself remains
 fully local. See `docs/LOCAL-TOOLS-ROADMAP.md`.
 
 
+**Wikipedia agent (on demand):** With the managed local model running, select
+**Wiki agent** after typing a question. Ember asks before allowing up to three
+model-selected English or Russian Wikipedia REST searches. Only official
+HTTPS article-search endpoints are called (no arbitrary web browsing),
+returning source-linked short snippets. The model produces a reviewable
+answer; it cannot write files, browse other sites or perform background work.
+The original manual **Wikipedia** button is unchanged. Real local GGUF tool
+selection and regional HTTP reachability still need physical testing.
+
 **Google Drive (manual read-only)**: The Chat toolbar provides Connect,
 List folder, Read one text/Google Doc, and Disconnect operations. Desktop
 OAuth uses the system browser, loopback localhost and PKCE, with the

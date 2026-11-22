@@ -126,6 +126,23 @@ limits must be measured on target hardware. The existing native Qt front
 end remains independent of any cloud API.
 
 
+## Explicit model-driven Wikipedia search (22 November 2026)
+
+The **Wiki agent** button now grants an isolated, one-shot Wikipedia research
+scope to the local model. The user must type the research goal, run the owned
+localhost model, and approve up to three public HTTPS searches at the start of
+that invocation. The only model tool is `wikipedia_search(query,language)`,
+with EN/RU validation and strict JSON argument parsing. The tool constructs
+URLs through the preexisting fixed Wikimedia REST search helper, rejects
+redirects, caps responses at 128 KiB and tool excerpts to 2500 characters,
+returns explicit Wikipedia citations as *untrusted* reference data, and
+requires the user to review the answer before inserting it into chat. No
+arbitrary sites, private accounts, other tools, writes, scheduled activity or
+Google Drive access is exposed by this research scope. Unit tests cover
+cross-scope tool rejection, invalid languages and extra URL parameters.
+Internet reachability and local model tool selection on target Windows hardware
+remain unverified by CI.
+
 ## Initial native Google Drive read-only OAuth workflow
 
 The Chat composer includes **Google Drive**: Connect, List folder,

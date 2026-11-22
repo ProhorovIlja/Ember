@@ -1589,6 +1589,65 @@ private slots:
         QVERIFY(!readGitHubToken(retrieved, target));
 #endif
     }
+    void wikipediaLocalAgentOnlyUsesApprovedEncyclopediaSearch() {
+        using namespace EmberAgent;
+        const QJsonArray history{
+            QJsonObject{{"role", "system"}, {"content", "Research"}},
+            QJsonObject{{"role", "user"}, {"content", "What is a magnetar?"}}
+        };
+        const auto request = modelRequest(history, 3, Scope::WikipediaResearch);
+        const auto functions = request.value("tools").toArray();
+        QCOMPARE(functions.size(), 1);
+        QCOMPARE(functions.first().toObject().value("function").toObject()
+                     .value("name").toString(), QString("wikipedia_search"));
+        QCOMPARE(request.value("tool_choice").toString(), QString("auto"));
+        const auto finished = modelRequest(history, 0, Scope::WikipediaResearch);
+        QCOMPARE(finished.value("tool_choice").toString(), QString("none"));
+        QVERIFY(!finished.contains("tools"));
+        const auto completion = [](const QString &tool, const QString &args) {
+            const QJsonObject message{{"role", "assistant"},
+                {"content", QJsonValue::Null},
+                {"tool_calls", QJsonArray{QJsonObject{
+                    {"id", "wiki_1"}, {"type", "function"},
+                    {"function", QJsonObject{{"name", tool}, {"arguments", args}}}
+                }}}};
+            return QJsonDocument(QJsonObject{{"choices", QJsonArray{
+                QJsonObject{{"message", message}, {"finish_reason", "tool_calls"}}
+            }}}).toJson();
+        };
+        const auto call = completion("wikipedia_search",
+                                     R"({"query":"  Магнетар  ","language":"ru"})");
+        const auto decision = parseModelResponse(
+            call, Scope::WikipediaResearch);
+        QVERIFY2(decision.ok(), qPrintable(decision.error));
+        QCOMPARE(decision.kind, Decision::Kind::Call);
+        QCOMPARE(decision.query, QString::fromUtf8("Магнетар"));
+        QCOMPARE(decision.view, QString("ru"));
+        QCOMPARE(assistantToolMessage(decision).value("role").toString(),
+                 QString("assistant"));
+        QCOMPARE(toolResultMessage(decision, "untrusted snippets")
+                     .value("role").toString(), QString("tool"));
+        QVERIFY(!parseModelResponse(call, Scope::LocalProject).ok());
+        QVERIFY(!parseModelResponse(call, Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(completion(
+            "wikipedia_search", R"({"query":"Magnetar","language":"de"})"),
+            Scope::WikipediaResearch).ok());
+        QVERIFY(!parseModelResponse(completion(
+            "wikipedia_search", R"({"query":"Magnetar","language":"en","url":"https://evil.example"})"),
+            Scope::WikipediaResearch).ok());
+        QVERIFY(!parseModelResponse(completion(
+            "wikipedia_search", R"({"query":"x","language":"en"})"),
+            Scope::WikipediaResearch).ok());
+        QVERIFY(!parseModelResponse(completion(
+            "wikipedia_search", R"({"query":"foo\nbad","language":"en"})"),
+            Scope::WikipediaResearch).ok());
+        QVERIFY(!parseModelResponse(completion(
+            "github_read", R"({"view":"issues"})"),
+            Scope::WikipediaResearch).ok());
+        QVERIFY(!parseModelResponse(completion(
+            "wikipedia_search", R"({"query":123,"language":"en"})"),
+            Scope::WikipediaResearch).ok());
+    }
     void wikipediaSearchIsBoundedCitedAndOnlyUserRequested() {
         using namespace EmberWikipedia;
         const QUrl en = searchUrl("Earth", "en");

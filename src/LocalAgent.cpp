@@ -1,6 +1,7 @@
 #include "LocalAgent.h"
 #include "LocalRepoSearch.h"
 #include "PublicGitHub.h"
+#include "WikipediaSearch.h"
 
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -75,6 +76,21 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
                         {"number", QJsonObject{{"type", "integer"},
                             {"minimum", 1}}}
                     }, QJsonArray{"kind", "number"})
+            });
+        } else if (scope == Scope::WikipediaResearch) {
+            request.insert("tools", QJsonArray{
+                functionDef("wikipedia_search",
+                    "Search up to five citation-linked encyclopedia snippets on "
+                    "English or Russian Wikipedia using the official fixed "
+                    "Wikimedia REST endpoint. Select only a plain search query "
+                    "(2 to 120 printable characters) and language en or ru. "
+                    "No arbitrary URLs, other websites, credentials or downloads.",
+                    QJsonObject{
+                        {"query", QJsonObject{{"type", "string"},
+                            {"description", "Short article search phrase, no URL."}}},
+                        {"language", QJsonObject{{"type", "string"},
+                            {"enum", QJsonArray{"en", "ru"}}}}
+                    }, QJsonArray{"query", "language"})
             });
         } else {
         request.insert("tools", QJsonArray{
@@ -169,6 +185,8 @@ Decision parseModelResponse(const QByteArray &json,
             !callId.match(id).hasMatch() ||
             (scope == Scope::GitHubRepository
                  ? (tool != "github_read" && tool != "github_detail")
+                 : scope == Scope::WikipediaResearch
+                 ? (tool != "wikipedia_search")
                  : (tool != "project_map" && tool != "search_text" &&
                     tool != "read_source" &&
                     !(mayProposeEdit && tool == "propose_patch")))) {
@@ -206,6 +224,18 @@ Decision parseModelResponse(const QByteArray &json,
                 answer.oldText.contains(QChar::Null) ||
                 answer.newText.contains(QChar::Null)) {
                 answer.error = "Model's source edit is unsafe, empty or too large.";
+                return answer;
+            }
+        } else if (tool == "wikipedia_search") {
+            if (args.size() != 2 || !args.value("query").isString() ||
+                !args.value("language").isString()) {
+                answer.error = "Wikipedia search needs exactly query and language.";
+                return answer;
+            }
+            answer.query = args.value("query").toString().trimmed();
+            answer.view = args.value("language").toString();
+            if (EmberWikipedia::searchUrl(answer.query, answer.view).isEmpty()) {
+                answer.error = "Unapproved Wikipedia language or invalid search query.";
                 return answer;
             }
         } else if (tool == "github_detail") {
@@ -322,6 +352,9 @@ QJsonObject assistantToolMessage(const Decision &decision) {
         ? QJsonObject{} :
         decision.tool == "search_text"
             ? QJsonObject{{"query", decision.query}}
+            : decision.tool == "wikipedia_search"
+                ? QJsonObject{{"query", decision.query},
+                              {"language", decision.view}}
             : decision.tool == "github_read"
                 ? (decision.view == "file"
                     ? QJsonObject{{"view", decision.view},

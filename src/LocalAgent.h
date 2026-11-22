@@ -5,7 +5,7 @@
 #include <QUrl>
 
 namespace EmberAgent {
-enum class Scope { LocalProject, GitHubRepository };
+enum class Scope { LocalProject, GitHubRepository, WikipediaResearch };
 // A deliberately tiny on-demand READ-ONLY tool protocol. It is not a
 // general-purpose filesystem, browser, GitHub or command execution agent.
 struct Decision {
