@@ -391,6 +391,8 @@ EmberBackend::EmberBackend(QObject *parent)
     connect(&m_speechServer, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
         m_speechHealthTimer.stop();
         setSpeechServerReady(false);
+        const bool startupTimedOut = m_speechStartupTimedOut;
+        m_speechStartupTimedOut = false;
         emit speechServerChanged();
         if (m_nativeAsrReply) {
             auto reply = m_nativeAsrReply;
@@ -401,7 +403,11 @@ EmberBackend::EmberBackend(QObject *parent)
         if (m_speechSequence && m_voiceEngine == 1)
             stopSpeechOnError("The managed native speech engine exited during synthesis.");
         else
-            setStatus("Managed native speech engine stopped.");
+            setStatus(startupTimedOut
+                ? "Native speech model startup timed out after three minutes; "
+                  "the process was stopped. Check model files, GPU memory and "
+                  "whether catalog downloads were disabled."
+                : "Managed native speech engine stopped.");
     });
     connect(&m_speechServer, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         m_speechHealthTimer.stop();
@@ -415,12 +421,22 @@ EmberBackend::EmberBackend(QObject *parent)
             [this](int, QProcess::ExitStatus) {
                 m_healthTimer.stop();
                 if (m_brainReady) setBrainReady(false);
-                if (m_busy || m_listening) cancelWork();
+                // Microphone dictation and its local ASR do not depend on the
+                // text model. Preserve the captured audio/recognized prefix
+                // when llama-server exits, but invalidate any previous Send
+                // choice so a later restart cannot silently submit it.
+                const bool keepDictation = EmberCore::brainStopKeepsDictation(
+                    m_listening, m_captureDictation, m_transcribingDictation);
+                if (keepDictation) m_dictationAutoSend = false;
+                else if (m_busy || m_listening) cancelWork();
                 if (m_brainStartupTimedOut) {
                     m_brainStartupTimedOut = false;
                     setStatus("Local model startup timed out and the inference process was stopped. Try 4096 context tokens or fewer GPU layers.");
                 } else {
-                    setStatus("Local text engine stopped. Start the brain to continue.");
+                    setStatus(keepDictation
+                        ? "Text brain stopped. Offline dictation continues; "
+                          "recognized words will remain an editable draft."
+                        : "Local text engine stopped. Start the brain to continue.");
                 }
             });
     connect(&m_brain, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
@@ -1127,6 +1143,7 @@ void EmberBackend::startSpeechServer() {
     m_speechTtsPathMode = ttsPath;
     m_speechAsrPathMode = asrPath;
     ++m_speechServerSession;
+    m_speechStartupTimedOut = false;
     setSpeechServerReady(false);
     m_speechServer.setWorkingDirectory(QFileInfo(binary).absolutePath());
     m_speechServer.setProgram(binary);
@@ -1146,6 +1163,7 @@ void EmberBackend::startSpeechServer() {
 }
 void EmberBackend::stopSpeechServer() {
     ++m_speechServerSession;
+    m_speechStartupTimedOut = false;
     m_speechHealthTimer.stop();
     setSpeechServerReady(false);
     if (m_speechSequence && m_voiceEngine == 1)
@@ -1166,8 +1184,18 @@ void EmberBackend::stopSpeechServer() {
 void EmberBackend::pollSpeechServer() {
     if (m_speechServer.state() == QProcess::NotRunning || m_speechServerReady)
         return;
-    if (m_speechServerElapsed.isValid() && m_speechServerElapsed.elapsed() > 180000)
-        setStatus("Speech model startup is taking longer than three minutes; check model download/GPU.");
+    if (m_speechServerElapsed.isValid() &&
+        m_speechServerElapsed.elapsed() > 180000) {
+        // Prevent a permanently stalled model loader from consuming CPU,
+        // VRAM and startup health requests forever. One user-initiated
+        // process launch gets a bounded three-minute startup budget.
+        ++m_speechServerSession; // invalidate outstanding /health replies
+        m_speechStartupTimedOut = true;
+        m_speechHealthTimer.stop();
+        setSpeechServerReady(false);
+        m_speechServer.kill(); // finished callback retains the timeout reason
+        return;
+    }
     if (!EmberCore::ownedLoopbackTcpListener(
             43822, quint64(m_speechServer.processId()))) return;
     const quint64 session = m_speechServerSession;
@@ -1194,14 +1222,22 @@ void EmberBackend::stopBrain() {
     m_brainStartupTimedOut = false;
     m_brainVisionMode = false;
     ++m_brainSession;
-    cancelWork();
+    // ASR is independent of llama-server. Stop the LLM without discarding
+    // a long dictation, and make any pending "Transcribe & send" draft-only.
+    const bool keepDictation = EmberCore::brainStopKeepsDictation(
+        m_listening, m_captureDictation, m_transcribingDictation);
+    if (keepDictation) m_dictationAutoSend = false;
+    else cancelWork();
     m_healthTimer.stop();
     setBrainReady(false);
     if (m_brain.state() != QProcess::NotRunning) {
         m_brain.kill();
         m_brain.waitForFinished(1000);
     }
-    setStatus("Local brain stopped. No inference process remains active.");
+    setStatus(keepDictation
+        ? "Local brain stopped. Offline dictation continues and will produce "
+          "an editable draft; no automatic send."
+        : "Local brain stopped. No inference process remains active.");
 }
 void EmberBackend::chooseImage() {
     if (m_privateMode || m_busy || m_listening) {
