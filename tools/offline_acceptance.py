@@ -95,6 +95,86 @@ def restricted_environment():
     return env
 
 
+def parse_token_ids(doc):
+    """Exact llama.cpp /tokenize JSON shape; refuse empty/oversized results."""
+    if not isinstance(doc, dict) or not isinstance(doc.get("tokens"), list):
+        raise ValueError("Local tokenizer returned no tokens list")
+    ids = doc["tokens"]
+    if not 0 < len(ids) <= 32768 or any(
+            type(item) is not int or item < 0 for item in ids):
+        raise ValueError("Local tokenizer returned malformed token IDs")
+    return len(ids)
+
+
+def post_model_json(path, payload, owner_pid):
+    """Read-only llama.cpp inspection: hardcoded 127.0.0.1, no proxies/redirects.
+
+    A foreign local server must never receive test prompts. This is a
+    diagnostic helper for the user's explicit --run acceptance invocation,
+    not a standing service.
+    """
+    if path not in ("/apply-template", "/tokenize") or (
+            listener_owners() != {owner_pid}):
+        raise RuntimeError("Local token inspection endpoint ownership invalid")
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    if len(data) > 32768:
+        raise ValueError("Model-token inspection payload too large")
+    request = Request("http://127.0.0.1:43821" + path,
+                      data=data, method="POST",
+                      headers={"Content-Type": "application/json",
+                               "Accept": "application/json"})
+    with NO_PROXY.open(request, timeout=20) as result:
+        if result.status != 200 or not result.headers.get(
+                "Content-Type", "").lower().startswith("application/json"):
+            raise ValueError("Local tokenizer did not return JSON/200")
+        body = result.read(262145)
+    if not body or len(body) > 262144:
+        raise ValueError("Local token inspection reply missing or oversized")
+    if listener_owners() != {owner_pid}:
+        raise RuntimeError("Model listener changed during tokenizer probe")
+    doc = json.loads(body.decode("utf-8", errors="strict"))
+    if not isinstance(doc, dict):
+        raise ValueError("Invalid tokenizer JSON object")
+    return doc
+
+
+def verify_real_prompt_tokens(owner_pid, context):
+    """Count tokens via llama.cpp's real model-specific chat template.
+
+    These fixed synthetic prompts contain no private user conversations.
+    Counts are diagnostic for these inputs, NOT proof that every possible
+    chat will fit; the model's actual tokenizer/template can vary.
+    """
+    fixtures = {
+        "english": ("Explain why the graphics card's twelve gigabytes of "
+                    "video memory limit long local conversations. ") * 10,
+        "russian": ("Объясни, почему контекст локальной модели ограничен "
+                    "объёмом памяти видеокарты и длиной диалога. ") * 10,
+    }
+    results = {}
+    for language, prompt in fixtures.items():
+        templated = post_model_json("/apply-template", {
+            "messages": [
+                {"role": "system", "content": "Be concise and accurate."},
+                {"role": "user", "content": prompt},
+            ],
+        }, owner_pid)
+        formatted = templated.get("prompt")
+        if not isinstance(formatted, str) or not 0 < len(formatted) <= 65536:
+            raise ValueError("Model returned invalid chat-template text")
+        count = parse_token_ids(post_model_json("/tokenize", {
+            "content": formatted, "add_special": False,
+            "parse_special": True, "with_pieces": False,
+        }, owner_pid))
+        # Leave 512 tokens for reply plus 128 for template/endpoint variation.
+        if count + 512 + 128 >= context:
+            raise ValueError("Real model's sample prompt exceeds configured context")
+        results[language + "_prompt_tokens"] = count
+    results["configured_context_tokens"] = context
+    results["minimum_reserved_output_tokens"] = 512
+    return results
+
+
 def smoke_text(root, context, gpu_layers, seconds):
     if listener_owners():
         raise RuntimeError("Local text port 43821 is already in use; stop that server first")
@@ -118,7 +198,9 @@ def smoke_text(root, context, gpu_layers, seconds):
                          "Reply with exactly the word READY.")
         if listener_owners() != {proc.pid} or not result["instruction_exact_match"]:
             raise RuntimeError("Model's streamed instruction-following test failed")
+        token_report = verify_real_prompt_tokens(proc.pid, context)
         return {"stream_complete": True,
+                "template_and_tokenizer_probe": token_report,
                 "exact_instruction": True,
                 "time_to_first_token_ms": result["ttft_ms"],
                 "total_response_ms": result["full_response_ms"]}
@@ -194,6 +276,14 @@ def self_test():
     assert netstat_listening_pids(fixture) == {1234}
     assert netstat_listening_pids("") == set()
     assert netstat_listening_pids(fixture.replace("1234", "9999")) == {9999}
+    assert parse_token_ids({"tokens": [10, 42, 5000]}) == 3
+    for invalid in ({"tokens": []}, {"tokens": [1, -1]},
+                    {"tokens": [1, "2"]}, {"tokens": [True]}, {}, []):
+        try:
+            parse_token_ids(invalid)
+            raise AssertionError("Malformed tokenizer result passed")
+        except ValueError:
+            pass
     from asr_benchmark import silent_wav
     with tempfile.TemporaryDirectory() as tmp:
         sample = Path(tmp) / "silent.wav"
