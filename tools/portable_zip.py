@@ -128,8 +128,8 @@ def self_test():
             candidate.parent.mkdir(parents=True, exist_ok=True)
             candidate.write_bytes(b"private information")
             try:
-                archive(complete, base / "must-reject-" +
-                        name.replace("/", "-") + ".zip")
+                archive(complete, base / ("must-reject-" +
+                        name.replace("/", "-") + ".zip"))
                 raise AssertionError("Private file was accepted in a ZIP: " + name)
             except ValueError:
                 pass
