@@ -2935,7 +2935,7 @@ void EmberBackend::startCapture(bool dictation) {
     if (dictation) emit dictationChanged();
     m_captureWatchdog.start();
     setStatus(dictation
-        ? "Dictation recording locally — choose Cancel, To draft or Transcribe & send.");
+        ? "Dictation recording locally — choose Cancel, To draft or Transcribe & send."
         : (m_autoEndOnSilence
             ? "Voice recording locally — experimental pause ending, or press Stop."
             : "Voice recording locally — press Stop when done. No fixed 30s cutoff."));
