@@ -77,6 +77,11 @@ jobs:
       - name: Test manual offline text-first staging without network
         shell: pwsh
         run: pwsh -NoProfile -File tests/text-first-preparation.test.ps1
+      - name: Validate native Windows PE dependency audit (synthetic only)
+        shell: pwsh
+        run: |
+          python tools/windows_pe_audit.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Native Windows dependency audit fixtures failed.' }
       - name: Install Qt 6.8.3 dynamic development modules
         uses: jurplel/install-qt-action@v4
         with:
@@ -108,6 +113,11 @@ jobs:
           windeployqt --release --qmldir qml $exe
           if (!(Test-Path $exe)) { throw 'Native EXE missing' }
           if (!(Test-Path 'build/Release/Qt6Core.dll')) { throw 'Dynamic Qt deployment missing' }
+      - name: Audit deployed Windows x64 DLL closure without executing binaries
+        shell: pwsh
+        run: |
+          python tools/windows_pe_audit.py --root build/Release
+          if ($LASTEXITCODE -ne 0) { throw 'Missing compiler/Qt native DLL dependency in portable payload.' }
       - name: Headless native QML launch and runtime resource smoke test
         shell: pwsh
         run: |
