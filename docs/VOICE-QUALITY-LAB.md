@@ -163,8 +163,8 @@ the PC. It stores the fixed prompt-suite SHA256 (not user text), prompt
 index and seed per trial to ensure reproducible pairing. Example:
 
 ```powershell
-python tools/voice_benchmark.py --model qwen3-tts-1.7b --voice vivian --omit-model-id --seed-base 1 --environment-label win10-rtx4070-llm8b --samples 12 --output vivian.json
-python tools/voice_benchmark.py --model qwen3-tts-1.7b --voice serena --omit-model-id --seed-base 1 --environment-label win10-rtx4070-llm8b --samples 12 --output serena.json
+python tools/voice_benchmark.py --speech-pid 1234 --model qwen3-tts-1.7b --voice vivian --omit-model-id --seed-base 1 --environment-label win10-rtx4070-llm8b --samples 12 --output vivian.json
+python tools/voice_benchmark.py --speech-pid 1234 --model qwen3-tts-1.7b --voice serena --omit-model-id --seed-base 1 --environment-label win10-rtx4070-llm8b --samples 12 --output serena.json
 python tools/compare_voice_profiles.py --baseline vivian.json --candidate serena.json
 ```
 
@@ -388,8 +388,8 @@ A new standard-library-only development probe, `tools/voice_benchmark.py`, measu
 After installing local model binaries/weights on the **target RTX 4070 PC** and starting the TTS service in Ember, run:
 
 ```powershell
-python tools/voice_benchmark.py --voice vivian --samples 12 --output .\benchmark-vivian.json
-python tools/voice_benchmark.py --voice serena --samples 12 --output .\benchmark-serena.json
+python tools/voice_benchmark.py --speech-pid 1234 --voice vivian --samples 12 --output .\benchmark-vivian.json
+python tools/voice_benchmark.py --speech-pid 1234 --voice serena --samples 12 --output .\benchmark-serena.json
 ```
 
 The probe cycles fixed neutral, expressive, technical and question prompts and reports first **HTTP PCM byte** p50/p95, full synthesis wall time and audio duration/wall-time throughput per sample. It does not store PCM, microphone recordings, transcripts or private chats. The optional JSON contains only names, numeric timing and sample-rate metadata. The same machine and GPU/LLM load are needed for fair comparisons; results from a non-4070 system do not establish target performance. **These measurements are not subjective naturalness scores or acoustic speaker onset.**
@@ -416,7 +416,7 @@ Compare Vivian and Serena on Qwen3-TTS 0.6B (native unconditioned) and 1.7B, wit
 
 The standard-library-only `tools/voice_benchmark.py` now additionally records the *length of initially low-level PCM16 audio* until the first sample with magnitude at least 256/32768 (roughly -42 dBFS peak). This diagnostic is distinct from first HTTP PCM byte and from **physical first audible sound** on the selected Windows headphone. The streaming parser tracks 16-bit sample boundaries even when HTTP chunks end on odd bytes, and saves no waveforms. Completely silent test clips return null rather than a fabricated onset; mock CI exercises a 50-ms synthetic silence followed by a synthetic tone. The benchmark also supports `--model qwen3-tts-1.7b --delivery warm|soft|bright|story` and rejects style instructions for 0.6B. Repeated trials with the exact same test phrases and voice are still required before any quality claims.
 
-Example: `python tools/voice_benchmark.py --model qwen3-tts-1.7b --voice serena --delivery warm --samples 12 --output native-serena-warm.json`. The JSON contains numeric timing, seed-independent model/voice/style names and text-free metadata only, not PCM, recognition or user conversation.
+Example: `python tools/voice_benchmark.py --speech-pid 1234 --model qwen3-tts-1.7b --voice serena --delivery warm --samples 12 --output native-serena-warm.json`. The JSON contains numeric timing, seed-independent model/voice/style names and text-free metadata only, not PCM, recognition or user conversation.
 
 ### Per-conversation RU/EN recognition vocabulary (21 November 2026)
 
@@ -890,3 +890,24 @@ Replacing `1234` with the PID you verified is mandatory. The CLI sends only
 the deliberately selected audio to the specifically verified localhost
 process and never saves the transcript. As with all PID checks, a narrow
 process-rebinding race still exists; physical Windows testing is required.
+
+
+### November 22 — verified speech.exe ownership for real TTS quality comparisons
+
+Manual `tools/voice_benchmark.py` sessions now require
+`--speech-pid <actual running speech.exe PID>`; the literal `1234` in
+the examples must be replaced by the PID verified on the user's Windows PC.
+Confirm path in Task Manager or `Get-Process speech | Select Id,Path`,
+then inspect `Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 43822
+-State Listen | Select OwningProcess`. The benchmark checks exact IPv4
+listener ownership before *every* voice prompt and after streamed PCM,
+refusing unknown processes, missing listeners, non-Windows live runs and
+changed PIDs. The synthetic protocol fixture runs only on its own ephemeral
+test port; it cannot bypass live-port validation. Numeric-only JSON metrics
+refuse accidental overwrite and contain no speech audio or transcript.
+
+This is a foreground, user-invoked instrument; no scheduled task, service or
+background monitoring is created. Listener PID preflight cannot completely
+eliminate port-rebind races, and no mock signal test establishes real
+English voice prosody, model compatibility, audible first sound or GPU
+performance. Genuine RTX4070 listening and output-device tests remain required.

@@ -6,6 +6,7 @@ import json
 import math
 import re
 import statistics
+import subprocess
 import struct
 import threading
 import time
@@ -14,6 +15,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+
+from localhost_owner import require_owned_speech_listener
 
 ENDPOINT = "http://127.0.0.1:43822/v1/audio/speech"
 PROMPTS = (
@@ -125,13 +128,22 @@ def percentile95(values):
 
 
 def measure(endpoint, model, voice, prompt, delivery="natural", omit_model_id=False,
-            seed=1):
+            seed=1, *, expected_pid=None, _fixture=False):
     u = urlsplit(endpoint)
     if (u.scheme != "http" or u.hostname != "127.0.0.1" or
             u.port is None or u.username is not None or
             u.password is not None or u.query or u.fragment or
             u.path != "/v1/audio/speech"):
         raise ValueError("Only loopback HTTP TTS endpoints are allowed")
+    if _fixture:
+        if u.port == 43822:
+            raise ValueError("Fixture bypass is forbidden on live speech port")
+    else:
+        if endpoint != ENDPOINT:
+            raise ValueError("Real TTS benchmark requires Ember's exact local port")
+        # Fail before sending even the built-in English test prompts to an
+        # unknown local HTTP listener on the default Ember speech port.
+        require_owned_speech_listener(expected_pid, 43822)
     if delivery not in DELIVERIES or (delivery != "natural" and
                                      model != "qwen3-tts-1.7b"):
         raise ValueError("Delivery instructions require native Qwen3-TTS 1.7B")
@@ -174,6 +186,9 @@ def measure(endpoint, model, voice, prompt, delivery="natural", omit_model_id=Fa
     # Stop latency clock BEFORE any CPU-heavy signal analysis. Each trial's
     # PCM is transient in RAM; results contain numeric telemetry only.
     total_ms = (time.perf_counter() - started) * 1000
+    if not _fixture:
+        # An unexpected speech.exe shutdown/rebind invalidates the trial.
+        require_owned_speech_listener(expected_pid, 43822)
     count = len(sample_bytes)
     if count % 2 or count < 2:
         raise ValueError("PCM16 response ended with incomplete sample frames")
@@ -227,11 +242,23 @@ def self_test():
     worker.start()
     uri = f"http://127.0.0.1:{httpd.server_port}/v1/audio/speech"
     try:
-        result = measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.")
+        try:
+            measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.")
+            raise AssertionError("Unverified local speech listener was accepted")
+        except ValueError:
+            pass
+        try:
+            measure(ENDPOINT, "qwen3-tts-0.6b", "vivian", "Hello.",
+                    _fixture=True)
+            raise AssertionError("Mock bypass reached default speech port")
+        except ValueError:
+            pass
+        result = measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.",
+                         _fixture=True)
         assert result["pcm_bytes"] == 4800
         Handler.omit_model_id = True
         result_local = measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.",
-                               omit_model_id=True)
+                               omit_model_id=True, _fixture=True)
         assert result_local["pcm_bytes"] == 4800
         Handler.omit_model_id = False
         assert result["sample_rate_hz"] == 24000
@@ -248,7 +275,7 @@ def self_test():
         assert onset.first_significant_sample == 240
         Handler.payload = b"\x00\x00" * 1200 + struct.pack("<h", 1000) * 1200
         expressive = measure(uri, "qwen3-tts-1.7b", "serena", "Warm hello.",
-                             delivery="warm")
+                             delivery="warm", _fixture=True)
         assert expressive["leading_low_level_pcm_ms"] == 50
         assert expressive["digital_voice_detected"] is True
         assert expressive["quiet_sample_percent"] == 50
@@ -269,20 +296,20 @@ def self_test():
             pass
         Handler.payload = b"\x00\x00" * 2400
         try:
-            measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.", delivery="warm")
+            measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.", delivery="warm", _fixture=True)
             raise AssertionError("0.6B delivery instructions were accepted")
         except ValueError:
             pass
         Handler.sample_rate = 999999
         try:
-            measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.")
+            measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.", _fixture=True)
             raise AssertionError("Invalid sample rate was accepted")
         except ValueError:
             pass
         Handler.sample_rate = 24000
         Handler.payload = b"\x00"
         try:
-            measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.")
+            measure(uri, "qwen3-tts-0.6b", "vivian", "Hello.", _fixture=True)
             raise AssertionError("Odd PCM frame was accepted")
         except ValueError:
             pass
@@ -303,6 +330,9 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--model", default="qwen3-tts-0.6b")
     parser.add_argument("--voice", default="vivian")
+    parser.add_argument("--speech-pid", type=int,
+                        help="Required Windows PID of the trusted speech.exe "
+                             "listener on 127.0.0.1:43822")
     parser.add_argument("--omit-model-id", action="store_true",
                         help="For speech.cpp started from a local GGUF path; no catalog alias")
     parser.add_argument("--delivery", choices=tuple(DELIVERIES),
@@ -323,6 +353,12 @@ def main():
         parser.error("Model and voice must be short safe local identifiers")
     if not 1 <= args.samples <= 40:
         parser.error("--samples must be between 1 and 40")
+    if not args.speech_pid or args.speech_pid <= 0:
+        parser.error("--speech-pid is mandatory for real native TTS comparisons")
+    try:
+        require_owned_speech_listener(args.speech_pid, 43822)
+    except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+        parser.error("Trusted local speech.cpp PID check failed: " + str(exc))
     if not 0 <= args.seed_base <= 2**31 - 4:
         parser.error("Seed base must be 0..2147483644")
     if not re.fullmatch(r"[A-Za-z0-9_.-]{2,64}", args.environment_label):
@@ -334,7 +370,7 @@ def main():
             seed = args.seed_base + i % 3
             result = measure(ENDPOINT, args.model, args.voice, prompt,
                              args.delivery, omit_model_id=args.omit_model_id,
-                             seed=seed)
+                             seed=seed, expected_pid=args.speech_pid)
         except (OSError, URLError, HTTPError, ValueError) as exc:
             parser.error(f"Local TTS sample {i + 1} failed: {type(exc).__name__}: {exc}")
         result["sample_number"] = i + 1
@@ -370,7 +406,9 @@ def main():
     }
     content = json.dumps(report, indent=2, ensure_ascii=False)
     if args.output:
-        args.output.write_text(content + "\n", encoding="utf-8")
+        # A new A/B run must never silently erase the earlier numeric baseline.
+        with args.output.open("x", encoding="utf-8") as stream:
+            stream.write(content + "\n")
     print(content)
 
 
