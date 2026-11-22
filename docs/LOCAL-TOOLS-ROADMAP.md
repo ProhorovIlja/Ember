@@ -128,7 +128,11 @@ end remains independent of any cloud API.
 
 ## Initial native Google Drive read-only OAuth workflow
 
-A dedicated Qt `EmberDrive::Client` implements Google Desktop OAuth through
+The Chat composer now includes **Google Drive**: Connect, List folder, or
+Disconnect. Results appear in the same read-only review dialog used for
+GitHub and Wikipedia. This is metadata only: users explicitly choose the
+folder ID; no file contents are downloaded. A dedicated Qt
+`EmberDrive::Client` implements Google Desktop OAuth through
 the operating system's default browser and IPv4 loopback callback, with
 random PKCE S256 verifier, CSRF state and exact redirect/host checks. It
 asks only for `drive.metadata.readonly`; no file contents or modification
@@ -140,5 +144,9 @@ Token exchanges go only to oauth2.googleapis.com; API metadata GETs go
 only to www.googleapis.com. There is no scheduled sync, polling or
 credential transmission to the local LLM. A Desktop OAuth application ID
 created in Google Cloud and corresponding Google consent are necessary.
-Do not claim the workflow is complete until native UI wiring, CI and
-actual account sign-in are tested.
+The native UI is wired, but **no real user Google OAuth sign-in or Drive
+API response has yet been verified**, and a registered Desktop OAuth client
+and relevant consent screen/test-user configuration are prerequisites.
+The Google sign-in step uses the system browser per Google's native-app
+OAuth security guidance, not an embedded WebView2 login. CI only covers
+pure URL/token validation, mock JSON and isolated Windows credential tests.

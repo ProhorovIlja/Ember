@@ -82,6 +82,11 @@ ApplicationWindow {
             window.externalReferencePreview = excerpt
             externalReferenceDialog.open()
         }
+        function onDriveExcerptReady(excerpt) {
+            window.externalReferenceSource = "Google Drive"
+            window.externalReferencePreview = excerpt
+            externalReferenceDialog.open()
+        }
     }
 
     Dialog {
@@ -1195,6 +1200,16 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         spacing: 8
                                         Text { text: "Ctrl + Enter · send"; color: "#8097A7"; font.pixelSize: 11 }
+                                        PillButton {
+                                            text: "Google Drive"
+                                            implicitWidth: 118
+                                            implicitHeight: 34
+                                            enabled: !ember.busy && !ember.listening
+                                            onClicked: ember.driveAction()
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 700
+                                            ToolTip.text: "Manual browser-based Google OAuth, folder metadata only. No automatic sync, downloads or file writes."
+                                        }
                                         Item { Layout.fillWidth: true }
                                         PillButton {
                                             text: ember.dictationActive ? "● Dictating…" :

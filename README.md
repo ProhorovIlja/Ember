@@ -129,3 +129,17 @@ plain-text article snippets to the existing manual review dialog. No
 background research is initiated, and snippets are not substitutes for
 full articles. Wikimedia connectivity is required; the LLM itself remains
 fully local. See `docs/LOCAL-TOOLS-ROADMAP.md`.
+
+
+**Google Drive (metadata-only)**: The Chat toolbar provides an explicit
+Connect / List folder / Disconnect flow. Desktop OAuth uses the system
+browser, loopback localhost and PKCE, with Google refresh tokens stored
+in Windows Credential Manager. The user must provide a registered
+Google Cloud **Desktop** OAuth client ID and grant
+`drive.metadata.readonly` consent. The native client can list up to
+20 metadata entries in the selected folder (including `root`); the
+reviewed preview may then be inserted into the local model's text draft.
+This does not download document contents, modify Drive, sync
+automatically or create scheduled work. No Google account has been
+signed in or physically accepted yet; testing with actual credentials
+and on the user's Windows machine remains required.

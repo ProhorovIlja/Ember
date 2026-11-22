@@ -205,6 +205,14 @@ EmberBackend::EmberBackend(QObject *parent)
     m_network.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     m_publicGitHubNetwork.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
     m_wikipediaNetwork.setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+    // A user-initiated Drive session lives entirely in the native Qt process.
+    // No auto-connect, polling, file uploads or background refresh on startup.
+    connect(&m_driveClient, &EmberDrive::Client::status,
+            this, [this](const QString &text) { setStatus(text); });
+    connect(&m_driveClient, &EmberDrive::Client::previewReady,
+            this, [this](const QString &text) {
+                emit driveExcerptReady(text);
+            });
     m_voiceId = qBound(0, m_voiceId, 10);
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
     m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 4);
@@ -1179,6 +1187,50 @@ QString EmberBackend::messageText(const QString &body) const {
 }
 bool EmberBackend::submitText(const QString &text) {
     return submit(text, false);
+}
+void EmberBackend::driveAction() {
+    if (m_busy || m_listening) {
+        setStatus("Finish the current local model task before using Drive.");
+        return;
+    }
+    bool accepted = false;
+    const QStringList choices{
+        "Connect Google Drive (metadata only)",
+        "List selected Google Drive folder",
+        "Disconnect local Google Drive credential"
+    };
+    const QString action = QInputDialog::getItem(
+        nullptr, "Google Drive · Manual read-only access",
+        "Choose an explicitly requested operation:", choices, 0,
+        false, &accepted);
+    if (!accepted) return;
+    const int index = choices.indexOf(action);
+    if (index == 2) {
+        m_driveClient.disconnectLocal();
+        return;
+    }
+    const QString savedId = m_settings.value("drive/desktopClientId").toString();
+    if (index == 0) {
+        const QString clientId = QInputDialog::getText(
+            nullptr, "Connect Google Drive through browser",
+            "Google Cloud Desktop OAuth client ID (public, not password):",
+            QLineEdit::Normal, savedId, &accepted).trimmed();
+        if (!accepted) return;
+        if (m_driveClient.connectAccount(clientId)) {
+            // Public OAuth client ID only; refresh token lives in WinCred.
+            m_settings.setValue("drive/desktopClientId", clientId);
+            m_settings.sync();
+        }
+        return;
+    }
+    if (index == 1) {
+        const QString folder = QInputDialog::getText(
+            nullptr, "Google Drive read-only folder listing",
+            "Drive folder ID (or root):", QLineEdit::Normal, "root",
+            &accepted).trimmed();
+        if (!accepted) return;
+        m_driveClient.listFolder(folder, savedId);
+    }
 }
 void EmberBackend::searchWikipedia() {
     if (m_wikipediaReply || m_busy || m_listening) {

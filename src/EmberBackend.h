@@ -3,6 +3,7 @@
 #include "SessionStore.h"
 #include "ImageLibrary.h"
 #include "EmberBundle.h"
+#include "DriveRead.h"
 #include <QFile>
 #include <QLockFile>
 #include <QAudioDevice>
@@ -149,6 +150,7 @@ public:
     Q_INVOKABLE QString searchLocalCodeFolder(const QString &existingDraft);
     Q_INVOKABLE void inspectPublicGitHub();
     Q_INVOKABLE void searchWikipedia();
+    Q_INVOKABLE void driveAction();
     Q_INVOKABLE void continueIncompleteReply();
     Q_INVOKABLE void chooseImage();
     Q_INVOKABLE void pasteImage();
@@ -202,6 +204,7 @@ signals:
     void audioDevicesChanged();
     void publicGitHubExcerptReady(const QString &text);
     void wikipediaExcerptReady(const QString &text);
+    void driveExcerptReady(const QString &text);
 private:
     void setStatus(const QString &text);
     void setBusy(bool value);
@@ -318,6 +321,7 @@ private:
     QPointer<QNetworkReply> m_publicGitHubReply;
     QByteArray m_publicGitHubBuffer;
     bool m_publicGitHubOversize = false;
+    EmberDrive::Client m_driveClient;
     QNetworkAccessManager m_wikipediaNetwork;
     QPointer<QNetworkReply> m_wikipediaReply;
     QByteArray m_wikipediaBuffer;

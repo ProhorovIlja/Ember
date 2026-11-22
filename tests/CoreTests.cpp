@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QUrlQuery>
 #include <QTest>
 #include <QTcpServer>
 #include <QHostAddress>
