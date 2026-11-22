@@ -28,6 +28,7 @@ from private_worker_env import private_worker_environment
 
 PORT = 43822
 HEALTH = "http://127.0.0.1:43822/health"
+INVENTORY = "http://127.0.0.1:43822/v1/models"
 MODELS = {
     "qwen3-tts-0.6b": SUPPORTED_VOICE_MODELS[0],
     "qwen3-tts-1.7b": SUPPORTED_VOICE_MODELS[1],
@@ -81,7 +82,47 @@ def valid_health_reply(status, content_type, body):
     return isinstance(payload, dict) and payload.get("status") == "ok"
 
 
-def wait_for_speech(proc, seconds):
+def valid_inventory_reply(status, content_type, body, alias, voice):
+    """Verify the actual loaded GGUF family/size and named English voice."""
+    if (status != 200 or not isinstance(body, bytes) or
+            not 0 < len(body) <= 65536 or
+            content_type.split(";", 1)[0].strip().lower() != "application/json" or
+            alias not in MODELS or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", voice)):
+        return False
+    try:
+        doc = json.loads(body.decode("utf-8", "strict"))
+    except (UnicodeError, ValueError):
+        return False
+    if not isinstance(doc, dict) or doc.get("object") != "list":
+        return False
+    rows = doc.get("data")
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 8:
+        return False
+    wanted = "0.6B" if alias.endswith("0.6b") else "1.7B"
+    matched = 0
+    for row in rows:
+        if (not isinstance(row, dict) or
+                not isinstance(row.get("id"), str) or not row["id"] or
+                not isinstance(row.get("speech"), dict)):
+            return False
+        info = row["speech"]
+        task = info.get("task")
+        if task == "synthesis":
+            if (info.get("architecture") != "qwen3-tts" or
+                    str(info.get("size_label", "")).lower() != wanted.lower() or
+                    not isinstance(info.get("languages"), list) or
+                    "en" not in info["languages"] or
+                    not isinstance(info.get("voices"), list) or
+                    not any(isinstance(entry, dict) and
+                            entry.get("name") == voice and
+                            entry.get("language") == "en"
+                            for entry in info["voices"])):
+                return False
+            matched += 1
+    return matched == 1
+
+
+def wait_for_speech(proc, seconds, alias, voice):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if proc.poll() is not None:
@@ -97,6 +138,17 @@ def wait_for_speech(proc, seconds):
                     if valid_health_reply(
                             reply.status, reply.headers.get("Content-Type", ""),
                             body):
+                        require_owned_speech_listener(proc.pid, PORT)
+                        with HTTP.open(Request(INVENTORY, method="GET"),
+                                       timeout=3) as catalog:
+                            metadata = catalog.read(65537)
+                            if not valid_inventory_reply(
+                                    catalog.status,
+                                    catalog.headers.get("Content-Type", ""),
+                                    metadata, alias, voice):
+                                raise RuntimeError(
+                                    "Loaded native GGUF model, size, English "
+                                    "speaker or inventory JSON is incompatible")
                         require_owned_speech_listener(proc.pid, PORT)
                         return
                     if len(body) > 4096:
@@ -120,7 +172,7 @@ def probe(root, alias, device, voice, count, seconds):
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL)
     try:
-        wait_for_speech(proc, seconds)
+        wait_for_speech(proc, seconds, alias, voice)
         trials = []
         for i in range(count):
             if proc.poll() is not None:
@@ -171,6 +223,29 @@ def self_test():
     assert not valid_health_reply(503, "application/json", b'{"status":"ok"}')
     assert not valid_health_reply(200, "application/json", b'x' * 4097)
     assert not valid_health_reply(200, "application/json", b'{')
+    row = {"id": "local-qwen-gguf", "object": "model",
+           "speech": {"task": "synthesis", "architecture": "qwen3-tts",
+                      "size_label": "0.6B", "languages": ["en", "ru"],
+                      "voices": [{"name": "vivian", "language": "en"}]}}
+    sample = json.dumps({"object": "list", "data": [row]}).encode("utf-8")
+    assert valid_inventory_reply(200, "application/json", sample,
+                                 "qwen3-tts-0.6b", "vivian")
+    assert not valid_inventory_reply(200, "application/json", sample,
+                                     "qwen3-tts-1.7b", "vivian")
+    assert not valid_inventory_reply(200, "application/json", sample,
+                                     "qwen3-tts-0.6b", "serena")
+    assert not valid_inventory_reply(200, "text/html", sample,
+                                     "qwen3-tts-0.6b", "vivian")
+    assert not valid_inventory_reply(200, "application/json", b"{}",
+                                     "qwen3-tts-0.6b", "vivian")
+    assert not valid_inventory_reply(200, "application/json", b"x" * 65537,
+                                     "qwen3-tts-0.6b", "vivian")
+    broken = dict(row)
+    broken["speech"] = dict(row["speech"], task="recognition")
+    assert not valid_inventory_reply(
+        200, "application/json",
+        json.dumps({"object": "list", "data": [broken]}).encode("utf-8"),
+        "qwen3-tts-0.6b", "vivian")
     env = startup_environment()
     assert env["SPEECH_NO_UPDATE_CHECK"] == "1"
     assert env["HF_HUB_OFFLINE"] == "1"
