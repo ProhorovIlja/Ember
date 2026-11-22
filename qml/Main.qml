@@ -2813,8 +2813,12 @@ ApplicationWindow {
                                                     if (ember.speechServerRunning) {
                                                         ember.stopSpeechServer()
                                                     } else {
-                                                        ember.localModel = externalModel.text.trim()
-                                                        ember.localVoice = externalVoice.text.trim()
+                                                        // Do not rewrite a TTS preset when only
+                                                        // Qwen3-ASR is enabled with Kokoro speech.
+                                                        if (ember.voiceEngine === 1) {
+                                                            ember.localModel = externalModel.text.trim()
+                                                            ember.localVoice = externalVoice.text.trim()
+                                                        }
                                                         ember.startSpeechServer()
                                                     }
                                                 }
