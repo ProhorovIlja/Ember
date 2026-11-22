@@ -1173,9 +1173,10 @@ ApplicationWindow {
                                             ToolTip.text: "Ask the offline model to resume without repeating. Your unsent draft stays intact."
                                         }
                                     }
-                                    RowLayout {
+                                    Flow {
                                         Layout.fillWidth: true
                                         spacing: 8
+                                        implicitHeight: childrenRect.height
                                         PillButton {
                                             text: "Add text file"
                                             implicitWidth: 115
@@ -1258,7 +1259,6 @@ ApplicationWindow {
                                             enabled: !ember.privateMode && !ember.busy && !ember.listening
                                             onClicked: ember.pasteImage()
                                         }
-                                        Item { Layout.fillWidth: true }
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true

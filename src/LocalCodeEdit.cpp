@@ -139,8 +139,8 @@ EditPlan planExactReplace(const QString &selectedPath,
              QString::number(result.originalBytes.size()),
              QString::number(result.proposedBytes.size()),
              QString::fromUtf8(contextBefore),
-             exactOldText.left(12000),
-             newText.left(12000),
+             exactOldText,
+             newText,
              QString::fromUtf8(contextAfter));
     return result;
 }
