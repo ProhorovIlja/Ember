@@ -210,3 +210,37 @@ genuine inference and sound quality. Existing
 `release/offline-assets.template.json` remains the internal text-first
 milestone template. The stable `--require-voice` check validates a real
 approved manifest and refuses either template unmodified.
+
+
+### One-shot native speech inference acceptance (Windows, on demand only)
+
+A complete, reviewed offline bundle must do more than contain a PE header and
+a plausible GGUF header. After obtaining the real licensed assets and staging
+them in one verified folder, run the following manually on the target Windows
+PC, ideally with its external network disconnected:
+
+```powershell
+python tools/native_speech_acceptance.py --self-test
+python tools/native_speech_acceptance.py --root D:\EmberComplete
+python tools/native_speech_acceptance.py --root D:\EmberComplete --run --model qwen3-tts-0.6b --device cpu --samples 2 --report D:\ember-speech-cpu.json
+python tools/native_speech_acceptance.py --root D:\EmberComplete --run --model qwen3-tts-0.6b --device gpu --samples 2 --report D:\ember-speech-gpu.json
+```
+
+The default command verifies an **approved** complete voice manifest, content
+hashes and real GGUF header but launches nothing. Only explicit `--run` starts
+`engines/speech/speech.exe` with the actual bundled TTS GGUF, the same loopback
+host/port and CPU/GPU flags as Ember, and a bounded model-load timeout.
+The test rejects occupied or foreign-owned ports and checks the PID before
+and after private HTTP probes, disables speech.cpp's update check, sends fixed
+non-private English sample sentences and validates returned PCM16 audio.
+Each trial measures first HTTP audio byte, PCM duration and signal quality;
+the process is stopped in a `finally` block. Output reports contain only
+numeric measurements and model/voice labels, never WAV recordings or user
+chat text, and cannot silently overwrite an existing result.
+
+Only the 0.6B or 1.7B TTS model **actually listed in the approved manifest**
+can pass. The test does not download a model or approve redistribution.
+Passing it is not proof of enjoyable English voice, real audio-device
+playback, microphone accuracy, multi-process RTX 4070 VRAM sufficiency,
+external network isolation of a third-party executable, or a finished app.
+Human blind listening and clean Windows 10 acceptance remain mandatory.
