@@ -127,8 +127,14 @@ bool validNativeSpeechInventory(const QByteArray &body,
                 if (!item.isObject()) continue;
                 const QJsonObject speaker = item.toObject();
                 const QString name = speaker.value(QStringLiteral("name")).toString();
+                // speech.cpp v0.11.2 includes both language and gender
+                // for each loaded CustomVoice speaker. Ember's selected
+                // spoken persona is explicitly English female; an English
+                // male voice must never appear as a verified alternative.
                 if (speaker.value(QStringLiteral("language")).toString() !=
                         QStringLiteral("en") ||
+                    speaker.value(QStringLiteral("gender")).toString() !=
+                        QStringLiteral("female") ||
                     name.isEmpty() || name.size() > 80)
                     continue;
                 if (name == selectedVoice) hasVoice = true;
