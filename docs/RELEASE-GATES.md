@@ -210,3 +210,20 @@ Development CI now runs native builds, installer round-trip checks and quality-g
   switch, low-disk capture and long RU/EN dictation with ASR actually running.
   Confirm readable editable prefix, missing-ending warning, no automatic
   message, no orphaned microphone scratch and no stale QAudioSource.
+
+### 22 November 2026 — reject other processes on local inference ports
+
+- [x] Windows native 127.0.0.1 TCP listener-owner check included for
+  managed llama.cpp and speech.cpp before readiness and text/ASR/TTS
+  requests, using IP Helper API rather than trusting HTTP /health alone.
+- [x] Default deny an *unmanaged* compatible WAV speech service;
+  a separate persisted advanced UI permission is required, with a
+  warning that another local process receives spoken text.
+- [x] QtTest real local TCP listeners cover own PID, wrong PID, expired
+  listener and wildcard/non-loopback binding. No additional bundled
+  third-party library or remote service required.
+- [ ] Physical Windows 10 tests: malicious port preemption, server crash
+  and port-rebind races, failure to send old user text/recorded audio,
+  full GUI trust-toggle behavior, Qt listener owner API under non-admin
+  accounts, genuine multi-process speech.cpp deployment. PID checks
+  do not replace future authenticated IPC/loopback bearer tokens.
