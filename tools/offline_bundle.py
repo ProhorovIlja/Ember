@@ -529,6 +529,13 @@ def self_test():
                     raise AssertionError("Symlink accepted")
                 except ValueError:
                     pass
+    # The public placeholder manifest must enumerate every required runtime.
+    # A new release template must never regress to an LLM-only package.
+    template = Path(__file__).resolve().parent.parent / "release/offline-assets.template.json"
+    skeleton = {entry["path"]: entry for entry in load_manifest(template)}
+    for required, component in REQUIRED_TEXT_FIRST.items():
+        assert required in skeleton and skeleton[required]["component"] == component
+        assert skeleton[required]["redistribution_approved"] is False
     print("offline_bundle self-test passed (checksums, no overwrites, unsafe paths, licenses)")
 
 

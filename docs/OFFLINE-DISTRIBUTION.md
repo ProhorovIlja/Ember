@@ -41,6 +41,21 @@ The assembler refuses to mix user `data/` chats or `cache/` audio into the insta
 
 The stable tagged workflow now **fails closed** if `build/Release/offline-assets.json` is absent or verification fails, and passes `-RequireOfflineBundle` to the Inno installer builder. A future licensed artifact staging step is still needed before this workflow can publish a complete release. The Inno Setup wrapper accepts `-RequireOfflineBundle` when building a release installer. It will refuse any payload folder without a fully approved and verifiable `offline-assets.json`. Ordinary internal development builds remain partial and intentionally publish no preview downloads. The complete, signed-off release needs an additional step to insert vetted staged files into the native deployed Qt output **before** packaging; this has not been implemented or claimed complete yet.
 
+## Explicit on-demand real-model acceptance (not a preview)
+
+When the complete approved bundle exists on the actual Windows machine, the maintainer may manually run a synchronous acceptance probe. This uses Python from the development checkout; Python is NOT a dependency of the final installed Ember application.
+
+```powershell
+python tools/offline_acceptance.py --self-test
+python tools/offline_acceptance.py --root D:\EmberComplete
+python tools/offline_acceptance.py --root D:\EmberComplete --run --gpu-layers 99 --context 8192
+python tools/offline_acceptance.py --root D:\EmberComplete --run --gpu-layers 99 --en-wav D:\Samples\english.wav --en-reference D:\Samples\english.txt --ru-wav D:\Samples\russian.wav --ru-reference D:\Samples\russian.txt --report D:\Ember-QA-metrics.json
+```
+
+The default invocation only rechecks the complete manifest and clean native app files, without launching anything. Only explicit --run starts the approved llama-server EXE using the same local 127.0.0.1:43821 /health and streaming /v1/chat/completions transport as the Ember app. Windows netstat is used to refuse an occupied or foreign-owned port; a mismatched listener must never receive prompts. The managed server exits when the test concludes. Tests sequentially check a real model's streaming SSE and an exact simple instruction; optional EN/RU *user-provided* 16-kHz mono PCM16 WAV + reference text are transcribed by the actual bundled whisper-cli and scored with WER/CER. Native executable stdout/stderr are discarded, recognition scratch is deleted, and output/reports contain metrics only. This is **not** a security sandbox; executable dependencies or subprocesses may perform networking or other side effects. Do not run untrusted engine binaries.
+
+The report never sets release_approved=true. Passing means only these particular on-demand probes succeeded with the supplied model and samples; a clean Windows 10 RTX 4070 field test, extended Russian/English dictation, real UI controls, CUDA/DLL deployment, adversarial model tests, privacy and license validation are still required. No downloads, background monitoring, scheduled tasks, registry changes, release publication or automatic reruns occur.
+
 ## Region access and manual alternatives
 
 It is not possible to guarantee that GitHub, Hugging Face, model CDNs, mirrors or a chosen host will remain reachable from Russia. The final project should offer a legal alternate distribution channel and checksummed offline package, or transfer of the complete package via local removable media. Splitting large archives can help with unreliable downloads, but is not a workaround for license restrictions.
