@@ -687,6 +687,36 @@ private slots:
             "<<<<<<< SEARCH\nfoo\n=======\nbar").ok());
         QVERIFY(!parseSingleSearchReplaceBlock(QString(200001, 'x')).ok());
     }
+    void localSourceExcerptIsBoundedAndNeverTraverses() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QDir root(dir.path());
+        QVERIFY(root.mkpath("src"));
+        QFile f(root.filePath("src/main.cpp"));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        QByteArray data;
+        for (int i = 1; i <= 140; ++i)
+            data += QByteArray("line_") + QByteArray::number(i) + "\n";
+        QCOMPARE(f.write(data), qint64(data.size()));
+        f.close();
+        const auto first = EmberLocalSearch::readProjectFile(
+            root.path(), "src/main.cpp", 1);
+        QVERIFY2(first.ok(), qPrintable(first.error));
+        QCOMPARE(first.matches, 65);
+        QVERIFY(first.limited);
+        QVERIFY(first.draft.contains("1: line_1"));
+        QVERIFY(!first.draft.contains("99: line_99"));
+        const auto later = EmberLocalSearch::readProjectFile(
+            root.path(), "src/main.cpp", 121);
+        QVERIFY(later.ok());
+        QVERIFY(later.draft.contains("121: line_121"));
+        QVERIFY(!EmberLocalSearch::readProjectFile(
+            root.path(), "src/main.cpp", 900).ok());
+        QVERIFY(!EmberLocalSearch::readProjectFile(
+            root.path(), "src/../main.cpp").ok());
+        QVERIFY(!EmberLocalSearch::readProjectFile(
+            root.path(), "C:/Windows/secret.cpp").ok());
+    }
     void localAgentToolContractIsTypedAndStrictlyReadOnly() {
         using namespace EmberAgent;
         const QJsonArray history{
@@ -698,11 +728,13 @@ private slots:
         QCOMPARE(active.value("tool_choice").toString(), QString("auto"));
         QCOMPARE(active.value("parallel_tool_calls").toBool(), false);
         const auto tools = active.value("tools").toArray();
-        QCOMPARE(tools.size(), 2);
+        QCOMPARE(tools.size(), 3);
         QCOMPARE(tools.at(0).toObject().value("function").toObject()
                      .value("name").toString(), QString("project_map"));
         QCOMPARE(tools.at(1).toObject().value("function").toObject()
                      .value("name").toString(), QString("search_text"));
+        QCOMPARE(tools.at(2).toObject().value("function").toObject()
+                     .value("name").toString(), QString("read_source"));
         QCOMPARE(modelRequest(history, 0).value("tool_choice").toString(),
                  QString("none"));
         QVERIFY(!modelRequest(history, 0).contains("tools"));
@@ -782,6 +814,17 @@ private slots:
         QVERIFY(found.contains("src/logic.cpp:1"));
         QVERIFY(!found.contains("SECRET_PASSWORD"));
         QVERIFY(!found.contains("dependency"));
+        tool.tool = "read_source";
+        tool.path = "src/logic.cpp";
+        tool.startLine = 1;
+        const QString excerpt = executeReadOnly(root.path(), tool);
+        QVERIFY(excerpt.contains("1: // TEST_MARKER in source"));
+        tool.path = ".env";
+        QVERIFY(executeReadOnly(root.path(), tool).contains("error"));
+        tool.path = "../escape.cpp";
+        QVERIFY(executeReadOnly(root.path(), tool).contains("error"));
+        tool.path = "node_modules/ignored.js";
+        QVERIFY(executeReadOnly(root.path(), tool).contains("error"));
         tool.kind = Decision::Kind::Error;
         QVERIFY(executeReadOnly(root.path(), tool).contains("denied"));
         QFile verify(root.filePath("src/logic.cpp"));

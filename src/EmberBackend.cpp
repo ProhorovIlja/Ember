@@ -1676,7 +1676,8 @@ bool EmberBackend::researchLocalProject(const QString &goal) {
     m_agentMessages = QJsonArray{
         QJsonObject{{"role", "system"}, {"content",
             "You are Ember's local read-only source investigator. "
-            "You may call project_map() and search_text(query) only, "
+            "You may call project_map(), search_text(query) and "
+            "read_source(path, start_line) only, "
             "up to three calls. You have no shell, network, write, Git or "
             "privileged tools. Select targeted literal searches based on "
             "the user's question. Do not invent files, test results, fixes "

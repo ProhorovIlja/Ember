@@ -17,4 +17,8 @@ SearchResult searchDirectory(const QString &selectedRoot, const QString &literal
 // contents, follows symlinks, or submits data without an editable preview.
 SearchResult outlineDirectory(const QString &selectedRoot,
                               const QString &existingDraft);
+// Read up to 65 numbered lines from one selected UTF-8 source file.
+// Never follow symlinks or escape the user's chosen canonical project root.
+SearchResult readProjectFile(const QString &selectedRoot,
+                             const QString &relativePath, int startLine = 1);
 }

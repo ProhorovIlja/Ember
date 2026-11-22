@@ -13,6 +13,8 @@ struct Decision {
     QString tool;
     QString callId;
     QString query;
+    QString path;
+    int startLine = 1;
     QString error;
     bool ok() const { return kind != Kind::Error; }
 };

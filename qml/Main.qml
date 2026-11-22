@@ -1228,7 +1228,7 @@ ApplicationWindow {
                                             onClicked: ember.researchLocalProject(composer.text)
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
-                                            ToolTip.text: "Select one local project root. The local model may call only project_map/search_text up to three times; no writes, shell, Git or Internet."
+                                            ToolTip.text: "Select one local project root. The local model may map, search and inspect bounded source excerpts up to three times. No writes, shell, Git or Internet."
                                         }
                                         PillButton {
                                             text: "Edit source"

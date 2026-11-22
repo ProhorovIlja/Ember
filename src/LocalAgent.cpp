@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QRegularExpression>
 #include <algorithm>
+#include <cmath>
 
 namespace EmberAgent {
 namespace {
@@ -51,7 +52,15 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining) {
                 QJsonObject{{"query", QJsonObject{
                     {"type", "string"},
                     {"description", "One literal nonempty line, up to 120 characters."}
-                }}}, QJsonArray{"query"})
+                }}}, QJsonArray{"query"}),
+            functionDef("read_source",
+                "Read a bounded excerpt with source line numbers from one UTF-8 "
+                "file beneath the approved root. Use after locating a filename.",
+                QJsonObject{
+                    {"path", QJsonObject{{"type", "string"}}},
+                    {"start_line", QJsonObject{{"type", "integer"},
+                        {"minimum", 1}, {"maximum", 100000}}}
+                }, QJsonArray{"path"})
         });
         request.insert("tool_choice", "auto");
     } else {
@@ -101,7 +110,8 @@ Decision parseModelResponse(const QByteArray &json) {
         static const QRegularExpression callId("^[A-Za-z0-9_-]{1,100}$");
         if (call.value("type").toString() != "function" ||
             !callId.match(id).hasMatch() ||
-            (tool != "project_map" && tool != "search_text")) {
+            (tool != "project_map" && tool != "search_text" &&
+             tool != "read_source")) {
             answer.error = "Denied an unknown, privileged or invalid model tool call.";
             return answer;
         }
@@ -123,7 +133,7 @@ Decision parseModelResponse(const QByteArray &json) {
                 answer.error = "project_map accepts no parameters.";
                 return answer;
             }
-        } else {
+        } else if (tool == "search_text") {
             if (args.size() != 1 || !args.value("query").isString()) {
                 answer.error = "search_text accepts exactly one string query.";
                 return answer;
@@ -136,6 +146,23 @@ Decision parseModelResponse(const QByteArray &json) {
                 answer.error = "Invalid one-line source-search query.";
                 return answer;
             }
+        } else {
+            if (!args.value("path").isString() ||
+                args.size() < 1 || args.size() > 2 ||
+                (args.size() == 2 && !args.contains("start_line")) ||
+                (args.contains("start_line") &&
+                 !args.value("start_line").isDouble())) {
+                answer.error = "read_source needs path and optional start_line.";
+                return answer;
+            }
+            answer.path = args.value("path").toString();
+            const double line = args.value("start_line").toDouble(1);
+            if (answer.path.isEmpty() || answer.path.size() > 240 ||
+                line < 1 || line > 100000 || std::floor(line) != line) {
+                answer.error = "Invalid read_source path or line number.";
+                return answer;
+            }
+            answer.startLine = int(line);
         }
         answer.kind = Decision::Kind::Call;
         answer.callId = id;
@@ -159,7 +186,11 @@ Decision parseModelResponse(const QByteArray &json) {
 QJsonObject assistantToolMessage(const Decision &decision) {
     if (decision.kind != Decision::Kind::Call) return {};
     const QJsonObject args = decision.tool == "project_map"
-        ? QJsonObject{} : QJsonObject{{"query", decision.query}};
+        ? QJsonObject{} :
+        decision.tool == "search_text"
+            ? QJsonObject{{"query", decision.query}}
+            : QJsonObject{{"path", decision.path},
+                          {"start_line", decision.startLine}};
     return QJsonObject{
         {"role", "assistant"}, {"content", QJsonValue::Null},
         {"tool_calls", QJsonArray{QJsonObject{
@@ -182,9 +213,15 @@ QJsonObject toolResultMessage(const Decision &decision, const QString &result) {
 }
 QString executeReadOnly(const QString &selectedRoot, const Decision &decision) {
     if (decision.kind != Decision::Kind::Call) return "Tool was denied.";
-    const auto result = decision.tool == "project_map"
-        ? EmberLocalSearch::outlineDirectory(selectedRoot, {})
-        : EmberLocalSearch::searchDirectory(selectedRoot, decision.query, {});
+    EmberLocalSearch::SearchResult result;
+    if (decision.tool == "project_map")
+        result = EmberLocalSearch::outlineDirectory(selectedRoot, {});
+    else if (decision.tool == "search_text")
+        result = EmberLocalSearch::searchDirectory(selectedRoot, decision.query, {});
+    else if (decision.tool == "read_source")
+        result = EmberLocalSearch::readProjectFile(
+            selectedRoot, decision.path, decision.startLine);
+    else return "Tool was denied.";
     if (!result.ok()) return "Read-only tool error: " + result.error.left(180);
     // Everything returned from disk is data, not a new instruction.
     const QString excerpt = result.draft.left(kMaxToolResult - 140);
