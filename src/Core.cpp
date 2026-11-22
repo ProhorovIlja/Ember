@@ -1091,48 +1091,74 @@ StreamResult consumeChatStream(QByteArray &buffer, const QByteArray &incoming) {
     }
     buffer.append(incoming);
     for (;;) {
-        const auto lf = buffer.indexOf("\n\n");
-        const auto crlf = buffer.indexOf("\r\n\r\n");
-        const bool useCrlf = crlf >= 0 && (lf < 0 || crlf < lf);
-        const qsizetype end = useCrlf ? crlf : lf;
-        if (end < 0) break;
-        const QByteArray frame = buffer.left(end);
-        buffer.remove(0, end + (useCrlf ? 4 : 2));
-        const QList<QByteArray> lines = frame.split('\n');
-        for (QByteArray line : lines) {
-            line = line.trimmed();
-            if (!line.startsWith("data:")) continue;
-            const QByteArray data = line.mid(5).trimmed();
-            if (data == "[DONE]") {
-                result.done = true;
-                buffer.clear();
-                return result;
+        // SSE permits LF, CRLF and CR line endings, including mixed endings.
+        // Scan bytes rather than decoding UTF-8 before a full frame arrives:
+        // network packets may divide a Cyrillic code point or CRLF pair.
+        qsizetype frameEnd = -1, consumed = -1;
+        qsizetype lineStart = 0, lastLineEnd = 0;
+        for (qsizetype at = 0; at < buffer.size();) {
+            const char ch = buffer.at(at);
+            if (ch != '\r' && ch != '\n') { ++at; continue; }
+            // Defer a final CR terminating a nonempty line until its possible
+            // LF arrives. A trailing CR on a blank line completes a CR frame.
+            if (ch == '\r' && at + 1 == buffer.size() && at != lineStart)
+                break;
+            const qsizetype step = ch == '\r' && at + 1 < buffer.size() &&
+                buffer.at(at + 1) == '\n' ? 2 : 1;
+            if (at == lineStart) {
+                frameEnd = lastLineEnd;
+                consumed = at + step;
+                break;
             }
-            QJsonParseError error{};
-            const QJsonDocument doc = QJsonDocument::fromJson(data, &error);
-            if (error.error != QJsonParseError::NoError || !doc.isObject()) {
-                result.error = true;
-                buffer.clear();
-                return result;
-            }
-            const QJsonObject envelope = doc.object();
-            if (envelope.contains("error")) {
-                result.error = true;
-                buffer.clear();
-                return result;
-            }
-            const QJsonArray choices = envelope.value("choices").toArray();
-            if (choices.isEmpty()) continue;
-            const QJsonObject first = choices.first().toObject();
-            // llama-server can return [DONE] after finish_reason="length".
-            // A transport-complete SSE stream is NOT a completed sentence
-            // when the configured generation token budget was exhausted.
-            if (first.value("finish_reason").toString() == "length")
-                result.truncated = true;
-            const QJsonObject delta = first.value("delta").toObject();
-            const QString text = delta.value("content").toString();
-            if (!text.isEmpty()) result.text += text;
+            lastLineEnd = at;
+            at += step;
+            lineStart = at;
         }
+        if (frameEnd < 0) break;
+        QByteArray frame = buffer.left(frameEnd);
+        buffer.remove(0, consumed);
+        frame.replace("\r\n", "\n");
+        frame.replace('\r', '\n');
+        QByteArray data;
+        bool sawData = false;
+        for (const QByteArray &line : frame.split('\n')) {
+            // Event names, IDs, retry hints and comment heartbeats are not
+            // response JSON. Multiple data lines form ONE SSE message.
+            if (!line.startsWith("data:")) continue;
+            QByteArray piece = line.mid(5);
+            if (piece.startsWith(' ')) piece.remove(0, 1);
+            if (sawData) data.append('\n');
+            data.append(piece);
+            sawData = true;
+        }
+        if (!sawData) continue;
+        if (data.trimmed() == "[DONE]") {
+            result.done = true;
+            buffer.clear();
+            return result;
+        }
+        QJsonParseError error{};
+        const QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+        if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+            result.error = true;
+            buffer.clear();
+            return result;
+        }
+        const QJsonObject envelope = doc.object();
+        if (envelope.contains("error")) {
+            result.error = true;
+            buffer.clear();
+            return result;
+        }
+        const QJsonArray choices = envelope.value("choices").toArray();
+        if (choices.isEmpty()) continue;
+        const QJsonObject first = choices.first().toObject();
+        // llama-server may emit [DONE] after exhausting its token budget.
+        if (first.value("finish_reason").toString() == "length")
+            result.truncated = true;
+        const QJsonObject delta = first.value("delta").toObject();
+        const QString visible = delta.value("content").toString();
+        if (!visible.isEmpty()) result.text += visible;
     }
     return result;
 }

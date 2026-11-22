@@ -815,3 +815,8 @@ managed-process crash/restart during inference, plus check that no
 content is delivered to an unrelated listener. Separate origin-bound
 auth tokens or OS-level process-handle/socket pinning remain a possible
 additional hardening gate.
+
+
+### November 22: robust native chat SSE frame parsing
+
+The native llama.cpp-compatible chat stream now accepts LF, CRLF and CR SSE line endings (including mixed delimiters and packet-split CRLF), concatenates multiple `data:` fields within one event as required by the event-stream format, ignores comment/event-only heartbeats and retains strict JSON parsing and 256 KiB buffering limits. Byte-fragmented Cyrillic and `[DONE]` behavior remain covered by tests. This repairs protocol-level interoperability; it is not evidence of human voice naturalness or GPU performance.

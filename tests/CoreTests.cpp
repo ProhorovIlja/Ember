@@ -607,6 +607,43 @@ private slots:
             pending, QByteArray(300 * 1024, 'a'));
         QVERIFY(oversized.error);
     }
+    void acceptsMixedLineEndingsAndMultilineSseWithoutLostText() {
+        // The valid event-stream line endings are CR, LF and CRLF. A
+        // data-bearing JSON event can contain multiple "data:" lines.
+        const QByteArray stream =
+            ": keep-alive\n\n"
+            "event: message\r\n"
+            "data: {\"choices\":\r\n"
+            "data: [{\"delta\":{\"content\":\"Hello\"}}]}\r\n\r\n"
+            "data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\r\r"
+            "event: message\n"
+            "data: {\"choices\":[{\"delta\":{\"content\":\"!\"}}]}\n\r\n"
+            "data: [DONE]\r\n\r\n";
+        QByteArray pending;
+        QString visible;
+        bool done = false;
+        for (qsizetype at = 0; at < stream.size(); ++at) {
+            const auto part = EmberCore::consumeChatStream(pending, stream.mid(at, 1));
+            QVERIFY(!part.error);
+            visible += part.text;
+            done |= part.done;
+        }
+        QCOMPARE(visible, QString("Hello world!"));
+        QVERIFY(done);
+        QVERIFY(pending.isEmpty());
+
+        // Metadata-only keepalives are harmless; malformed multiline JSON
+        // remains an error rather than leaking an unvalidated text delta.
+        const auto keepalive = EmberCore::consumeChatStream(
+            pending, QByteArray("event: ping\n: still alive\n\n"));
+        QVERIFY(!keepalive.error);
+        QVERIFY(keepalive.text.isEmpty());
+        const auto invalid = EmberCore::consumeChatStream(
+            pending, QByteArray("data: {\"choices\":\n"
+                                "data: broken}\r\n\r\n"));
+        QVERIFY(invalid.error);
+        QVERIFY(pending.isEmpty());
+    }
     void streamedSeparateAndInlineReasoningNeverReachesVisibleText() {
         // llama.cpp can either separate reasoning_content or keep legacy
         // inline thinking tags. Exercise both with fragmented SSE bytes.
