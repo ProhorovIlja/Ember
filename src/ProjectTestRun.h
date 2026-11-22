@@ -3,7 +3,10 @@
 #include <QStringList>
 
 namespace EmberProjectTests {
-enum class Preset { CTest = 0, Cargo = 1, PythonUnittest = 2 };
+enum class Preset {
+    CTest = 0, Cargo = 1, PythonUnittest = 2,
+    NodeBuiltIn = 3, GoTest = 4, PythonPytest = 5
+};
 struct Plan {
     QString program;
     QStringList arguments;

@@ -51,6 +51,30 @@ Plan prepare(const QString &selectedRoot, Preset preset) {
         p.arguments = {"-m", "unittest", "discover", "-v"};
         p.label = "Python unittest discover";
         break;
+    case Preset::NodeBuiltIn:
+        if (!regular(root.filePath("package.json")))
+            return {{}, {}, {}, {}, "Node.js tests need a regular package.json."};
+        // Use node.exe directly, never npm.cmd, package scripts or a shell.
+        executable = "node";
+        p.arguments = {"--test"};
+        p.label = "Node.js built-in tests";
+        break;
+    case Preset::GoTest:
+        if (!regular(root.filePath("go.mod")))
+            return {{}, {}, {}, {}, "Go tests need a regular go.mod."};
+        executable = "go";
+        p.arguments = {"test", "./..."};
+        p.label = "Go test ./...";
+        break;
+    case Preset::PythonPytest:
+        if (!directory(root.filePath("tests")) &&
+            !regular(root.filePath("pytest.ini")) &&
+            !regular(root.filePath("pyproject.toml")))
+            return {{}, {}, {}, {}, "pytest needs a tests/ folder, pytest.ini or pyproject.toml."};
+        executable = "python";
+        p.arguments = {"-m", "pytest", "-q"};
+        p.label = "Python pytest -q";
+        break;
     default:
         return {{}, {}, {}, {}, "Unsupported project test preset."};
     }

@@ -1166,6 +1166,11 @@ private slots:
         };
         QVERIFY(save("build/CTestTestfile.cmake", "# tests\n"));
         QVERIFY(save("Cargo.toml", "[package]\nname='fixture'\n"));
+        // No project metadata is used to construct a shell command. In
+        // particular, an npm lifecycle script is never executed by Ember.
+        QVERIFY(save("package.json", "{\"scripts\":{\"test\":\"echo malicious\"}}"));
+        QVERIFY(save("go.mod", "module example.test/ember\ngo 1.23\n"));
+        QVERIFY(save("pyproject.toml", "[tool.pytest.ini_options]\n"));
         QVERIFY(!prepare("nonexistent-project-root", Preset::CTest).ok());
         QVERIFY(!prepare(root.path(), static_cast<Preset>(20)).ok());
         const auto ctest = prepare(root.path(), Preset::CTest);
@@ -1187,10 +1192,24 @@ private slots:
         const auto cargo = prepare(root.path(), Preset::Cargo);
         if (cargo.ok())
             QCOMPARE(cargo.arguments, QStringList({"test", "--locked"}));
+        const auto node = prepare(root.path(), Preset::NodeBuiltIn);
+        if (node.ok()) {
+            QCOMPARE(QFileInfo(node.program).fileName().toLower(), QString("node.exe"));
+            QCOMPARE(node.arguments, QStringList({"--test"}));
+        }
+        const auto go = prepare(root.path(), Preset::GoTest);
+        if (go.ok())
+            QCOMPARE(go.arguments, QStringList({"test", "./..."}));
+        const auto pytest = prepare(root.path(), Preset::PythonPytest);
+        if (pytest.ok())
+            QCOMPARE(pytest.arguments, QStringList({"-m", "pytest", "-q"}));
         QVERIFY(root.mkpath("isolated"));
         QVERIFY(!prepare(root.filePath("isolated"), Preset::CTest).ok());
         QVERIFY(!prepare(root.filePath("isolated"), Preset::Cargo).ok());
         QVERIFY(!prepare(root.filePath("isolated"), Preset::PythonUnittest).ok());
+        QVERIFY(!prepare(root.filePath("isolated"), Preset::NodeBuiltIn).ok());
+        QVERIFY(!prepare(root.filePath("isolated"), Preset::GoTest).ok());
+        QVERIFY(!prepare(root.filePath("isolated"), Preset::PythonPytest).ok());
     }
     void localModelStagesOnlyReviewedScopedSourcePatches() {
         using namespace EmberAgent;

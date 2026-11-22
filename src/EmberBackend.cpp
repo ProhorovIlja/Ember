@@ -1762,7 +1762,10 @@ void EmberBackend::runApprovedProjectTests() {
     const QStringList choices{
         "CTest · Release (existing build/)",
         "Cargo test --locked (Cargo.toml)",
-        "Python unittest discover (tests/)"
+        "Python unittest discover (tests/)",
+        "Node.js built-in test (package.json)",
+        "Go test ./... (go.mod)",
+        "Python pytest -q (tests/ or config)"
     };
     const QString choice = QInputDialog::getItem(
         nullptr, "Choose one fixed test command", "Test runner:",

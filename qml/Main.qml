@@ -1325,7 +1325,7 @@ ApplicationWindow {
                                             onClicked: ember.runApprovedProjectTests()
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 700
-                                            ToolTip.text: "Run one explicitly approved fixed CTest, Cargo or Python unittest command inside a trusted project. Tests execute arbitrary project code; no sandbox or automatic rerun."
+                                            ToolTip.text: "Run one approved fixed CTest, Cargo, Python unittest, Node.js, Go or pytest command. Local tests execute project code; no sandbox, shell or automatic rerun."
                                         }
                                         PillButton {
                                             text: "GitHub agent"
