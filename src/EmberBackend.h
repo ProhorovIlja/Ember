@@ -63,6 +63,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(bool listening READ listening NOTIFY listeningChanged)
     Q_PROPERTY(bool speaking READ speaking NOTIFY speakingChanged)
     Q_PROPERTY(bool speechServerReady READ speechServerReady NOTIFY speechServerChanged)
+    Q_PROPERTY(QStringList nativeEnglishVoices READ nativeEnglishVoices NOTIFY speechServerChanged)
     Q_PROPERTY(bool speechServerRunning READ speechServerRunning NOTIFY speechServerChanged)
     Q_PROPERTY(QString persona READ persona WRITE setPersona NOTIFY configurationChanged)
     Q_PROPERTY(int chatMode READ chatMode WRITE setChatMode NOTIFY configurationChanged)
@@ -127,6 +128,7 @@ public:
     bool listening() const { return m_listening; }
     bool speaking() const { return m_speaking; }
     bool speechServerReady() const { return m_speechServerReady; }
+    QStringList nativeEnglishVoices() const { return m_speechEnglishVoices; }
     bool speechServerRunning() const { return m_speechServer.state() != QProcess::NotRunning; }
     QString persona() const { return m_persona; }
     int chatMode() const { return m_chatMode; }
@@ -358,6 +360,7 @@ private:
     bool m_speechServerReady = false;
     bool m_speechInventoryPending = false;
     bool m_speechInventoryInvalid = false;
+    QStringList m_speechEnglishVoices;
     // One WAV plays while the opposite private slot is synthesized ahead.
     int m_playingSpeechSlot = -1, m_readySpeechSlot = -1, m_ttsOutputSlot = -1;
     QSettings m_settings;
