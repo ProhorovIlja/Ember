@@ -2561,7 +2561,9 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: 8
                                             Text {
-                                                text: "NATIVE speech.cpp · VULKAN"
+                                                text: "NATIVE speech.cpp · " +
+                                                      (ember.speechDevice === 2 ? "CPU" :
+                                                       ember.speechDevice === 1 ? "GPU" : "AUTO")
                                                 color: window.mint
                                                 font.pixelSize: 11
                                                 font.letterSpacing: 0.9
@@ -2579,6 +2581,55 @@ ApplicationWindow {
                                                 color: "#A9C9E4"
                                                 font.pixelSize: 12
                                             }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 7
+                                            Text {
+                                                text: "INFERENCE DEVICE"
+                                                color: "#BDDDF4"
+                                                font.pixelSize: 11
+                                                Layout.fillWidth: true
+                                            }
+                                            PillButton {
+                                                objectName: "emberSpeechAutoDevice"
+                                                text: "Auto"
+                                                implicitWidth: 76
+                                                implicitHeight: 30
+                                                fill: ember.speechDevice === 0 ? "#235986" : "#0F2B4B"
+                                                enabled: !ember.busy && !ember.listening &&
+                                                         !ember.speaking && !ember.speechServerRunning
+                                                onClicked: ember.speechDevice = 0
+                                            }
+                                            PillButton {
+                                                text: "GPU"
+                                                implicitWidth: 76
+                                                implicitHeight: 30
+                                                fill: ember.speechDevice === 1 ? "#235986" : "#0F2B4B"
+                                                enabled: !ember.busy && !ember.listening &&
+                                                         !ember.speaking && !ember.speechServerRunning
+                                                onClicked: ember.speechDevice = 1
+                                            }
+                                            PillButton {
+                                                text: "CPU"
+                                                implicitWidth: 76
+                                                implicitHeight: 30
+                                                fill: ember.speechDevice === 2 ? "#235986" : "#0F2B4B"
+                                                enabled: !ember.busy && !ember.listening &&
+                                                         !ember.speaking && !ember.speechServerRunning
+                                                onClicked: ember.speechDevice = 2
+                                            }
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                            text: ember.speechDevice === 2 ?
+                                                  "CPU: reserve GPU memory for the text brain; speech may be slower." :
+                                                  ember.speechDevice === 1 ?
+                                                  "GPU: fastest candidate, but may compete with the text model for VRAM." :
+                                                  "Auto: speech.cpp chooses the available acceleration device."
+                                            color: "#83A9C7"
+                                            font.pixelSize: 10
                                         }
                                         Text {
                                             Layout.fillWidth: true

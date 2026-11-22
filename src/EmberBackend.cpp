@@ -250,6 +250,7 @@ EmberBackend::EmberBackend(QObject *parent)
             });
     m_voiceId = qBound(0, m_voiceId, 10);
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
+    m_speechDevice = qBound(0, m_settings.value("voice/speechDevice", 0).toInt(), 2);
     m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 4);
     m_outputVolume = qBound(0, m_settings.value("audio/outputVolume", 85).toInt(), 100);
     m_earlySpeechEnabled = m_settings.value("voice/earlySpeech", true).toBool();
@@ -729,6 +730,26 @@ void EmberBackend::setVoiceEngine(int index) {
     setStatus(index == 0
         ? "Offline Kokoro selected. The next reply uses installed model files."
         : "Local speech service selected. Start a compatible server on 127.0.0.1:43822.");
+}
+void EmberBackend::setSpeechDevice(int index) {
+    if (index < 0 || index > 2 || m_speechDevice == index) return;
+    if (m_busy || m_listening || m_speaking || m_transcribingDictation ||
+        m_speechServer.state() != QProcess::NotRunning) {
+        setStatus("Stop active speech and recognition before changing the device.");
+        return;
+    }
+    m_speechDevice = index;
+    m_settings.setValue("voice/speechDevice", index);
+    m_settings.sync();
+    ++m_configurationRevision;
+    emit configurationChanged();
+    setStatus(index == 2
+        ? "Native speech CPU selected. Frees RTX VRAM for the text model; "
+          "latency may be higher."
+        : index == 1
+            ? "Native speech GPU selected. May exceed 12 GB total VRAM "
+              "when combined with a large text model."
+            : "Native speech Auto selected. Uses speech.cpp device selection.");
 }
 void EmberBackend::setEarlySpeechEnabled(bool value) {
     if (m_earlySpeechEnabled == value) return;
@@ -1257,7 +1278,8 @@ void EmberBackend::startSpeechServer() {
         QProcessEnvironment::systemEnvironment()));
     m_speechServer.setProgram(binary);
     models << "--host" << "127.0.0.1" << "--port" << "43822"
-           << "--device" << "auto" << "--threads" << "4";
+           << "--device" << EmberCore::nativeSpeechDeviceArg(m_speechDevice)
+           << "--threads" << "4";
     m_speechServer.setArguments(models);
     m_speechServerElapsed.start();
     m_speechHealthTimer.start();

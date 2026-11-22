@@ -57,6 +57,12 @@ bool discardPrivateVoiceScratch(QFile &microphone, const QString &folder) {
     }
     return success;
 }
+QString nativeSpeechDeviceArg(int deviceIndex) {
+    if (deviceIndex == 0) return QStringLiteral("auto");
+    if (deviceIndex == 1) return QStringLiteral("gpu");
+    if (deviceIndex == 2) return QStringLiteral("cpu");
+    return {};
+}
 QProcessEnvironment speechProcessEnvironment(QProcessEnvironment inherited) {
     // Upstream docs/install.md: a terminal speech.cpp invocation otherwise
     // checks for a newer release, independent of the selected GGUF being

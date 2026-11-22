@@ -71,6 +71,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(int recognitionEngine READ recognitionEngine WRITE setRecognitionEngine NOTIFY configurationChanged)
     Q_PROPERTY(int voiceId READ voiceId WRITE setVoiceId NOTIFY configurationChanged)
     Q_PROPERTY(int voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY configurationChanged)
+    Q_PROPERTY(int speechDevice READ speechDevice WRITE setSpeechDevice NOTIFY configurationChanged)
     Q_PROPERTY(int deliveryStyle READ deliveryStyle WRITE setDeliveryStyle NOTIFY configurationChanged)
     Q_PROPERTY(int outputVolume READ outputVolume WRITE setOutputVolume NOTIFY configurationChanged)
     Q_PROPERTY(bool earlySpeechEnabled READ earlySpeechEnabled WRITE setEarlySpeechEnabled NOTIFY configurationChanged)
@@ -134,6 +135,7 @@ public:
     int recognitionEngine() const { return m_recognitionEngine; }
     int voiceId() const { return m_voiceId; }
     int voiceEngine() const { return m_voiceEngine; }
+    int speechDevice() const { return m_speechDevice; }
     int deliveryStyle() const { return m_deliveryStyle; }
     int outputVolume() const { return m_outputVolume; }
     bool earlySpeechEnabled() const { return m_earlySpeechEnabled; }
@@ -160,6 +162,7 @@ public:
     Q_INVOKABLE void setRecognitionEngine(int index);
     Q_INVOKABLE void setVoiceId(int index);
     Q_INVOKABLE void setVoiceEngine(int index);
+    Q_INVOKABLE void setSpeechDevice(int index);
     Q_INVOKABLE void setDeliveryStyle(int style);
     Q_INVOKABLE void setOutputVolume(int percent);
     Q_INVOKABLE void setEarlySpeechEnabled(bool value);
@@ -331,7 +334,7 @@ private:
     QVariantList m_messages;
     QList<EmberCore::Turn> m_history;
     int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0, m_chatMode = 0;
-    int m_recognitionLanguage = 0, m_recognitionEngine = 0;
+    int m_recognitionLanguage = 0, m_recognitionEngine = 0, m_speechDevice = 0;
     int m_brainContextTokens = 8192, m_brainGpuLayers = 99;
     int m_brainResponseTokens = 0; // 0 = profile defaults, otherwise fixed user budget
     int m_deliveryStyle = 0, m_outputVolume = 85;

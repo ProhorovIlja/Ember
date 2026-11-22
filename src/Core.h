@@ -163,6 +163,8 @@ QString localSpeechGgufFile(const QString &absoluteFilePath);
 // Upstream speech.cpp performs a once-a-day Internet version check by
 // default; disable it for EVERY managed launch, including offline weights.
 QProcessEnvironment speechProcessEnvironment(QProcessEnvironment inherited);
+// Speech.cpp device choices are explicit; CPU can free RTX 4070 VRAM for LLM.
+QString nativeSpeechDeviceArg(int deviceIndex);
 bool validSpeechWav(const QByteArray &wav);
 // Suppress hallucinations only for *digitally near-silent* canonical 16kHz
 // mono PCM16 input; never gate ordinary quiet voices or unrecognized WAVs.

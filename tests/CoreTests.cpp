@@ -459,6 +459,14 @@ private slots:
         bytes.close();
         QVERIFY(gallery.dataUri(id).isEmpty()); // integrity fails closed
     }
+    void speechDeviceSelectionIsBoundedAndExplicit() {
+        QCOMPARE(EmberCore::nativeSpeechDeviceArg(0), QString("auto"));
+        QCOMPARE(EmberCore::nativeSpeechDeviceArg(1), QString("gpu"));
+        QCOMPARE(EmberCore::nativeSpeechDeviceArg(2), QString("cpu"));
+        QVERIFY(EmberCore::nativeSpeechDeviceArg(-1).isEmpty());
+        QVERIFY(EmberCore::nativeSpeechDeviceArg(3).isEmpty());
+        QVERIFY(EmberCore::nativeSpeechDeviceArg(999).isEmpty());
+    }
     void nativeSpeechLaunchAlwaysSuppressesUpstreamVersionCheck() {
         // The managed child must not phone home even when a previous
         // environment setting enabled upstream's terminal update notice.

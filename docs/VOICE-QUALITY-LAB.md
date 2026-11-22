@@ -911,3 +911,19 @@ background monitoring is created. Listener PID preflight cannot completely
 eliminate port-rebind races, and no mock signal test establishes real
 English voice prosody, model compatibility, audible first sound or GPU
 performance. Genuine RTX4070 listening and output-device tests remain required.
+
+
+### November 22 — native speech CPU/GPU VRAM control
+
+Native Settings now exposes **Auto / GPU / CPU** device choices for the
+user-started local speech.cpp server, persisted as `voice/speechDevice`
+and changed only while the voice/ASR engine and any recording or synthesis
+are stopped. The effective CLI `--device auto|gpu|cpu` is validated by
+QtCore regressions. Select CPU when a large Q4 text GGUF occupies most of
+the 12 GB RTX 4070 VRAM; select GPU only after actual co-residency and
+first-audio latency are measured. CPU is **not** automatically asserted to
+be natural or low-latency. The default remains upstream Auto, and any
+failure to load on a specified device is surfaced rather than silently
+pretending another accelerator was used.
+
+Upstream explicit device names: https://github.com/nyosegawa/speech.cpp/blob/main/docs/cli.md
