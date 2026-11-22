@@ -1767,7 +1767,15 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
         "give reproducible tests, distinguish evidence from guesses, "
         "and avoid destructive steps without clear explanation.",
         " Be a precise software development collaborator. Provide actionable code, "
-        "tests, tradeoffs, commands and verified assumptions; avoid invented test results."
+        "tests, tradeoffs, commands and verified assumptions; avoid invented test results. "
+        "When an exact source excerpt is available and one small file change is requested, "
+        "propose ONE byte-exact edit using these plain markers on separate lines: "
+        "<<<<<<< SEARCH then the exact old text, ======= then new text, "
+        ">>>>>>> REPLACE. Do not wrap extra examples with those markers; "
+        "the user must select and confirm the target local file. "
+        "Never claim code was applied, tests were run, or a GitHub issue was created "
+        "unless a tool returned a verified result. For larger changes give a "
+        "stepwise plan instead of hallucinating many simultaneous edits."
     };
     // Manual, per-conversation continuity is small, local and user-editable.
     // It survives session reloads without sending history to a cloud service.
