@@ -1203,34 +1203,6 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         setStatus("Local brain endpoint identity changed. Your prompt was not sent.");
         return;
     }
-    // A PCM voice may still be playing after the LLM is done. Abort the
-    // previous HTTP/sink state; stopping only the WAV player is insufficient.
-    if (m_speaking || m_speechSequence || m_pcmSink || m_speechReply)
-        cancelWork();
-    m_speechSequence = false;
-    m_voiceQueue.clear();
-    m_voiceEarlyFailed = false;
-    m_voiceEarlyActive = voice && m_earlySpeechEnabled && m_voiceEngine == 1 &&
-        m_speechServerReady && m_speechServer.state() == QProcess::Running;
-    m_liveSpeechCursor = 0;
-    m_mediaPlayer.stop();
-    m_mediaPlayer.setSource(QUrl());
-    setSpeaking(false);
-    // Any new prompt supersedes the incomplete-reply continuation offer;
-    // the previous text and in-progress composer draft are unaffected.
-    if (m_lastReplyIncomplete) {
-        m_lastReplyIncomplete = false;
-        emit lastReplyChanged();
-    }
-    m_pendingUser = text;
-    m_voicePending = voice;
-    appendMessage("you", text + (selected.isEmpty() ? QString() :
-        QStringLiteral("\n\n[Ember image sha256:") + selected + QLatin1Char(']')));
-    if (!selected.isEmpty()) clearAttachedImage();
-    setBusy(true);
-    setStatus(voice ? "Reasoning in English for a spoken reply…"
-                    : "Streaming a private local text reply…");
-
     // Writing profiles are provider-independent and completely local.
     // These select behavior; the user can still override m_persona.
     static const QString modes[] = {
@@ -1268,19 +1240,45 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         m_chatMode == 1 ? 0.92 : 0.73, recalled);
     if (!selected.isEmpty() &&
         !EmberCore::attachLocalVisionData(payload, imageData)) {
-        setBusy(false);
+        // Leave the composer attachment and both SQLite/UI histories intact.
         setStatus("Could not construct a private local multimodal request.");
         return;
     }
     payload.insert("stream", true);
     const QString url = "http://127.0.0.1:43821/v1/chat/completions";
     if (!EmberCore::allowedLocalEndpoint(url)) {
-        m_voicePending = false;
-        m_voiceEarlyActive = false;
-        setBusy(false);
         setStatus("Invalid local text-engine address.");
         return;
     }
+    // All synchronous preflight checks have passed. Only NOW commit this
+    // user turn to SQLite and the UI: an invalid multimodal request must not
+    // create a ghost prompt, clear its pending image, or lose an incomplete
+    // answer's manual continuation affordance.
+    // A PCM voice may still be playing after the LLM is done. Abort the
+    // previous HTTP/sink state; stopping only WAV playback is insufficient.
+    if (m_speaking || m_speechSequence || m_pcmSink || m_speechReply)
+        cancelWork();
+    m_speechSequence = false;
+    m_voiceQueue.clear();
+    m_voiceEarlyFailed = false;
+    m_voiceEarlyActive = voice && m_earlySpeechEnabled && m_voiceEngine == 1 &&
+        m_speechServerReady && m_speechServer.state() == QProcess::Running;
+    m_liveSpeechCursor = 0;
+    m_mediaPlayer.stop();
+    m_mediaPlayer.setSource(QUrl());
+    setSpeaking(false);
+    if (m_lastReplyIncomplete) {
+        m_lastReplyIncomplete = false;
+        emit lastReplyChanged();
+    }
+    m_pendingUser = text;
+    m_voicePending = voice;
+    appendMessage("you", text + (selected.isEmpty() ? QString() :
+        QStringLiteral("\n\n[Ember image sha256:") + selected + QLatin1Char(']')));
+    if (!selected.isEmpty()) clearAttachedImage();
+    setBusy(true);
+    setStatus(voice ? "Reasoning in English for a spoken reply…"
+                    : "Streaming a private local text reply…");
     m_chatStreamBuffer.clear();
     m_visibleStream = {};
     m_chatStreamText.clear();
@@ -1341,12 +1339,16 @@ void EmberBackend::submit(const QString &raw, bool voice) {
         }
         receive();
         m_reply = nullptr;
-        const bool complete = reply->error() == QNetworkReply::NoError &&
+        const bool validTransport = reply->error() == QNetworkReply::NoError &&
             reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
-            m_chatStreamDone && !m_chatStreamInvalid &&
-            !m_chatStreamTruncated;
+            m_chatStreamDone && !m_chatStreamInvalid;
+        const bool verifiedTokenLimit = validTransport && m_chatStreamTruncated;
+        const bool complete = validTransport && !m_chatStreamTruncated;
         reply->deleteLater();
-        finishChatStream(!complete);
+        // Reaching max_tokens with [DONE] and HTTP 200 is a complete SSE
+        // transaction, though its text is incomplete; never mistake a 500,
+        // abort, malformed SSE or missing [DONE] for a valid token budget.
+        finishChatStream(!complete, verifiedTokenLimit);
     });
 }
 void EmberBackend::renderChatStream() {
@@ -1385,12 +1387,13 @@ void EmberBackend::enqueueLiveSpeech(bool final) {
     }
     if (m_speechSequence) playNextSpeechChunk();
 }
-void EmberBackend::finishChatStream(bool interrupted) {
+void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
     m_chatRenderTimer.stop();
     m_chatGenerating = false;
     const QString response = m_chatStreamText.trimmed();
-    const bool tokenLimit = m_chatStreamTruncated;
-    const bool shouldSpeak = m_voicePending && !interrupted;
+    const bool tokenLimit = verifiedTokenLimit;
+    const bool shouldSpeak = EmberCore::canSpeakStreamedReply(
+        m_voicePending, interrupted, verifiedTokenLimit);
     m_voicePending = false;
     if (!response.isEmpty()) {
         if (interrupted) m_chatStreamText += tokenLimit
@@ -1421,7 +1424,8 @@ void EmberBackend::finishChatStream(bool interrupted) {
     const bool activeSynthesis = m_cliTtsActive || m_speechReply ||
         m_pcmSink || m_ttsOutputSlot >= 0;
     setBusy(activeSynthesis);
-    if (interrupted && m_voiceEarlyActive && m_speechSequence) {
+    if (interrupted && !verifiedTokenLimit &&
+        m_voiceEarlyActive && m_speechSequence) {
         stopSpeechOnError("Streamed response was interrupted; stopped partial voice output.");
     }
     if (response.isEmpty()) {

@@ -640,6 +640,10 @@ QJsonObject speechRequest(const QString &model, const QString &voice,
 bool shouldPersistConversation(bool privateMode, const QString &sessionId) {
     return !privateMode && !sessionId.isEmpty();
 }
+bool canSpeakStreamedReply(bool voiceRequested, bool interrupted,
+                           bool verifiedTokenLimit) {
+    return voiceRequested && (!interrupted || verifiedTokenLimit);
+}
 bool safeScratchSessionName(const QString &name) {
     // Never pass arbitrary user paths into abandoned-audio cleanup.
     static const QRegularExpression pattern("^[A-Za-z0-9]{6}$");

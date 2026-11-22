@@ -85,6 +85,10 @@ bool safeScratchSessionName(const QString &name);
 // bounded retry after its writer/network upload has exited.
 bool discardPrivateVoiceScratch(QFile &microphone, const QString &folder);
 bool shouldPersistConversation(bool privateMode, const QString &sessionId);
+// A completed HTTP 200 stream stopped at its model token budget is incomplete
+// text, not a failed transport. Only then may already generated speech finish.
+bool canSpeakStreamedReply(bool voiceRequested, bool interrupted,
+                           bool verifiedTokenLimit);
 // Half-duplex user-controlled voice interruption; never interrupt active ASR.
 bool captureAllowedWithInterruption(bool busy, bool listening,
                                     bool speechActive, bool recognitionActive);

@@ -210,7 +210,7 @@ private:
     void refreshSessions();
     void rebuildConversationHistory();
     void renderChatStream();
-    void finishChatStream(bool interrupted);
+    void finishChatStream(bool interrupted, bool verifiedTokenLimit = false);
     void enqueueLiveSpeech(bool final);
     void beginSpeech(const QString &text);
     void playNextSpeechChunk();

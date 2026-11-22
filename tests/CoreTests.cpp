@@ -576,6 +576,32 @@ private slots:
         QCOMPARE(parts.last().toObject().value("content").toString().size(), 4000);
     }
 
+    void tokenBudgetMayFinishValidVoiceButNeverMaskTransportErrors() {
+        QVERIFY(EmberCore::canSpeakStreamedReply(true, false, false));
+        QVERIFY(EmberCore::canSpeakStreamedReply(true, false, true));
+        QVERIFY(EmberCore::canSpeakStreamedReply(true, true, true));
+        QVERIFY(!EmberCore::canSpeakStreamedReply(true, true, false));
+        QVERIFY(!EmberCore::canSpeakStreamedReply(false, false, false));
+        QVERIFY(!EmberCore::canSpeakStreamedReply(false, false, true));
+        QVERIFY(!EmberCore::canSpeakStreamedReply(false, true, false));
+        QVERIFY(!EmberCore::canSpeakStreamedReply(false, true, true));
+    }
+    void failedVisionPreflightDoesNotAlterChatPayload() {
+        QJsonObject payload = EmberCore::chatRequest(
+            "Local-only assistant", {}, "What is in this picture?");
+        const auto initial = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+        QVERIFY(!EmberCore::attachLocalVisionData(
+            payload, QByteArray("https://example.net/remote.png")));
+        QCOMPARE(QJsonDocument(payload).toJson(QJsonDocument::Compact), initial);
+        QVERIFY(!EmberCore::attachLocalVisionData(
+            payload, QByteArray("data:image/png;base64,abc!")));
+        QCOMPARE(QJsonDocument(payload).toJson(QJsonDocument::Compact), initial);
+        QVERIFY(EmberCore::attachLocalVisionData(
+            payload, QByteArray("data:image/png;base64,") + QByteArray("QUJDRA==")));
+        const auto parts = payload.value("messages").toArray().last()
+            .toObject().value("content").toArray();
+        QCOMPARE(parts.size(), 2);
+    }
     void validatesNativeAndWhisperTranscriptsWithoutUtf8Corruption() {
         bool valid = false;
         const QByteArray russian = QString::fromUtf8(
