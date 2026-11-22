@@ -28,6 +28,9 @@ ApplicationWindow {
     // a clock, app startup, a scheduled task or a background watcher.
     property bool dictationHoldArmed: false
     property double dictationPressStartedAt: 0
+    property bool voiceHoldArmed: false
+    property bool voiceStopOnRelease: false
+    property double voicePressStartedAt: 0
     Dialog {
         id: offlineSetupDialog
         parent: Overlay.overlay
@@ -449,8 +452,9 @@ ApplicationWindow {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 8
-                    // Voice conversation remains available in source for a later
-                    // milestone; the text-first release opens in Chat.
+                    // Fully native route; no mic or inference starts on navigation.
+                    // Default startup remains Chat until engines are configured.
+                    NavButton { label: "Voice"; symbol: "◉"; index: 0 }
                     NavButton { label: "Chat"; symbol: "▤"; index: 1 }
                     NavButton { label: "Library"; symbol: "▧"; index: 3 }
                     NavButton { label: "Settings"; symbol: "⚙"; index: 2 }
@@ -740,6 +744,7 @@ ApplicationWindow {
 
                 StackLayout {
                     id: views
+                    objectName: "emberViews"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     currentIndex: window.page
@@ -825,7 +830,7 @@ ApplicationWindow {
                                 Layout.maximumWidth: 540
                                 horizontalAlignment: Text.AlignHCenter
                                 wrapMode: Text.WordWrap
-                                text: "Push to talk. Interrupt Ember while speaking. Stop manually, or opt into experimental silence ending."
+                                text: "Tap to record until Stop, or hold and release to ask Ember. Cancel discards audio. Voice stays local."
                                 color: "#94AFC8"
                                 font.pixelSize: 13
                             }
@@ -881,12 +886,52 @@ ApplicationWindow {
                                 Layout.alignment: Qt.AlignHCenter
                                 spacing: 13
                                 PillButton {
-                                    text: ember.listening ? "Stop recording" :
-                                          ember.speaking ? "Interrupt & speak" : "Record voice"
-                                    implicitWidth: ember.speaking ? 180 : 169
-                                    enabled: ember.listening ||
-                                             (ember.brainReady && (!ember.busy || ember.speaking))
-                                    onClicked: ember.listening ? ember.stopRecording() : ember.startRecording()
+                                    id: voiceRecordControl
+                                    text: ember.listening ?
+                                          (window.voiceHoldArmed ?
+                                           "Release to ask" : "Stop recording") :
+                                          ember.speaking ?
+                                          "Interrupt & record" : "Tap / hold to speak"
+                                    implicitWidth: 190
+                                    enabled: ember.listening || window.voiceHoldArmed ||
+                                             (ember.brainReady &&
+                                              (!ember.busy || ember.speaking))
+                                    onPressed: {
+                                        if (ember.listening) {
+                                            window.voiceStopOnRelease = true
+                                            return
+                                        }
+                                        if (!ember.brainReady ||
+                                            (ember.busy && !ember.speaking)) return
+                                        window.voiceHoldArmed = true
+                                        window.voicePressStartedAt = Date.now()
+                                        ember.startRecording()
+                                        if (!ember.listening)
+                                            window.voiceHoldArmed = false
+                                    }
+                                    onReleased: {
+                                        if (window.voiceStopOnRelease) {
+                                            window.voiceStopOnRelease = false
+                                            ember.stopRecording()
+                                            return
+                                        }
+                                        if (!window.voiceHoldArmed) return
+                                        const elapsed = Date.now() -
+                                                        window.voicePressStartedAt
+                                        const complete =
+                                            ember.shouldCompleteHeldVoice(elapsed)
+                                        window.voiceHoldArmed = false
+                                        if (complete) ember.stopRecording()
+                                    }
+                                    onCanceled: {
+                                        if (window.voiceHoldArmed && ember.listening)
+                                            ember.cancelWork()
+                                        window.voiceHoldArmed = false
+                                        window.voiceStopOnRelease = false
+                                    }
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 700
+                                    ToolTip.text: "Tap once to record and again to stop. Hold for 0.45 seconds and release to transcribe/submit. Drag outside to cancel the held take. Needs local LLM and ASR/TTS."
                                 }
                                 PillButton {
                                     text: ember.speaking ? "Retest voice" : "Test voice"

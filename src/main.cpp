@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
+#include <QList>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QResource>
@@ -80,8 +81,27 @@ int main(int argc, char *argv[]) {
         return 4;
     }
     if (smokeTest) {
-        writeDiagnostics("QML initialized");
-        QTimer::singleShot(1200, &app, &QCoreApplication::quit);
+        // Single, foreground, model-free QML smoke: verify all native routes.
+        // Existing CI calls --smoke-test explicitly; no new background task.
+        const QList<int> pages{0, 1, 2, 3};
+        for (int i = 0; i < pages.size(); ++i) {
+            QTimer::singleShot(100 + 170 * i, &app, [&, i] {
+                QObject *root = engine.rootObjects().first();
+                QObject *stack = root->findChild<QObject *>("emberViews");
+                const int page = pages.at(i);
+                if (!stack || !root->setProperty("page", page) ||
+                    stack->property("currentIndex").toInt() != page) {
+                    qmlDiagnostics.append(
+                        QString("Native QML page navigation failed for %1").arg(page));
+                }
+            });
+        }
+        QTimer::singleShot(980, &app, [&] {
+            if (!engine.rootObjects().isEmpty())
+                engine.rootObjects().first()->setProperty("page", 1);
+            writeDiagnostics("QML initialized; Voice, Chat, Settings and Library checked");
+            app.quit();
+        });
     }
     const int result = app.exec();
     if (smokeTest) writeDiagnostics("QML event loop exited");

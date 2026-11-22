@@ -670,6 +670,10 @@ bool holdDictationReleasedToDraft(qint64 heldMilliseconds, bool captureActive) {
     // The hold length does not limit the length of a recording.
     return captureActive && heldMilliseconds >= 450;
 }
+bool holdVoiceReleasedToReply(qint64 heldMilliseconds, bool captureActive) {
+    // No timer starts recording: only the user-held, already active capture.
+    return captureActive && heldMilliseconds >= 450;
+}
 bool allowedLocalSpeechEndpoint(const QString &raw) {
     const QUrl url(raw);
     return url.isValid() && url.scheme() == "http" &&

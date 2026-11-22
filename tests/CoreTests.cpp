@@ -174,6 +174,18 @@ private slots:
         QVERIFY(whisperCliArguments(model, wav, result, 99, "a", {}).isEmpty());
         QVERIFY(whisperCliArguments(model, {}, result, 1, "a", {}).isEmpty());
     }
+    void voiceHoldRequiresActiveUserRecordingRatherThanASrDraft() {
+        using EmberCore::holdVoiceReleasedToReply;
+        QVERIFY(!holdVoiceReleasedToReply(-1, true));
+        QVERIFY(!holdVoiceReleasedToReply(0, true));
+        QVERIFY(!holdVoiceReleasedToReply(449, true));
+        QVERIFY(holdVoiceReleasedToReply(450, true));
+        QVERIFY(holdVoiceReleasedToReply(10000, true));
+        QVERIFY(!holdVoiceReleasedToReply(450, false));
+        QVERIFY(!holdVoiceReleasedToReply(10000, false));
+        // Dictation remains a separate draft-only workflow.
+        QVERIFY(EmberCore::holdDictationReleasedToDraft(500, true));
+    }
     void holdToDraftRequiresRealRecordingAndNeverCountsAsSendApproval() {
         using EmberCore::holdDictationReleasedToDraft;
         QVERIFY(!holdDictationReleasedToDraft(-1, true));

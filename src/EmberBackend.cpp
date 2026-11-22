@@ -2967,6 +2967,10 @@ QString EmberBackend::formatReply(const QString &text) const {
     return EmberCore::safeMarkdownHtml(text);
 }
 void EmberBackend::startRecording() { startCapture(false); }
+bool EmberBackend::shouldCompleteHeldVoice(qint64 elapsedMs) const {
+    return EmberCore::holdVoiceReleasedToReply(
+        elapsedMs, m_listening && !m_captureDictation);
+}
 void EmberBackend::startDictation() {
     m_dictationAutoSend = false;
     startCapture(true);

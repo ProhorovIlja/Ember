@@ -54,6 +54,8 @@ bool maySendCompletedDictation(bool userSelectedSend, bool captureInterrupted,
 // The foreground QML mic button supports both tap-to-record and hold/release
 // to transcribe a draft. Only a genuine active capture may be finished.
 bool holdDictationReleasedToDraft(qint64 heldMilliseconds, bool captureActive);
+// Full Voice mode: a genuine active voice capture may finish on held release.
+bool holdVoiceReleasedToReply(qint64 heldMilliseconds, bool captureActive);
 bool allowedLocalSpeechEndpoint(const QString &url);
 bool allowedLocalAsrEndpoint(const QString &url);
 QString nativeAsrModel(int recognitionEngine);
