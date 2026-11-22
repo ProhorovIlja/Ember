@@ -64,6 +64,11 @@ jobs:
         run: |
           python tools/text_benchmark.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Local text benchmark self-test failed.' }
+      - name: Validate actual Qwen3 speech GGUF identity metadata (synthetic only)
+        shell: pwsh
+        run: |
+          python tools/native_gguf_metadata.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Qwen3 GGUF metadata validation self-test failed.' }
       - name: Check offline asset manifest tooling (no network)
         shell: pwsh
         run: |
