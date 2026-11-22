@@ -6,6 +6,7 @@ reference TXT files. Requests go only to 127.0.0.1:43822; reports contain
 numeric error/latency metrics, never the referenced words or filenames.
 """
 import argparse
+from functools import partial
 import io
 import json
 import math
@@ -15,6 +16,7 @@ import wave
 from pathlib import Path, PurePosixPath
 
 from asr_benchmark import MAX_WAV, MODELS, metrics, silent_wav, transcribe
+from localhost_owner import require_owned_speech_listener
 
 
 def bounded_local_file(root, relative, maximum):
@@ -383,6 +385,8 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--model", choices=MODELS, default=MODELS[0])
+    parser.add_argument("--speech-pid", type=int,
+                        help="Required Windows PID of trusted speech.exe on 127.0.0.1:43822")
     parser.add_argument("--omit-model-id", action="store_true")
     parser.add_argument("--app-chunking", action="store_true",
                         help="Benchmark Ember-style 25s/500ms overlapping segments; requires 16kHz mono WAV")
@@ -394,8 +398,12 @@ def main():
         return
     if args.manifest is None:
         parser.error("--manifest is required")
+    if not args.speech_pid or args.speech_pid <= 0:
+        parser.error("--speech-pid is required before reading private audio")
     try:
+        require_owned_speech_listener(args.speech_pid)
         result = evaluate(args.manifest, args.model, args.omit_model_id,
+                          recognizer=partial(transcribe, expected_pid=args.speech_pid),
                           app_chunking=args.app_chunking)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         parser.error(f"Private corpus failed: {type(exc).__name__}: {exc}")
