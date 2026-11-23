@@ -202,6 +202,16 @@ if ($VerifyInstall) {
             if (Test-Path -LiteralPath $installedExe) {
                 throw 'Test-only uninstaller failed or was missing; Ember.exe remains.'
             }
+            if ($didUninstall -and (Test-Path -LiteralPath $install -PathType Container)) {
+                # A successful EXE removal is not enough: gigabytes of GGUF
+                # weights, Qt DLLs or audio scratch must not survive uninstall.
+                # Merely INSPECT this unique test folder; do not recurse-delete
+                # unknown contents. No live user's install is ever touched.
+                $leftovers = @(Get-ChildItem -LiteralPath $install -Recurse -File -Force)
+                if ($leftovers.Count -gt 0) {
+                    throw 'Test-only uninstaller left model weights, runtime or other files behind.'
+                }
+            }
         }
     }
     if (!$didUninstall) {
