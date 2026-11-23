@@ -95,7 +95,14 @@ entire installer ZIP; missing .bin slices make installation incomplete.
 The bundler is [tools/installer_bundle.py](tools/installer_bundle.py)
 (`--self-test` passed locally on synthetic slices), and the installer
 rechecks installed model/engine hashes after a per-user install/uninstall
-smoke. Stable SemVer additionally requires
+smoke. **GitHub Releases separately limits each uploaded asset to less
+than 2 GiB**, so complete ZIPs require a verified large-file host for
+one-download distribution. An optional, manually invoked
+[large release split/rejoin tool](tools/large_release_asset.py) can create
+under-limit GitHub fallback parts, with SHA-256 verification before
+reconstruction; it has passed local synthetic round-trip and tampering
+tests but requires downloading every part. No release has been uploaded.
+Stable SemVer additionally requires
 the separate reviewed 17-check release acceptance record. No models,
 runtimes or release binaries are currently attached to the development
 branch. The new pipeline has not yet been executed on a Windows PC.
