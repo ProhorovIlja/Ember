@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import unicodedata
 from pathlib import Path
 
 BASE_MODEL_TYPE = "qwen3_5"
@@ -55,12 +56,57 @@ def require_dir(path):
         fail("Not a real local directory: " + str(p))
     return p.resolve()
 
+def validated_messages(value):
+    """Refuse forged or malformed SFT dialogues before Axolotl sees them.
+
+    EmberMind Studio validates source metadata, but users can edit
+    train/eval.jsonl and rehash report.json later. Recheck model-facing data
+    at the separate manual training boundary instead of trusting hashes.
+    """
+    if not isinstance(value, list) or not 2 <= len(value) <= 32:
+        fail("SFT sample requires 2..32 structured chat messages")
+    expected = "user"
+    user_texts = []
+    for i, msg in enumerate(value):
+        if not isinstance(msg, dict) or set(msg) != {"role", "content"}:
+            fail("Every SFT message needs exactly role and content strings")
+        role, content = msg["role"], msg["content"]
+        if i == 0 and role == "system":
+            pass
+        elif role == expected:
+            expected = "assistant" if expected == "user" else "user"
+        else:
+            fail("SFT role order must alternate user and assistant")
+        if (not isinstance(content, str) or not content.strip() or
+                len(content) > 12000 or "\x00" in content):
+            fail("SFT message content is missing or oversized")
+        if role == "user":
+            normalized = unicodedata.normalize("NFKC", content).casefold()
+            user_texts.append(re.sub(r"\s+", " ", normalized).strip())
+    if value[-1]["role"] != "assistant" or not user_texts:
+        fail("SFT dialogue must end with an assistant answer")
+    return hashlib.sha256(json.dumps(
+        user_texts, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def unique_pairs(pairs):
+    data = {}
+    for key, value in pairs:
+        if key in data:
+            fail("Duplicate JSON key inside SFT example")
+        data[key] = value
+    return data
+
+
 def inspect_dataset(directory):
     root = require_dir(directory)
     report = read_json(root / "report.json")
     if report.get("schema") != SPLIT_SCHEMA:
         fail("Dataset must come from EmberMind Studio")
     summaries = {}
+    train_prompts = set()
+    train_dialogues = set()
     for name in ("train", "eval"):
         p = require_file(root / (name + ".jsonl"), DATA_LIMIT)
         observed = digest(p)
@@ -72,16 +118,29 @@ def inspect_dataset(directory):
                 if len(line) > 512000 or not line.strip():
                     fail("Blank or too large training line")
                 try:
-                    obj = json.loads(line)
+                    obj = json.loads(
+                        line, object_pairs_hook=unique_pairs,
+                        parse_constant=lambda _: fail("Non-finite SFT JSON"))
                 except json.JSONDecodeError:
                     fail("Invalid JSONL in " + name)
                 if not isinstance(obj, dict) or set(obj) != {"messages"}:
                     fail("Axolotl inputs must contain messages only")
                 messages = obj["messages"]
-                if not isinstance(messages, list) or len(messages) < 2:
-                    fail("Invalid message turn list")
-                if messages[-1].get("role") != "assistant":
-                    fail("Examples must end with an assistant message")
+                fingerprint = validated_messages(messages)
+                # Avoid falsely promoting a model on evaluation prompts it
+                # has already seen in training, regardless of changed answer.
+                # This is *prompt* overlap, not only identical JSONL hashes.
+                if name == "train":
+                    train_prompts.add(fingerprint)
+                elif fingerprint in train_prompts:
+                    fail("Train/eval user-prompt overlap; holdout contaminated")
+                dialog_hash = hashlib.sha256(json.dumps(
+                    messages, ensure_ascii=False, sort_keys=True,
+                    separators=(",", ":")).encode("utf-8")).hexdigest()
+                if name == "train":
+                    if dialog_hash in train_dialogues:
+                        fail("Repeated full training dialogue")
+                    train_dialogues.add(dialog_hash)
                 count += 1
         if count != report.get(name + "_examples") or count < 1:
             fail("Dataset example count mismatch")
