@@ -170,6 +170,82 @@ QVariantList SessionStore::search(const QString &text, int limit) const {
     }
     return result;
 }
+QString SessionStore::relatedSavedExcerpts(const QString &currentSession,
+                                           const QString &question,
+                                           int maxResults) const {
+    // This operation is deliberately foreground-only. A separate, initially
+    // disabled setting in EmberBackend must authorize cross-chat recall.
+    if (!m_ready || currentSession.isEmpty() || currentSession.size() > 64 ||
+        !exists(currentSession) || question.trimmed().isEmpty() ||
+        question.size() > 8192) return {};
+    static const QSet<QString> ignored{
+        "the", "and", "this", "that", "then", "from", "with", "about",
+        "there", "which", "what", "when", "where", "would", "could",
+        "should", "have", "were", "they", "them", "your", "you",
+        "for", "are", "was", "how", "why", "can", "did", "does",
+        "please", "tell", "remember", "again", "before", "after",
+        "что", "как", "это", "этот", "этом", "этого", "мне", "тебе",
+        "для", "про", "где", "когда", "кто", "она", "они", "его",
+        "еще", "ещё", "надо", "нужно", "было", "был", "будет",
+        "можешь", "можно", "хочу", "теперь", "раньше", "тогда"
+    };
+    QStringList terms;
+    const QRegularExpression words(R"([\p{L}\p{N}]{3,32})");
+    auto matches = words.globalMatch(question.toCaseFolded());
+    while (matches.hasNext() && terms.size() < 8) {
+        const QString word = matches.next().captured();
+        if (!ignored.contains(word) && !terms.contains(word))
+            terms.append(word);
+    }
+    if (terms.isEmpty()) return {};
+    // Bounded scan: no persistent duplicate index, no embeddings, no GPU
+    // and no attempt to search non-chat files or connected accounts.
+    QSqlQuery query(m_db);
+    query.prepare("SELECT s.title,m.role,substr(m.body,1,1800) "
+                  "FROM messages m JOIN sessions s ON s.id=m.session_id "
+                  "WHERE m.session_id<>? ORDER BY m.id DESC LIMIT 1600");
+    query.addBindValue(currentSession);
+    if (!query.exec()) return {};
+    struct Hit { int score; int ordinal; QString title, role, text; };
+    QList<Hit> hits;
+    int ordinal = 0;
+    while (query.next()) {
+        const QString body = query.value(2).toString();
+        const QString folded = body.toCaseFolded();
+        int score = 0;
+        qsizetype first = -1;
+        for (const QString &term : terms) {
+            const qsizetype found = folded.indexOf(term);
+            if (found < 0) continue;
+            score += term.size() >= 7 ? 3 : 2;
+            if (first < 0 || found < first) first = found;
+        }
+        if (score > 0 && first >= 0) {
+            const qsizetype begin = std::max<qsizetype>(0, first - 100);
+            const QString excerpt = body.mid(begin, 350).simplified();
+            if (!excerpt.isEmpty())
+                hits.append(Hit{score, ordinal,
+                    query.value(0).toString().simplified().left(72),
+                    query.value(1).toString(), excerpt});
+        }
+        ++ordinal;
+    }
+    std::sort(hits.begin(), hits.end(), [](const Hit &a, const Hit &b) {
+        return a.score != b.score ? a.score > b.score : a.ordinal < b.ordinal;
+    });
+    QSet<QString> seen;
+    QStringList excerpts;
+    for (const Hit &hit : hits) {
+        if (excerpts.size() >= std::clamp(maxResults, 1, 3)) break;
+        if (seen.contains(hit.text)) continue;
+        seen.insert(hit.text);
+        const QString label = hit.role == "you" ? "user" : "Ember";
+        excerpts.append(QString("[Saved chat: %1, %2] %3")
+                            .arg(hit.title, label, hit.text));
+    }
+    return excerpts.join('\n');
+}
+
 QString SessionStore::historicalExcerpts(const QString &session,
                                          const QString &question,
                                          int maxResults) const {
