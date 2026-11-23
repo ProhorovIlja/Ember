@@ -370,3 +370,16 @@ no-VPN first-run tests remain separately mandatory release evidence.
 - [ ] Manually test new prompt from a deep history window, preserving composer text and pending image, title-only selection, deleted matches, private mode, interrupted inference, 50k+ archived messages and return to latest without memory spikes.
 
 No automatic task, scheduled search, GitHub Actions, public preview release or cloud text indexing was started.
+
+## 23 November 2026 — historical browsing state and bounded memory (Part 52)
+
+- [x] Source bug fix: a search jump near the newest message must remain a distinct historical UI window even if there are no newer SQLite IDs. `historicalView` is independent from `hasNewerMessages`, ensuring **Latest messages** always remains available.
+- [x] Source bug fix: on a new user send from ANY historical view, not only one with newer rows, restore the newest SQLite messages after full local request preflight, without using the old excerpt as LLM context or discarding a rejected draft.
+- [x] Source feature: manually paging backward/forward now merges the next 100 records while keeping at most 300 in the QML-visible list. Older navigation evicts the newest visible records; newer navigation evicts the oldest. No archived SQLite records are deleted.
+- [x] Source UX: the first newly loaded message is brought into view on forward paging rather than silently skipping to the end of the 100-message batch. Search jump aligns the top of a potentially long historical message and shows the matching context as plain text before the full bubble.
+- [x] C++ QtTest source scenarios added for cursor-page merges and exhaustive 300-entry forward/backward traversal, plus a near-tail 41-entry search window that is historical despite having no newer messages.
+- [x] Independent Python sqlite3 reproduction on an interleaved 470-message local fixture passed the selected-ID query, 81-entry window and 300-entry bounded round-trip. This does **not** compile the new C++ files.
+- [ ] Build and run the whole native Windows Qt6 test suite and manually inspect ListView scrolling/highlight at 100–200% DPI, in an actual 65k-character message, after hot-switching sessions, and while attached images or unsent drafts are present.
+- [ ] Measure actual on-device memory/paint cost for 300 rich-text messages and 50k+ archived records. This source-level bound does not establish the total Ember RAM/GPU footprint.
+
+No scheduled tasks, cloud indexing, background history monitoring, GitHub Actions runs or public releases were created.
