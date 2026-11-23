@@ -32,6 +32,41 @@ On 23 November 2026, newer Qwen3.8 open-weight models exist, but availability al
 4. **Chatterbox Turbo / Nano**: promising voice-expression / CPU candidate with paralinguistic tags; original publisher marks project retired as of Aug 2026, so maintenance and reproducible Windows packaging are concerns. Do not make it the sole production engine without adopting and testing the code.
 5. **Sesame CSM-1B**: worthwhile context-conditioned research comparator, **not** the publicly accessible Maya model; Sesame says its interactive demo runs a fine-tuned version of CSM. Downloading base CSM does not reconstruct Maya.
 
+### Expanded 2026 expressive voice challengers
+
+6. **OpenMOSS MOSS-TTS / MOSS-TTS-Local-Transformer-v1.5**: an attractive
+   Apache-2.0 research challenger. The project provides a lightweight path
+   using `llama.cpp` for the language-side backbone and ONNX or TensorRT
+   for codec output; published single-model fine-tuning examples are
+   available. This is a better architectural fit for an independently
+   installed native desktop assistant than a permanently GPU-resident
+   multi-service cloud stack. **No actual RTX 4070 12 GB latency/VRAM or
+   single-speaker stability measurement exists in Ember yet.** Compare
+   reference timbre, expressiveness and streaming speed blind against
+   Qwen3-TTS before implementing a new native adapter.
+7. **IndexTTS-2.5**: August 2026 update has separate emotion controls,
+   pronunciation and speed control in English, which makes it a useful
+   expressive benchmark. Its runtime stack is more involved, and its
+   model-use license must be reviewed per artifact rather than assumed to
+   be Apache-2.0. Only promote after legally safe offline distribution
+   and satisfactory simultaneous LLM+TTS memory numbers.
+8. **Fish Audio S2-Pro / Drama 3**: expressive research references, **not
+   core Ember candidates on this GPU**. Official installation guidance
+   specifies about 24 GB VRAM for S2-Pro and 48 GB FP8 for Drama 3,
+   significantly above 12 GB, and their Fish Audio research/community
+   licenses are not interchangeable with permissive open-source licensing.
+
+Official source checks (2026-11-23):
+- https://github.com/OpenMOSS/MOSS-TTS
+- https://github.com/OpenMOSS/MOSS-TTS/tree/main/moss_tts_local_v1.5/finetuning
+- https://github.com/index-tts/index-tts
+- https://speech.fish.audio/install/
+
+Research candidates are **not automatically selected**, downloaded, run or
+merged into any shipped Ember checkpoint. The preferred voice remains the
+fastest legally packagable voice that wins human blind listening and real
+target-device memory/first-sound testing—not the newest model name.
+
 Additional research-only expressive voices can be compared after the existing Kokoro/Qwen3/native path works. A text LLM and a TTS should not both remain on the GPU just because each one fits separately.
 
 ## ASR, tools, storage, updates
