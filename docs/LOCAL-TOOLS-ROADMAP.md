@@ -9,6 +9,40 @@ cloud services cannot be accessed without a network connection and permission.**
 The app must continue answering from locally available knowledge without cloud
 accounts, subscription, VPN, scheduled checks or automatic model downloads.
 
+## 23 November 2026 — create a genuinely new source file, with review
+
+Propose Fix mode now exposes `propose_new_file(path, content)` in addition
+to exact replacements in already existing files. Unlike simple chat
+generation, this integrates a real on-disk operation into the user-selected
+project workflow. The model must successfully call `project_map` in
+the same foreground investigation first; the path must be relative
+to that particular approved project root, have **all parent directories
+already present**, contain no hidden/dependency/link/junction traversal
+or Windows device name, and use an allowed editable source/text extension.
+
+One proposed UTF-8 file is bounded to 8,000 characters / 16,000 encoded
+bytes. The entire content, target path, byte count and SHA-256 appear
+in the existing local full-content review dialog. **Nothing is created
+until the user explicitly approves.** Apply revalidates the project
+root, parent directory, path, source content and SHA-256, then uses Qt
+`NewOnly` exclusive creation: an existing file cannot be silently
+replaced, including when created between review and approval. No other
+files are modified, no folders are created, no commands are executed and
+no GitHub data is published. Read-only modes and cross-service agents
+cannot invoke the new tool.
+
+The new-file write is **exclusive but not a multi-file transaction**;
+a power loss or disk failure during the write can leave a partial new
+file, which must be inspected before retry. The exact platform
+symlink/junction protection and Windows directory race behavior still
+require adversarial physical Windows testing. C++ CI uses local
+temporary directories to verify creation and reject duplicate,
+out-of-root, hidden, reserved-name, unsupported-type and stale-target
+proposals. This does not make Ember a finished website-generating
+agent: new directories, test execution, asset creation, npm installs,
+bundling, Git commits and publishing remain independent actions
+requiring their own explicit approval and acceptance tests.
+
 ## 23 November 2026 — larger staged agent proposals and hidden-thinking hygiene
 
 The native local coding agent accepts **at most three existing source files**
