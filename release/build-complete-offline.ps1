@@ -170,6 +170,13 @@ try {
         Run-CheckedPython -Arguments @((Join-Path $root 'tools/native_speech_acceptance.py'),
             '--root', $payload, '--run', '--model', $voiceModel,
             '--device', 'auto', '--samples', '2')
+        # Testing the two models SEPARATELY is insufficient on a 12-GiB GPU.
+        # Keep both actual subprocesses resident simultaneously and require
+        # text -> PCM -> text success before creating a complete installer.
+        Run-CheckedPython -Arguments @((Join-Path $root 'tools/combined_runtime_acceptance.py'),
+            '--root', $payload, '--run', '--model', $voiceModel,
+            '--device', 'auto', '--samples', '2',
+            '--gpu-layers', '99', '--context', '8192')
     } else {
         Write-Warning 'DEV ONLY: real LLM/TTS and RU/EN ASR inference was skipped. Candidate is NOT acceptance-tested.'
     }
