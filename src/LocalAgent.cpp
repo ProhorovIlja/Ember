@@ -1,4 +1,5 @@
 #include "LocalAgent.h"
+#include "Core.h"
 #include "LocalRepoSearch.h"
 #include "PublicGitHub.h"
 #include "WikipediaSearch.h"
@@ -39,7 +40,8 @@ QJsonObject functionDef(const QString &name, const QString &description,
 }
 }
 QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
-                         Scope scope, bool mayProposeEdit, bool enableThinking) {
+                         Scope scope, bool mayProposeEdit, bool enableThinking,
+                         bool thinkingTemplateSupported, bool qwen35Sampling) {
     QJsonObject request{
         {"model", "ember"},
         {"messages", messages},
@@ -49,12 +51,15 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
             ? (callsRemaining > 0 ? 2400 : 3000)
             : (callsRemaining > 0 && mayProposeEdit ? 2400 :
                (callsRemaining > 0 ? 900 : 1500))},
-        // Unlike normal chat, older agent tool requests inherited Qwen3.5's
-        // hidden-thinking default and could spend a 900-token tool budget on
-        // invisible reasoning. Respect the user-selected Deep mode explicitly.
-        {"chat_template_kwargs", QJsonObject{{"enable_thinking", enableThinking}}},
         {"parallel_tool_calls", false}
     };
+    // The same verified GGUF family governs free chat and agent tool loops.
+    // Other templates must never receive Qwen-specific Jinja arguments.
+    if (thinkingTemplateSupported)
+        request.insert("chat_template_kwargs",
+            QJsonObject{{"enable_thinking", enableThinking}});
+    if (qwen35Sampling)
+        EmberCore::applyQwen35SamplingDefaults(request, enableThinking);
     if (callsRemaining > 0) {
         if (scope == Scope::GitHubRepository) {
             request.insert("tools", QJsonArray{
