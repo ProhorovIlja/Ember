@@ -366,6 +366,52 @@ def self_test():
             report[key + "_sha256"] = digest(data / (key + ".jsonl"))
             report[key + "_examples"] = 1
         (data / "report.json").write_text(json.dumps(report))
+        train_original = (data / "train.jsonl").read_text(encoding="utf-8")
+        eval_original = (data / "eval.jsonl").read_text(encoding="utf-8")
+
+        def should_reject_rows(train_rows, eval_rows, reason):
+            for split, rows in (("train", train_rows), ("eval", eval_rows)):
+                (data / (split + ".jsonl")).write_text(rows, encoding="utf-8")
+                report[split + "_sha256"] = digest(data / (split + ".jsonl"))
+                report[split + "_examples"] = rows.count("\n")
+            (data / "report.json").write_text(json.dumps(report))
+            try:
+                inspect_dataset(data)
+                raise AssertionError("Unsafe dataset accepted: " + reason)
+            except ValueError:
+                pass
+
+        # Distinct answers do not make identical user prompts independent.
+        repeated_eval = (json.dumps({"messages": [
+            {"role": "user", "content": "  TEST   train  "},
+            {"role": "assistant", "content": "Independent-looking answer"}]}) + "\n")
+        should_reject_rows(train_original, repeated_eval,
+                           "cross-split normalized prompt overlap")
+        malformed = json.dumps({"messages": [
+            {"role": "user", "content": "not a valid dialogue"}, None]}) + "\n"
+        should_reject_rows(malformed, eval_original, "non-object last turn")
+        malformed = json.dumps({"messages": [
+            {"role": "assistant", "content": "wrong"},
+            {"role": "user", "content": "order"}]}) + "\n"
+        should_reject_rows(malformed, eval_original, "reversed roles")
+        malformed = json.dumps({"messages": [
+            {"role": "user", "content": "valid"},
+            {"role": "assistant", "content": "valid", "tools": []}]}) + "\n"
+        should_reject_rows(malformed, eval_original, "extra model-facing field")
+        malformed = ('{"messages":[{"role":"user","content":"hello"},'
+                     '{"role":"assistant","content":"ok"}],'
+                     '"messages":[{"role":"user","content":"injected"},'
+                     '{"role":"assistant","content":"bad"}]}\n')
+        should_reject_rows(malformed, eval_original, "duplicate JSON keys")
+
+        # Restore the true Studio fixture and recompute the full report before
+        # the ordinary preparation, hash lock and one-shot tests below.
+        for split, text in (("train", train_original), ("eval", eval_original)):
+            (data / (split + ".jsonl")).write_text(text, encoding="utf-8")
+            report[split + "_sha256"] = digest(data / (split + ".jsonl"))
+            report[split + "_examples"] = text.count("\n")
+        (data / "report.json").write_text(json.dumps(report))
+        assert inspect_dataset(data)["train"]["examples"] == 1
         target = root / "run1"
         x = prepare(base, data, target, "a" * 40, 512, 1)
         assert x["schema"] == SCHEMA
