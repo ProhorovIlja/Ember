@@ -233,6 +233,12 @@ lora_target_modules:
   - o_proj
   - down_proj
   - up_proj
+  # Gated DeltaNet uses different trainable projections from attention.
+  # Official Axolotl Qwen3.5 docs recommend these for hybrid-layer LoRA;
+  # actual peak VRAM on RTX 4070 12GB still needs a measured manual trial.
+  - linear_attn.in_proj_qkv
+  - linear_attn.in_proj_z
+  - linear_attn.out_proj
 micro_batch_size: 1
 gradient_accumulation_steps: 8
 num_epochs: {epochs}
@@ -417,6 +423,9 @@ def self_test():
         assert x["schema"] == SCHEMA
         text = (target / "axolotl.yaml").read_text()
         assert "adapter: qlora" in text and "sample_packing: false" in text
+        for module in ("linear_attn.in_proj_qkv", "linear_attn.in_proj_z",
+                       "linear_attn.out_proj"):
+            assert ("  - " + module + "\n") in text
         # JSON double-quoted YAML escapes Windows backslashes; compare the
         # serialized value instead of its unescaped filesystem spelling.
         # Assert the exact paths emitted by the preflight record. On Windows,
