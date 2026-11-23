@@ -337,3 +337,12 @@ staging. This is a **structural safeguard**, not hardware voice acceptance:
 a forged 1 MiB GGUF header can pass preflight, so real local sound
 generation, Windows playback, English female voice quality and genuine
 no-VPN first-run tests remain separately mandatory release evidence.
+
+## 23 November 2026 — image Library import efficiency and integrity
+
+- [x] Source fix: small images are no longer upscaled to the 1536px ceiling on import. Large images are still downscaled, with the existing 5 MiB output cap.
+- [x] Source fix: fully opaque ARGB/clipboard images are encoded as compact JPEG; actual translucent pixels retain PNG alpha.
+- [x] Source fix: deduplication verifies the bytes and SHA-256 of an existing image before reusing its content-addressed ID; altered files are rejected.
+- [x] QtTest regression cases added for opaque ARGB, genuine alpha, small-image dimensions and tampered existing files.
+- [ ] Compile and execute the new tests under real Windows Qt 6 and exercise clipboard/screenshots at 100–200% DPI; source readback is not runtime acceptance.
+- [ ] Compare memory, latency, and on-disk Library size using representative screenshots and transparent artwork on the target RTX 4070 PC.
