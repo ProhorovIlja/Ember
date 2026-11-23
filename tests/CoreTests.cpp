@@ -1797,7 +1797,10 @@ private slots:
                          .value("enable_thinking").toBool(), true);
             QCOMPARE(fast.value("top_k").toInt(), 20);
             QCOMPARE(fast.value("presence_penalty").toDouble(), 1.5);
-            QCOMPARE(deep.value("presence_penalty").toDouble(), 0.0);
+            QCOMPARE(deep.value("presence_penalty").toDouble(),
+                     scope == Scope::LocalProject ? 0.0 : 1.5);
+            QCOMPARE(deep.value("temperature").toDouble(),
+                     scope == Scope::LocalProject ? 0.6 : 1.0);
             const auto otherModel = modelRequest(messages, 2, scope, false, false);
             QVERIFY(!otherModel.contains("chat_template_kwargs"));
             QVERIFY(!otherModel.contains("top_k"));
@@ -2903,9 +2906,21 @@ private slots:
             "Reason carefully", {}, "Debug C++", 4096, 0.60,
             {}, true, 8192, 8192, true);
         EmberCore::applyQwen35SamplingDefaults(deep, true);
-        QCOMPARE(deep.value("temperature").toDouble(), 0.6);
+        QCOMPARE(deep.value("temperature").toDouble(), 1.0);
         QCOMPARE(deep.value("top_p").toDouble(), 0.95);
-        QCOMPARE(deep.value("presence_penalty").toDouble(), 0.0);
+        QCOMPARE(deep.value("presence_penalty").toDouble(), 1.5);
+        QCOMPARE(deep.value("repeat_penalty").toDouble(), 1.0);
+        QJsonObject coding = EmberCore::chatRequest(
+            "Fix a precise coding error", {}, "Debug C++", 4096, 0.60,
+            {}, true, 8192, 8192, true);
+        EmberCore::applyQwen35SamplingDefaults(coding, true, true);
+        QCOMPARE(coding.value("temperature").toDouble(), 0.6);
+        QCOMPARE(coding.value("top_p").toDouble(), 0.95);
+        QCOMPARE(coding.value("presence_penalty").toDouble(), 0.0);
+        QJsonObject ordinaryWithCodingHint = ordinary;
+        EmberCore::applyQwen35SamplingDefaults(ordinaryWithCodingHint, false, true);
+        QCOMPARE(ordinaryWithCodingHint.value("temperature").toDouble(), 0.7);
+        QCOMPARE(ordinaryWithCodingHint.value("presence_penalty").toDouble(), 1.5);
         const QJsonObject before = deep;
         QVERIFY(EmberCore::applySamplingOverrides(deep, 0, 0));
         QCOMPARE(deep, before);
