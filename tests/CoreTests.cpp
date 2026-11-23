@@ -2809,21 +2809,29 @@ private slots:
         QVERIFY(make("earlier-moe.gguf", "qwen3moe"));
         QVERIFY(make("Qwen3.5-fake-llama.gguf", "llama", true));
         QVERIFY(make("random.gguf", "qwen2"));
+        bool qwen35 = false;
         QVERIFY(EmberCore::ggufSupportsThinkingFlag(
-            tmp.filePath("actual-qwen.gguf")));
-        QVERIFY(EmberCore::ggufSupportsThinkingFlag(tmp.filePath("moe.gguf")));
-        QVERIFY(EmberCore::ggufSupportsThinkingFlag(tmp.filePath("earlier.gguf")));
+            tmp.filePath("actual-qwen.gguf"), &qwen35));
+        QVERIFY(qwen35);
         QVERIFY(EmberCore::ggufSupportsThinkingFlag(
-            tmp.filePath("earlier-moe.gguf")));
+            tmp.filePath("moe.gguf"), &qwen35));
+        QVERIFY(qwen35);
+        QVERIFY(EmberCore::ggufSupportsThinkingFlag(
+            tmp.filePath("earlier.gguf"), &qwen35));
+        QVERIFY(!qwen35);
+        QVERIFY(EmberCore::ggufSupportsThinkingFlag(
+            tmp.filePath("earlier-moe.gguf"), &qwen35));
+        QVERIFY(!qwen35);
         QVERIFY(!EmberCore::ggufSupportsThinkingFlag(
-            tmp.filePath("Qwen3.5-fake-llama.gguf")));
+            tmp.filePath("Qwen3.5-fake-llama.gguf"), &qwen35));
+        QVERIFY(!qwen35);
         QVERIFY(!EmberCore::ggufSupportsThinkingFlag(
             tmp.filePath("random.gguf")));
         QVERIFY(!EmberCore::ggufSupportsThinkingFlag(
             tmp.filePath("nonexistent.gguf")));
         QFile bad(tmp.filePath("bad-header.gguf"));
         QVERIFY(bad.open(QIODevice::WriteOnly));
-        QCOMPARE(bad.write("GGUF\\0", 5), qint64(5));
+        QCOMPARE(bad.write("GGUF", 4), qint64(4));
         bad.close();
         QVERIFY(!EmberCore::ggufSupportsThinkingFlag(bad.fileName()));
     }
@@ -2867,6 +2875,35 @@ private slots:
             "Be accurate", {}, "Hello", 1000000, 0.73,
             {}, true, 0, 0, true);
         QCOMPARE(bound.value("max_tokens").toInt(), 4096);
+    }
+    void qwen35PublishedSamplingKeepsManualOverrides() {
+        QJsonObject ordinary = EmberCore::chatRequest(
+            "Talk naturally", {}, "Hello", 512, 0.25,
+            {}, false, 8192, 8192, true);
+        EmberCore::applyQwen35SamplingDefaults(ordinary, false);
+        QCOMPARE(ordinary.value("temperature").toDouble(), 0.7);
+        QCOMPARE(ordinary.value("top_p").toDouble(), 0.8);
+        QCOMPARE(ordinary.value("top_k").toInt(), 20);
+        QCOMPARE(ordinary.value("min_p").toDouble(), 0.0);
+        QCOMPARE(ordinary.value("presence_penalty").toDouble(), 1.5);
+        QVERIFY(EmberCore::applySamplingOverrides(ordinary, 92, 95));
+        QCOMPARE(ordinary.value("temperature").toDouble(), 0.92);
+        QCOMPARE(ordinary.value("top_p").toDouble(), 0.95);
+        QCOMPARE(ordinary.value("top_k").toInt(), 20);
+        QJsonObject deep = EmberCore::chatRequest(
+            "Reason carefully", {}, "Debug C++", 4096, 0.60,
+            {}, true, 8192, 8192, true);
+        EmberCore::applyQwen35SamplingDefaults(deep, true);
+        QCOMPARE(deep.value("temperature").toDouble(), 0.6);
+        QCOMPARE(deep.value("top_p").toDouble(), 0.95);
+        QCOMPARE(deep.value("presence_penalty").toDouble(), 0.0);
+        const QJsonObject before = deep;
+        QVERIFY(EmberCore::applySamplingOverrides(deep, 0, 0));
+        QCOMPARE(deep, before);
+        const QJsonObject other = EmberCore::chatRequest(
+            "Talk naturally", {}, "Hello", 512, 0.25);
+        QVERIFY(!other.contains("top_k"));
+        QVERIFY(!other.contains("chat_template_kwargs"));
     }
     void scopedGithubIssueWriteRequiresExactRepositoryAndVerifiedResult() {
         using namespace EmberGitHubWrite;
