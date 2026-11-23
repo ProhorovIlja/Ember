@@ -434,9 +434,20 @@ def self_test():
         file.write_bytes(_fixture_gguf("qwen3-tts", "0.6B", "synthesis",
                                        tensor_problem="quant_valid"))
         assert model_identity(file, "qwen3-tts-0.6b")["task"] == "synthesis"
+        # Official Qwen3 CustomVoice has no English-native female speaker:
+        # require model-wide English support, NOT speaker-native en.
+        file.write_bytes(_fixture_gguf(
+            "qwen3-tts", "0.6B", "synthesis",
+            langs=("en", "ru", "ja"), voices=("ono_anna",),
+            voice_langs=("ja",), genders=("female",)))
+        assert model_identity(file, "qwen3-tts-0.6b",
+                              selected_voice="ono_anna")[
+                                  "english_female_speakers"] == ["ono_anna"]
         for bad in (
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
                           langs=("ru",)),
+            _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
+                          langs=("ru", "zh")),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
                           voices=("ono_anna",), voice_langs=("ja",)),
             _fixture_gguf("qwen3-tts", "0.6B", "synthesis",
