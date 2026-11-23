@@ -297,6 +297,13 @@ def self_test():
                                      "qwen3-tts-0.6b", "serena")
     assert not valid_inventory_reply(200, "application/json", sample,
                                      "qwen3-tts-0.6b", "ryan")
+    # Native-zh Vivian is eligible only because the TTS MODEL declares en.
+    # A female speaker alone cannot satisfy English synthesis capability.
+    not_english = json.loads(sample)
+    not_english["data"][0]["speech"]["languages"] = ["zh", "ru"]
+    assert not valid_inventory_reply(
+        200, "application/json", json.dumps(not_english).encode(),
+        "qwen3-tts-0.6b", "vivian")
     for extra in (
             {"name": "vivian", "language": "en", "gender": "male"},
             {"name": "vivian", "language": "en", "gender": "female"},
