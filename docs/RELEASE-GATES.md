@@ -19,6 +19,30 @@ correct uninstall and privacy. A synthetic CI build, protocol fixture,
 developer installer or screenshot is **not** evidence of real voice prosody,
 model quality or completed Windows deployment. No public previews.
 
+## Correct Qwen3-TTS speaker-language acceptance — 23 November 2026
+
+- [x] The actual upstream `Qwen3-TTS-12Hz-{0.6B,1.7B}-CustomVoice`
+  speaker list was checked against its own model card. Vivian and Serena
+  are **Chinese-native female speakers**, not native English speakers.
+  Ryan and Aiden are English-native **male** speakers; Ono Anna/Sohee
+  are Japanese/Korean-native female speakers. However every preset
+  can synthesize English when the TTS model supports English and the
+  request sets `language=en`. This is not a claim of native-English
+  accent.
+- [x] Native C++ `Core.cpp` inventory validation, Python GGUF
+  metadata validation and actual PCM acceptance agree: validate
+  English in **model-level** supported languages, require the
+  **selected voice** has verified female gender and an unambiguous
+  native language in that model, and reject male/unknown/duplicate
+  voice IDs. A previous `speaker.language=en` condition would
+  reject authentic Vivian/Serena before the first voice test.
+  Qt/QML tests now use realistic zh-native female metadata.
+- [ ] Listen on target Windows RTX 4070 and compare Vivian/Serena
+  English quality, accent and naturalness against English-native
+  licensed female voices or approved custom English Ember Voice
+  material. The new speaker admission gate proves a consistent
+  model, not quality or similarity to Sesame Maya.
+
 ## Concurrent local-model capacity and interactive readiness (23 November 2026)
 
 - [x] Source-level manual `tools/combined_runtime_acceptance.py` added
