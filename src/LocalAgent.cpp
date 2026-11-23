@@ -39,14 +39,20 @@ QJsonObject functionDef(const QString &name, const QString &description,
 }
 }
 QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
-                         Scope scope, bool mayProposeEdit) {
+                         Scope scope, bool mayProposeEdit, bool enableThinking) {
     QJsonObject request{
         {"model", "ember"},
         {"messages", messages},
         {"stream", false},
         {"temperature", 0.25},
-        {"max_tokens", callsRemaining > 0 && mayProposeEdit ? 2400 :
-                            (callsRemaining > 0 ? 900 : 1500)},
+        {"max_tokens", enableThinking
+            ? (callsRemaining > 0 ? 2400 : 3000)
+            : (callsRemaining > 0 && mayProposeEdit ? 2400 :
+               (callsRemaining > 0 ? 900 : 1500))},
+        // Unlike normal chat, older agent tool requests inherited Qwen3.5's
+        // hidden-thinking default and could spend a 900-token tool budget on
+        // invisible reasoning. Respect the user-selected Deep mode explicitly.
+        {"chat_template_kwargs", QJsonObject{{"enable_thinking", enableThinking}}},
         {"parallel_tool_calls", false}
     };
     if (callsRemaining > 0) {
