@@ -64,13 +64,36 @@ QString ImageLibrary::importImage(const QImage &image, QString *error) {
     // Incompressible screenshots with alpha can exceed 5 MiB even at 1536px.
     // Keep the true PNG alpha channel and adapt the dimension instead of
     // rejecting an otherwise valid clipboard/file image or flattening it.
-    const bool transparent = image.hasAlphaChannel();
+    // Clipboard and many decoded Windows images use ARGB32 even when every
+    // pixel is opaque. hasAlphaChannel() only describes the pixel *format*:
+    // treating it as real transparency needlessly stores screenshots as
+    // multi-megabyte PNG instead of compact JPEG.
     QSize size = image.size().scaled(kMaxEdge, kMaxEdge, Qt::KeepAspectRatio);
+    bool transparent = false;
+    bool alphaInspected = false;
     QByteArray bytes;
     for (int attempt = 0; attempt < 7; ++attempt) {
         const QImage scaled = image.scaled(size, Qt::IgnoreAspectRatio,
                                           Qt::SmoothTransformation);
         if (scaled.isNull()) break;
+        if (!alphaInspected) {
+            alphaInspected = true;
+            if (scaled.hasAlphaChannel()) {
+                // Inspect only the bounded scaled image (<=1536x1536),
+                // never the potentially 25-million-pixel source.
+                const QImage argb = scaled.convertToFormat(QImage::Format_ARGB32);
+                for (int y = 0; y < argb.height() && !transparent; ++y) {
+                    const auto *row = reinterpret_cast<const QRgb *>(
+                        argb.constScanLine(y));
+                    for (int x = 0; x < argb.width(); ++x) {
+                        if (qAlpha(row[x]) != 255) {
+                            transparent = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         QImage clean(scaled.size(), transparent ? QImage::Format_ARGB32
                                                : QImage::Format_RGB32);
         if (clean.isNull()) break;
