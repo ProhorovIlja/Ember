@@ -337,6 +337,7 @@ Decision parseModelResponse(const QByteArray &json,
                 answer.error = "Batch proposal needs one to three source edits.";
                 return answer;
             }
+            QSet<QString> editedPaths;
             for (const QJsonValue &value : edits) {
                 if (!value.isObject()) {
                     answer.error = "Every batch edit must be an object.";
@@ -361,6 +362,15 @@ Decision parseModelResponse(const QByteArray &json,
                     answer.error = "Unsafe or oversized batch edit.";
                     return answer;
                 }
+                // A proposal must not modify the same file twice, even
+                // with Windows case differences or path separators.
+                const QString normalizedPath = QDir::cleanPath(
+                    QDir::fromNativeSeparators(p.path)).toCaseFolded();
+                if (editedPaths.contains(normalizedPath)) {
+                    answer.error = "Batch edit repeats the same source file.";
+                    return answer;
+                }
+                editedPaths.insert(normalizedPath);
                 answer.patches.append(std::move(p));
             }
         } else if (tool == "propose_patch") {
@@ -423,6 +433,17 @@ Decision parseModelResponse(const QByteArray &json,
                 return answer;
             }
             answer.view = args.value("view").toString();
+            // Reject unknown keys, even when the object size looks valid.
+            // Tool schemas forbid additionalProperties: the parser must
+            // enforce the same contract, not silently ignore model fields.
+            for (auto it = args.constBegin(); it != args.constEnd(); ++it) {
+                if (it.key() != "view" &&
+                    !(answer.view == "file" &&
+                      (it.key() == "path" || it.key() == "start_line"))) {
+                    answer.error = "Unknown GitHub tool parameter.";
+                    return answer;
+                }
+            }
             if (answer.view == "file") {
                 if (!args.value("path").isString()) {
                     answer.error = "GitHub file view needs a relative source path.";

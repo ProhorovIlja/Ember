@@ -1708,6 +1708,16 @@ private slots:
         QVERIFY(accepted.kind == Decision::Kind::Call);
         QCOMPARE(accepted.tool, QString("propose_patch_batch"));
         QCOMPARE(accepted.patches.size(), 3);
+        // Reject duplicate targets before presenting a misleading
+        // multi-file patch; Windows paths are case-insensitive.
+        QJsonArray duplicateEdits = edits;
+        duplicateEdits.replace(1, QJsonObject{
+            {"path", "SRC\\COMPONENT0.CPP"},
+            {"old_text", oldText}, {"new_text", newText}
+        });
+        QVERIFY(!parseModelResponse(
+            tool("propose_patch_batch", QJsonObject{{"edits", duplicateEdits}}),
+            Scope::LocalProject, true).ok());
         // Long proposals remain permission-scoped; they never write files
         // and cannot be called from the read-only project-research mode.
         QVERIFY(!parseModelResponse(call, Scope::LocalProject, false).ok());
@@ -1844,6 +1854,16 @@ private slots:
             completion("github_read", QJsonObject{
                 {"view", "file"}, {"path", "../secret"}}),
             Scope::LocalProject).ok());
+        QVERIFY(!parseModelResponse(
+            completion("github_read", QJsonObject{
+                {"view", "file"}, {"path", "src/main.cpp"},
+                {"repository", "other/secret"}}),
+            Scope::GitHubRepository).ok());
+        QVERIFY(!parseModelResponse(
+            completion("github_read", QJsonObject{
+                {"view", "file"}, {"path", "src/main.cpp"},
+                {"start_line", 12}, {"arbitrary", true}}),
+            Scope::GitHubRepository).ok());
         const auto file = parseModelResponse(
             completion("github_read", QJsonObject{
                 {"view", "file"}, {"path", "src/main.cpp"}}),
