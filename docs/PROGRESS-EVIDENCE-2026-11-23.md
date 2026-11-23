@@ -77,3 +77,30 @@ new user request and when direct evidence warrants a status change.
 
 Baseline build: https://github.com/ProhorovIlja/Ember/actions/runs/45193033783
 Experimental code: https://github.com/ProhorovIlja/Ember/tree/embermind-contextual-recall
+
+## Additional source change — Qwen3.5 GGUF family and sampling (Part 40)
+
+Branch: `embermind-gguf-thinking-compat`, derived from the unverified
+`embermind-contextual-recall` source. This new branch is also deliberately
+isolated from the CI-triggering `voice-foundation` branch.
+
+**Actual implementation:** `src/Core.cpp` adds a bounded, local GGUF
+`general.architecture` parser that never trusts a filename or the server's
+`ember` alias. It recognizes only the named Qwen3/3.5 dense/MoE families;
+malformed/unknown headers fail closed. `EmberBackend` uses the checked family
+for chat and native agent requests. `LocalAgent` stops submitting Qwen-only
+kwargs to other models. For Qwen3.5, documented Qwen sampling defaults
+distinguish thinking and nonthinking while explicit user overrides remain in
+charge. C++ Qt tests cover model spoofing, unknown models, fast/deep/voice
+payload shapes, tool scopes and sampling overrides.
+
+**Not accomplished:** No actual GGUF/Qwen3.5 test on user's GPU, no Windows
+MSVC compilation of THIS branch, no verified llama.cpp template support for
+`enable_thinking=false`, no trained EmberMind checkpoint and no voice
+listening acceptance. Upstream llama.cpp issue #20833 reports some builds
+ignore this flag; do NOT mark the corresponding release gate passed.
+
+Reference: https://huggingface.co/Qwen/Qwen3.5-9B and
+https://github.com/ggml-org/llama.cpp/issues/20833
+Source: https://github.com/ProhorovIlja/Ember/tree/embermind-gguf-thinking-compat
+
