@@ -81,7 +81,7 @@ def load_manifest(root, manifest):
     source = Path(manifest)
     if not source.is_file() or source.is_symlink() or not 0 < source.stat().st_size < MAX_MANIFEST:
         fail("Source JSONL manifest missing or too large")
-    rows, seen = [], set()
+    rows, seen, audio_hashes = [], set(), set()
     with source.open(encoding="utf-8") as reader:
         for index, line in enumerate(reader, 1):
             if index > 2000 or not line.strip() or len(line) > 12000:
@@ -112,10 +112,14 @@ def load_manifest(root, manifest):
             seen.add(name)
             wav = local_audio(root, name)
             duration = check_wave(wav)
+            checksum = digest(wav)
+            if checksum in audio_hashes:
+                fail("Identical WAV contents cannot be repeated under another name")
+            audio_hashes.add(checksum)
             rows.append({
                 "audio": str(wav), "text": transcript,
                 "session": session, "duration": duration,
-                "sha256": digest(wav)})
+                "sha256": checksum})
     if len(rows) < 4:
         fail("Need at least four consent-declared utterances")
     sessions = {r["session"] for r in rows}
@@ -148,9 +152,16 @@ def prepare(audio_root, manifest, ref, output):
     reference = local_audio(source_root, ref)
     check_wave(reference)
     rows = load_manifest(source_root, manifest)
+    # A reference clip is a real speaker recording, not metadata. Insist
+    # that it has an explicit positive consent row in the source manifest.
+    if sum(row["audio"] == str(reference) for row in rows) != 1:
+        fail("Reference audio requires its own consent-declared manifest row")
     buckets = split(rows)
     if any(not bucket for bucket in buckets.values()):
         fail("Train and evaluation split cannot be empty")
+    if any(row["audio"] == str(reference) for row in buckets["eval"]):
+        fail("Reference voice clip belongs to the evaluation session; "
+             "choose a consented reference from a training session")
     destination = Path(output)
     if destination.exists() or destination.is_symlink() or not destination.parent.is_dir():
         fail("Output must be a new folder below an existing parent")
@@ -206,31 +217,40 @@ def self_test():
         root = Path(d)
         audio = root / "audio"
         audio.mkdir()
-        def make_wav(path):
+        def make_wav(path, hz):
             with wave.open(str(path), "wb") as w:
                 w.setnchannels(1)
                 w.setsampwidth(2)
                 w.setframerate(RATE)
                 frames = bytearray()
                 for i in range(RATE * 2):
-                    sample = round(9500 * math.sin(2 * math.pi * 440 * i / RATE))
+                    sample = round(9500 * math.sin(2 * math.pi * hz * i / RATE))
                     frames.extend(struct.pack("<h", sample))
                 w.writeframes(frames)
-        make_wav(audio / "ref.wav")
+        make_wav(audio / "ref.wav", 530)
         source = root / "source.jsonl"
         examples = []
         for index in range(6):
             name = "clip-" + str(index) + ".wav"
-            make_wav(audio / name)
+            make_wav(audio / name, 250 + index * 37)
             examples.append({
                 "schema": SCHEMA, "audio": name,
                 "text": "A normal expressive English test sentence.",
                 "session": "session-a" if index < 3 else "session-b",
                 "consent": True})
+        # Determine the training-side session from the same deterministic
+        # session split; the consented reference must never leak from eval.
+        initial = [{"session": item["session"]} for item in examples]
+        eval_name = split(initial)["eval"][0]["session"]
+        train_name = "session-b" if eval_name == "session-a" else "session-a"
+        examples.append({
+            "schema": SCHEMA, "audio": "ref.wav",
+            "text": "This is the consented reference voice recording.",
+            "session": train_name, "consent": True})
         source.write_text("".join(json.dumps(x) + "\n" for x in examples))
         a = prepare(audio, source, "ref.wav", root / "out-a")
         b = prepare(audio, source, "ref.wav", root / "out-b")
-        assert a["train_recordings"] + a["eval_recordings"] == 6
+        assert a["train_recordings"] + a["eval_recordings"] == 7
         assert a["train_sha256"] == b["train_sha256"]
         assert a["eval_sha256"] == b["eval_sha256"]
         assert a["speaker_reference_sha256"] == b["speaker_reference_sha256"]
@@ -243,6 +263,22 @@ def self_test():
             raise AssertionError("Existing voice corpus overwritten")
         except ValueError:
             pass
+        without_reference = root / "no-ref.jsonl"
+        without_reference.write_text("".join(
+            json.dumps(x) + "\n" for x in examples if x["audio"] != "ref.wav"))
+        try:
+            prepare(audio, without_reference, "ref.wav", root / "missing-ref-consent")
+            raise AssertionError("Unconsented reference voice accepted")
+        except ValueError:
+            assert not (root / "missing-ref-consent").exists()
+        # Reusing an eval-side clip as the reference is also forbidden.
+        eval_audio = (root / "out-a" / "eval_raw.jsonl").read_text().splitlines()
+        eval_ref = Path(json.loads(eval_audio[0])["audio"]).name
+        try:
+            prepare(audio, source, eval_ref, root / "eval-ref")
+            raise AssertionError("Evaluation recording used as voice reference")
+        except ValueError:
+            assert not (root / "eval-ref").exists()
         examples[0]["consent"] = False
         source.write_text("".join(json.dumps(x) + "\n" for x in examples))
         try:
