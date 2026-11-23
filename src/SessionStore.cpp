@@ -19,6 +19,34 @@
 
 namespace {
 qint64 nowUtc() { return QDateTime::currentSecsSinceEpoch(); }
+
+// A lexical hit without the surrounding turn can invert the meaning of an
+// older correction, instruction or story exchange. Recover at most ONE
+// neighboring turn from the same persisted session. The indexed (session_id,id)
+// lookup runs only for selected hits, not for every scanned archive message.
+QString adjacentRecallTurn(const QSqlDatabase &db, const QString &session,
+                           qint64 messageId, const QString &role) {
+    if (messageId <= 0 || (role != QLatin1String("you") &&
+                           role != QLatin1String("ember"))) return {};
+    QSqlQuery query(db);
+    const bool userHit = role == QLatin1String("you");
+    query.prepare(userHit
+        ? "SELECT role,substr(body,1,900) FROM messages "
+          "WHERE session_id=? AND id>? ORDER BY id ASC LIMIT 1"
+        : "SELECT role,substr(body,1,900) FROM messages "
+          "WHERE session_id=? AND id<? ORDER BY id DESC LIMIT 1");
+    query.addBindValue(session);
+    query.addBindValue(messageId);
+    if (!query.exec() || !query.next() ||
+        query.value(0).toString() != (userHit ? QLatin1String("ember")
+                                             : QLatin1String("you"))) return {};
+    const QString excerpt = query.value(1).toString().simplified().left(190);
+    if (excerpt.isEmpty()) return {};
+    // Always label these as excerpts. Never represent an incomplete prior
+    // assistant response as established fact or a live user instruction.
+    return userHit ? QString("\n[Following Ember reply excerpt] ") + excerpt
+                   : QString("\n[Preceding user request excerpt] ") + excerpt;
+}
 }
 
 SessionStore::SessionStore(const QString &path) {
@@ -201,12 +229,12 @@ QString SessionStore::relatedSavedExcerpts(const QString &currentSession,
     // Bounded scan: no persistent duplicate index, no embeddings, no GPU
     // and no attempt to search non-chat files or connected accounts.
     QSqlQuery query(m_db);
-    query.prepare("SELECT s.title,m.role,substr(m.body,1,1800) "
+    query.prepare("SELECT s.title,m.role,substr(m.body,1,1800),m.id,m.session_id "
                   "FROM messages m JOIN sessions s ON s.id=m.session_id "
                   "WHERE m.session_id<>? ORDER BY m.id DESC LIMIT 1600");
     query.addBindValue(currentSession);
     if (!query.exec()) return {};
-    struct Hit { int score; int ordinal; QString title, role, text; };
+    struct Hit { int score; int ordinal; qint64 id; QString session, title, role, text; };
     QList<Hit> hits;
     int ordinal = 0;
     while (query.next()) {
@@ -222,9 +250,10 @@ QString SessionStore::relatedSavedExcerpts(const QString &currentSession,
         }
         if (score > 0 && first >= 0) {
             const qsizetype begin = std::max<qsizetype>(0, first - 100);
-            const QString excerpt = body.mid(begin, 350).simplified();
+            const QString excerpt = body.mid(begin, 285).simplified();
             if (!excerpt.isEmpty())
-                hits.append(Hit{score, ordinal,
+                hits.append(Hit{score, ordinal, query.value(3).toLongLong(),
+                    query.value(4).toString(),
                     query.value(0).toString().simplified().left(72),
                     query.value(1).toString(), excerpt});
         }
@@ -240,8 +269,10 @@ QString SessionStore::relatedSavedExcerpts(const QString &currentSession,
         if (seen.contains(hit.text)) continue;
         seen.insert(hit.text);
         const QString label = hit.role == "you" ? "user" : "Ember";
-        excerpts.append(QString("[Saved chat: %1, %2] %3")
-                            .arg(hit.title, label, hit.text));
+        excerpts.append(QString("[Saved chat: %1, %2 excerpt] %3%4")
+                            .arg(hit.title, label, hit.text,
+                                 adjacentRecallTurn(m_db, hit.session,
+                                                    hit.id, hit.role)));
     }
     return excerpts.join('\n');
 }
@@ -280,7 +311,7 @@ QString SessionStore::historicalExcerpts(const QString &session,
     cutoff.addBindValue(session);
     if (!cutoff.exec() || !cutoff.next()) return {};
     QSqlQuery records(m_db);
-    records.prepare("SELECT role,substr(body,1,1800) FROM messages "
+    records.prepare("SELECT id,role,substr(body,1,1800) FROM messages "
                     "WHERE session_id=? AND id<? ORDER BY id DESC LIMIT 2048");
     records.addBindValue(session);
     records.addBindValue(cutoff.value(0).toLongLong());
@@ -288,13 +319,14 @@ QString SessionStore::historicalExcerpts(const QString &session,
     struct Hit {
         int score;
         int ordinal;
+        qint64 id;
         QString role;
         QString text;
     };
     QList<Hit> matches;
     int ordinal = 0;
     while (records.next()) {
-        const QString message = records.value(1).toString();
+        const QString message = records.value(2).toString();
         const QString folded = message.toCaseFolded();
         int score = 0;
         qsizetype first = -1;
@@ -308,7 +340,8 @@ QString SessionStore::historicalExcerpts(const QString &session,
             const qsizetype begin = std::max<qsizetype>(0, first - 100);
             const QString excerpt = message.mid(begin, 380).simplified();
             if (!excerpt.isEmpty())
-                matches.append(Hit{score, ordinal, records.value(0).toString(), excerpt});
+                matches.append(Hit{score, ordinal, records.value(0).toLongLong(),
+                                        records.value(1).toString(), excerpt});
         }
         ++ordinal;
     }
@@ -321,8 +354,9 @@ QString SessionStore::historicalExcerpts(const QString &session,
         if (excerpts.size() >= std::clamp(maxResults, 1, 4)) break;
         if (duplicates.contains(hit.text)) continue;
         duplicates.insert(hit.text);
-        excerpts.append(QString("[%1, earlier message] %2")
-            .arg(hit.role == "you" ? "User" : "Ember", hit.text));
+        excerpts.append(QString("[%1, earlier excerpt] %2%3")
+            .arg(hit.role == "you" ? "User" : "Ember", hit.text,
+                 adjacentRecallTurn(m_db, session, hit.id, hit.role)));
     }
     return excerpts.join('\n').left(1550);
 }
