@@ -182,18 +182,103 @@ QVariantList SessionStore::messages(const QString &session,
     QVariantList reverse;
     if (!m_ready || session.isEmpty() || offset < 0) return reverse;
     QSqlQuery query(m_db);
-    query.prepare("SELECT role,body FROM messages WHERE session_id=? "
+    query.prepare("SELECT id,role,body FROM messages WHERE session_id=? "
                   "ORDER BY id DESC LIMIT ? OFFSET ?");
     query.addBindValue(session);
     query.addBindValue(std::clamp(limit, 1, 500));
     query.addBindValue(offset);
     if (!query.exec()) return reverse;
     while (query.next()) {
-        reverse.append(QVariantMap{{"role", query.value(0).toString()},
-                                   {"body", query.value(1).toString()}});
+        reverse.append(QVariantMap{{"id", query.value(0).toLongLong()},
+                                   {"role", query.value(1).toString()},
+                                   {"body", query.value(2).toString()}});
     }
     std::reverse(reverse.begin(), reverse.end());
     return reverse;
+}
+QVariantList SessionStore::messagesBefore(const QString &session,
+                                          qint64 messageId, int limit) const {
+    QVariantList reverse;
+    if (!m_ready || session.isEmpty() || messageId <= 0) return reverse;
+    QSqlQuery query(m_db);
+    query.prepare("SELECT id,role,body FROM messages "
+                  "WHERE session_id=? AND id<? ORDER BY id DESC LIMIT ?");
+    query.addBindValue(session);
+    query.addBindValue(messageId);
+    query.addBindValue(std::clamp(limit, 1, 100));
+    if (!query.exec()) return {};
+    while (query.next()) {
+        reverse.append(QVariantMap{{"id", query.value(0).toLongLong()},
+                                   {"role", query.value(1).toString()},
+                                   {"body", query.value(2).toString()}});
+    }
+    std::reverse(reverse.begin(), reverse.end());
+    return reverse;
+}
+QVariantList SessionStore::messagesAfter(const QString &session,
+                                         qint64 messageId, int limit) const {
+    QVariantList result;
+    if (!m_ready || session.isEmpty() || messageId <= 0) return result;
+    QSqlQuery query(m_db);
+    query.prepare("SELECT id,role,body FROM messages "
+                  "WHERE session_id=? AND id>? ORDER BY id ASC LIMIT ?");
+    query.addBindValue(session);
+    query.addBindValue(messageId);
+    query.addBindValue(std::clamp(limit, 1, 100));
+    if (!query.exec()) return {};
+    while (query.next()) {
+        result.append(QVariantMap{{"id", query.value(0).toLongLong()},
+                                  {"role", query.value(1).toString()},
+                                  {"body", query.value(2).toString()}});
+    }
+    return result;
+}
+QVariantList SessionStore::messagesAround(const QString &session,
+                                          qint64 messageId,
+                                          int before, int after) const {
+    if (!m_ready || session.isEmpty() || messageId <= 0) return {};
+    // Validate session membership before reading either neighbor range.
+    QSqlQuery check(m_db);
+    check.prepare("SELECT role,body FROM messages WHERE session_id=? AND id=?");
+    check.addBindValue(session);
+    check.addBindValue(messageId);
+    if (!check.exec() || !check.next()) return {};
+    const QVariantMap hit{{"id", messageId},
+                          {"role", check.value(0).toString()},
+                          {"body", check.value(1).toString()}};
+    QVariantList window;
+    if (before > 0)
+        window = messagesBefore(session, messageId, std::clamp(before, 1, 100));
+    window.append(hit);
+    if (after > 0)
+        window.append(messagesAfter(session, messageId, std::clamp(after, 1, 100)));
+    return window;
+}
+bool SessionStore::hasMessageBefore(const QString &session,
+                                    qint64 messageId) const {
+    if (!m_ready || session.isEmpty() || messageId <= 0) return false;
+    QSqlQuery query(m_db);
+    query.prepare("SELECT 1 FROM messages WHERE session_id=? AND id<? LIMIT 1");
+    query.addBindValue(session);
+    query.addBindValue(messageId);
+    return query.exec() && query.next();
+}
+bool SessionStore::hasMessageAfter(const QString &session,
+                                   qint64 messageId) const {
+    if (!m_ready || session.isEmpty() || messageId <= 0) return false;
+    QSqlQuery query(m_db);
+    query.prepare("SELECT 1 FROM messages WHERE session_id=? AND id>? LIMIT 1");
+    query.addBindValue(session);
+    query.addBindValue(messageId);
+    return query.exec() && query.next();
+}
+qint64 SessionStore::latestMessageId(const QString &session) const {
+    if (!m_ready || session.isEmpty()) return 0;
+    QSqlQuery query(m_db);
+    query.prepare("SELECT id FROM messages WHERE session_id=? "
+                  "ORDER BY id DESC LIMIT 1");
+    query.addBindValue(session);
+    return query.exec() && query.next() ? query.value(0).toLongLong() : 0;
 }
 QVariantList SessionStore::search(const QString &text, int limit) const {
     QVariantList result;
@@ -227,17 +312,19 @@ QVariantList SessionStore::search(const QString &text, int limit) const {
             tests.append(column + " LIKE ? ESCAPE '\\'");
         return "(" + tests.join(" OR ") + ")";
     };
+    // Select the matching message ID and its text from the SAME row. A
+    // title-only match has messageId=0 and opens the regular latest view.
     QSqlQuery query(m_db);
     query.prepare(
         "SELECT s.id, s.title, s.updated_at,"
-        "COALESCE((SELECT substr(m.body,1,65664) FROM messages m "
-        "WHERE m.session_id=s.id AND " + matchClause("m.body") +
-        " ORDER BY m.id DESC LIMIT 1),'') "
-        "FROM sessions s WHERE " + matchClause("s.title") +
-        " OR EXISTS(SELECT 1 FROM messages m WHERE m.session_id=s.id "
-        "AND " + matchClause("m.body") + ") "
+        "COALESCE(substr(m.body,1,65664),''),COALESCE(m.id,0) "
+        "FROM sessions s LEFT JOIN messages m ON m.id=("
+        "SELECT f.id FROM messages f WHERE f.session_id=s.id AND " +
+        matchClause("f.body") + " ORDER BY f.id DESC LIMIT 1) "
+        "WHERE " + matchClause("s.title") +
+        " OR m.id IS NOT NULL "
         "ORDER BY s.updated_at DESC, s.rowid DESC LIMIT ?");
-    for (int occurrence = 0; occurrence < 3; ++occurrence)
+    for (int occurrence = 0; occurrence < 2; ++occurrence)
         for (const QString &pattern : patterns) query.addBindValue(pattern);
     query.addBindValue(std::clamp(limit, 1, 100));
     if (!query.exec()) return result;
@@ -246,7 +333,8 @@ QVariantList SessionStore::search(const QString &text, int limit) const {
             {"id", query.value(0).toString()},
             {"title", query.value(1).toString()},
             {"updated", query.value(2).toLongLong()},
-            {"snippet", matchingSearchSnippet(query.value(3).toString(), term)}
+            {"snippet", matchingSearchSnippet(query.value(3).toString(), term)},
+            {"messageId", QString::number(query.value(4).toLongLong())}
         });
     }
     return result;
