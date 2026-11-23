@@ -111,68 +111,101 @@ Set-Content -Path (Join-Path $output $checksumName) -Value ($hash + '  ' + $inst
 Write-Host "Unsigned development installer created. SHA256: $hash"
 
 if ($VerifyInstall) {
-    # RUNNER_TEMP is a GitHub Actions variable, not a Windows prerequisite.
-    # Keep each local smoke install isolated and never overwrite user data.
+    # A one-shot smoke install is isolated under a brand-new random temp path.
+    # Always uninstall, even if the first boot/manifest verification fails.
+    # Do not touch existing real user installations or the SQLite archive.
     $scratch = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+    $scratch = (Resolve-Path -LiteralPath $scratch -ErrorAction Stop).Path
     $install = Join-Path $scratch ('Ember-Installer-Smoke-' + [guid]::NewGuid().ToString('N'))
-    if (Test-Path $install) { throw "Refusing to overwrite existing folder: $install" }
-    $args = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $install + '"'))
-    $setup = Start-Process -FilePath $installer -ArgumentList $args -PassThru -Wait
-    if ($setup.ExitCode -ne 0) { throw "Silent install failed: $($setup.ExitCode)" }
+    if (Test-Path -LiteralPath $install) {
+        throw "Refusing to overwrite existing smoke install: $install"
+    }
     $installedExe = Join-Path $install 'Ember.exe'
-    if (!(Test-Path $installedExe)) { throw 'Ember.exe missing after install.' }
-    if ($RequireOfflineBundle) {
-        # A successfully launched Qt shell is NOT evidence that a multi-GB
-        # offline installer actually included its LLM, RU/EN ASR and TTS.
-        # Rehash every installed model, runtime and license file before
-        # considering this a complete install/uninstall smoke test.
-        $installedManifest = Join-Path $install 'offline-assets.json'
-        if (!(Test-Path -LiteralPath $installedManifest -PathType Leaf)) {
-            throw 'Offline asset inventory missing from the INSTALLED directory.'
-        }
-        $installedVerifyArgs = @('verify', '--root', $install,
-            '--manifest', $installedManifest, '--redistribution-required')
-        if ($RequireVoiceBundle) { $installedVerifyArgs += '--require-voice' }
-        & python (Join-Path $root 'tools/offline_bundle.py') @installedVerifyArgs
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Installed LLM, RU/EN ASR, speech model or license failed SHA-256/metadata validation.'
-        }
-        Write-Host 'Installed model and native engine inventory verified against approved hashes.'
-    }
-    # The smoke test forces Qt's headless backend. Restore the builder's
-    # ORIGINAL process environment even on launch failure, otherwise every
-    # later GUI app in this same PowerShell session inherits "offscreen".
-    $savedQtEnvironment = @{}
-    foreach ($variable in @('QT_QPA_PLATFORM', 'QT_QUICK_BACKEND',
-                            'QT_OPENGL', 'EMBER_SMOKE_REPORT_PATH')) {
-        $savedQtEnvironment[$variable] =
-            [Environment]::GetEnvironmentVariable($variable, 'Process')
-    }
     $diagnostic = Join-Path $scratch ('Ember-Install-Smoke-' + [guid]::NewGuid().ToString('N') + '.txt')
+    $setupLaunched = $false
+    $didUninstall = $false
     try {
-        [Environment]::SetEnvironmentVariable('QT_QPA_PLATFORM', 'offscreen', 'Process')
-        [Environment]::SetEnvironmentVariable('QT_QUICK_BACKEND', 'software', 'Process')
-        [Environment]::SetEnvironmentVariable('QT_OPENGL', 'software', 'Process')
-        [Environment]::SetEnvironmentVariable('EMBER_SMOKE_REPORT_PATH', $diagnostic, 'Process')
-        $smoke = Start-Process -FilePath $installedExe -ArgumentList '--smoke-test' -PassThru -Wait
+        $args = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $install + '"'))
+        $setupLaunched = $true
+        $setup = Start-Process -FilePath $installer -ArgumentList $args -PassThru -Wait
+        if ($setup.ExitCode -ne 0) { throw "Silent install failed: $($setup.ExitCode)" }
+        if (!(Test-Path -LiteralPath $installedExe -PathType Leaf)) {
+            throw 'Ember.exe missing after install.'
+        }
+        if ($RequireOfflineBundle) {
+            # Rehash actual installed model, runtime and license bytes.
+            $installedManifest = Join-Path $install 'offline-assets.json'
+            if (!(Test-Path -LiteralPath $installedManifest -PathType Leaf)) {
+                throw 'Offline asset inventory missing from INSTALLED directory.'
+            }
+            $installedVerifyArgs = @('verify', '--root', $install,
+                '--manifest', $installedManifest, '--redistribution-required')
+            if ($RequireVoiceBundle) { $installedVerifyArgs += '--require-voice' }
+            & python (Join-Path $root 'tools/offline_bundle.py') @installedVerifyArgs
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Installed LLM/RU-EN ASR/TTS or license failed integrity validation.'
+            }
+            Write-Host 'Installed offline model and engine inventory passed SHA-256 verification.'
+        }
+        # Qt's offscreen settings belong ONLY to the child smoke invocation.
+        # Restore the caller's exact variables whether QML opens or fails.
+        $savedQtEnvironment = @{}
+        foreach ($variable in @('QT_QPA_PLATFORM', 'QT_QUICK_BACKEND',
+                                'QT_OPENGL', 'EMBER_SMOKE_REPORT_PATH')) {
+            $savedQtEnvironment[$variable] =
+                [Environment]::GetEnvironmentVariable($variable, 'Process')
+        }
+        try {
+            [Environment]::SetEnvironmentVariable('QT_QPA_PLATFORM', 'offscreen', 'Process')
+            [Environment]::SetEnvironmentVariable('QT_QUICK_BACKEND', 'software', 'Process')
+            [Environment]::SetEnvironmentVariable('QT_OPENGL', 'software', 'Process')
+            [Environment]::SetEnvironmentVariable('EMBER_SMOKE_REPORT_PATH', $diagnostic, 'Process')
+            $smoke = Start-Process -FilePath $installedExe -ArgumentList '--smoke-test' -PassThru -Wait
+        } finally {
+            foreach ($variable in $savedQtEnvironment.Keys) {
+                [Environment]::SetEnvironmentVariable(
+                    $variable, $savedQtEnvironment[$variable], 'Process')
+            }
+        }
+        if ($smoke.ExitCode -ne 0) {
+            throw "Installed Ember QML smoke failed: $($smoke.ExitCode)"
+        }
+        if (Test-Path -LiteralPath (Join-Path $install 'data')) {
+            throw 'Smoke run unexpectedly wrote private SQLite/data into installed app.'
+        }
+        if (Test-Path -LiteralPath (Join-Path $install 'cache')) {
+            throw 'Smoke run unexpectedly wrote microphone cache into installed app.'
+        }
+        if (Test-Path -LiteralPath (Join-Path $install 'qml-smoke-report.txt')) {
+            throw 'Smoke report leaked into installed app.'
+        }
+        Write-Host 'Native Ember QML launch, offline asset inventory and privacy smoke passed.'
     } finally {
-        foreach ($variable in $savedQtEnvironment.Keys) {
-            [Environment]::SetEnvironmentVariable(
-                $variable, $savedQtEnvironment[$variable], 'Process')
+        # The smoke report goes only to a new temp file, never to packaged
+        # application files, and is always removed even after an exception.
+        if (Test-Path -LiteralPath $diagnostic -PathType Leaf) {
+            Get-Content -LiteralPath $diagnostic
+            Remove-Item -LiteralPath $diagnostic -Force -ErrorAction SilentlyContinue
+        }
+        if ($setupLaunched -and (Test-Path -LiteralPath $install -PathType Container)) {
+            $uninstaller = Get-ChildItem -LiteralPath $install -Filter 'unins*.exe' -File |
+                Select-Object -First 1
+            if ($uninstaller) {
+                $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait
+                if ($uninstall.ExitCode -ne 0) {
+                    throw "Test-only Ember uninstall failed: $($uninstall.ExitCode)"
+                }
+                $didUninstall = $true
+            }
+            # Never blindly recurse-delete this directory. If setup crashed,
+            # preserve unexpected contents for manual fault analysis.
+            if (Test-Path -LiteralPath $installedExe) {
+                throw 'Test-only uninstaller failed or was missing; Ember.exe remains.'
+            }
         }
     }
-    if (Test-Path $diagnostic) {
-        Get-Content -LiteralPath $diagnostic
-        Remove-Item -LiteralPath $diagnostic -Force
+    if (!$didUninstall) {
+        throw 'Smoke installer did not produce a complete reversible installation.'
     }
-    if ($smoke.ExitCode -ne 0) { throw "Installed app could not open: $($smoke.ExitCode)" }
-    if (Test-Path (Join-Path $install 'data')) { throw 'Smoke launch wrote private SQLite/data to the installed application.' }
-    if (Test-Path (Join-Path $install 'cache')) { throw 'Smoke launch wrote temporary microphone files into the installed application.' }
-    if (Test-Path (Join-Path $install 'qml-smoke-report.txt')) { throw 'Smoke report leaked into installed folder.' }
-    $uninstaller = Get-ChildItem -LiteralPath $install -Filter 'unins*.exe' | Select-Object -First 1
-    if (!$uninstaller) { throw 'Uninstaller not found.' }
-    $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -PassThru -Wait
-    if ($uninstall.ExitCode -ne 0) { throw "Silent uninstall failed: $($uninstall.ExitCode)" }
-    if (Test-Path $installedExe) { throw 'Uninstall left Ember.exe behind.' }
-    Write-Host 'Per-user install, real QML launch, and uninstall smoke passed.'
+    Write-Host 'Per-user installation and rollback of test-only install passed.'
 }
