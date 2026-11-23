@@ -1978,7 +1978,7 @@ private slots:
             QJsonObject{{"role", "user"}, {"content", "Repair one C++ bug"}}
         };
         QCOMPARE(modelRequest(prompt, 3, Scope::LocalProject, true)
-                    .value("tools").toArray().size(), 5);
+                    .value("tools").toArray().size(), 6);
         QCOMPARE(modelRequest(prompt, 3, Scope::LocalProject, false)
                     .value("tools").toArray().size(), 3);
         QCOMPARE(modelRequest(prompt, 3, Scope::GitHubRepository, true)
@@ -1987,8 +1987,10 @@ private slots:
             prompt, 3, Scope::LocalProject, true).value("tools").toArray();
         QCOMPARE(tools.at(3).toObject().value("function").toObject()
                      .value("name").toString(), QString("propose_patch"));
-        QCOMPARE(tools.last().toObject().value("function").toObject()
+        QCOMPARE(tools.at(4).toObject().value("function").toObject()
                      .value("name").toString(), QString("propose_patch_batch"));
+        QCOMPARE(tools.last().toObject().value("function").toObject()
+                     .value("name").toString(), QString("propose_new_file"));
         QVERIFY(!modelRequest(prompt, 0, Scope::LocalProject, true)
                     .contains("tools"));
         const auto message = [](const QJsonObject &arguments) {
