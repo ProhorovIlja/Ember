@@ -282,16 +282,23 @@ def model_identity(path, alias, *, selected_voice=None):
                     not isinstance(desc, str) or not 1 <= len(desc) <= 1024):
                 raise InvalidSpeechGGUF("Malformed or duplicated native voice metadata")
             seen_voices.add(voice)
-            if lang == "en" and voice not in english_voices:
+            # speech.voice_languages is the speaker's NATIVE language.
+            # The Qwen3-TTS CustomVoice source lists Vivian/Serena as zh,
+            # but the global general.languages list includes en and the
+            # voice can be requested with language="en". A native-en
+            # requirement falsely rejected genuine upstream female voices.
+            # Keep validating the native language against model languages,
+            # unique speaker IDs and explicit female gender.
+            if voice not in english_voices:
                 english_voices.append(voice)
-            if lang == "en" and gender == "female" and voice not in english_female_voices:
+            if gender == "female" and voice not in english_female_voices:
                 english_female_voices.append(voice)
         if not english_female_voices:
             raise InvalidSpeechGGUF(
-                "Stable Ember voice needs an English female speaker in the model")
+                "Stable Ember voice needs a verified female speaker in an English-capable model")
         if selected_voice is not None and selected_voice not in english_female_voices:
             raise InvalidSpeechGGUF(
-                "Selected voice is not an English female speaker in this GGUF")
+                "Selected voice is not a verified female speaker in this English-capable GGUF")
     rate = meta.get("speech.sample_rate")
     if not isinstance(rate, int) or isinstance(rate, bool) or not 8000 <= rate <= 96000:
         raise InvalidSpeechGGUF("Invalid native speech audio sample rate")
@@ -305,8 +312,8 @@ def model_identity(path, alias, *, selected_voice=None):
     }
 
 
-def _fixture_gguf(family, size, task, *, langs=("en", "ru"),
-                  voices=("vivian", "serena"), voice_langs=("en", "en"),
+def _fixture_gguf(family, size, task, *, langs=("en", "ru", "zh"),
+                  voices=("vivian", "serena"), voice_langs=("zh", "zh"),
                   genders=("female", "female"),
                   duplicated_key=False, truncated=False, tensor_problem=None):
     """Synthetic padded GGUF fixture: no real model weights or inference."""
