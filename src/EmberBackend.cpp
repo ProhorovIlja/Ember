@@ -1242,6 +1242,30 @@ void EmberBackend::startLocalEngines() {
                   "Open Settings and check offline installation.");
         return;
     }
+    // The main Start Ember button always uses genuine ALREADY INSTALLED
+    // local speech GGUFs. An advanced per-engine catalog-download toggle
+    // does not silently turn the main one-click action into a network job.
+    auto hasOfflineSpeechModel = [this](const QString &alias) {
+        if (alias.isEmpty()) return false;
+        const QString pinned = m_settings.value(
+            "voice/localSpeechModels/" + alias).toString();
+        if (!pinned.isEmpty())
+            return !EmberCore::localSpeechGgufFile(pinned).isEmpty();
+        return !EmberCore::offlineSpeechModelFile(
+            appFolder(), alias).isEmpty();
+    };
+    if (m_voiceEngine == 1 && !hasOfflineSpeechModel(m_localModel)) {
+        setStatus("Start Ember requires a genuine installed local Qwen3-TTS GGUF. "
+                  "No model downloads were started.");
+        return;
+    }
+    if (m_recognitionEngine > 0 &&
+        !hasOfflineSpeechModel(
+            EmberCore::nativeAsrModel(m_recognitionEngine))) {
+        setStatus("Start Ember requires the selected installed Qwen3-ASR GGUF. "
+                  "No model downloads were started.");
+        return;
+    }
     if (m_brain.state() == QProcess::NotRunning)
         startBrain();
     // A missing/malformed local GGUF or llama-server must not trigger a
