@@ -1667,6 +1667,84 @@ private slots:
             reply(QJsonObject{{"kind", "issue"}, {"number", 17}}),
             Scope::LocalProject).ok());
     }
+    void localAgentAllowsBoundedMultiFileProposalsAndHidesThoughts() {
+        using namespace EmberAgent;
+        const auto response = [](const QJsonObject &message,
+                                 const QString &finish = "tool_calls") {
+            return QJsonDocument(QJsonObject{
+                {"choices", QJsonArray{QJsonObject{
+                    {"finish_reason", finish}, {"message", message}
+                }}}
+            }).toJson(QJsonDocument::Compact);
+        };
+        const auto tool = [&](const QString &name, const QJsonObject &args) {
+            return response(QJsonObject{
+                {"role", "assistant"}, {"content", QJsonValue::Null},
+                {"tool_calls", QJsonArray{QJsonObject{
+                    {"id", "call_edit_1"}, {"type", "function"},
+                    {"function", QJsonObject{
+                        {"name", name},
+                        {"arguments", QString::fromUtf8(
+                            QJsonDocument(args).toJson(QJsonDocument::Compact))}
+                    }}
+                }}}
+            });
+        };
+        const QString oldText(1500, 'a');
+        const QString newText(2000, 'b');
+        QJsonArray edits;
+        for (int i = 0; i < 3; ++i)
+            edits.append(QJsonObject{
+                {"path", QString("src/component%1.cpp").arg(i)},
+                {"old_text", oldText}, {"new_text", newText}
+            });
+        const QByteArray call = tool("propose_patch_batch",
+                                    QJsonObject{{"edits", edits}});
+        QVERIFY(call.size() > 4096);
+        QVERIFY(call.size() < 24 * 1024);
+        const auto accepted = parseModelResponse(
+            call, Scope::LocalProject, true);
+        QVERIFY2(accepted.ok(), qPrintable(accepted.error));
+        QCOMPARE(accepted.kind, Decision::Kind::Call);
+        QCOMPARE(accepted.tool, QString("propose_patch_batch"));
+        QCOMPARE(accepted.patches.size(), 3);
+        // Long proposals remain permission-scoped; they never write files
+        // and cannot be called from the read-only project-research mode.
+        QVERIFY(!parseModelResponse(call, Scope::LocalProject, false).ok());
+        QVERIFY(!parseModelResponse(call, Scope::GitHubRepository).ok());
+        const QByteArray tooLarge = tool("propose_patch",
+            QJsonObject{{"path", "src/a.cpp"},
+                        {"old_text", QString(2000, 'x')},
+                        {"new_text", QString(24000, 'y')}});
+        QVERIFY(!parseModelResponse(tooLarge, Scope::LocalProject, true).ok());
+        const auto text = [&](const QString &content) {
+            return response(QJsonObject{{"role", "assistant"},
+                                        {"content", content}}, "stop");
+        };
+        const auto hidden = parseModelResponse(text(
+            "<think>Private chain of thought must not be shown.</think>"
+            "The fault is a dangling reference. Use a weak pointer."));
+        QVERIFY2(hidden.ok(), qPrintable(hidden.error));
+        QCOMPARE(hidden.kind, Decision::Kind::Final);
+        QCOMPARE(hidden.text, QString(
+            "The fault is a dangling reference. Use a weak pointer."));
+        QVERIFY(!parseModelResponse(text(
+            "<think>Unfinished hidden reasoning.")).ok());
+        const auto ordinary = parseModelResponse(text(
+            "The fix is to extend the object's lifetime."));
+        QVERIFY2(ordinary.ok(), qPrintable(ordinary.error));
+        QCOMPARE(ordinary.text,
+                 QString("The fix is to extend the object's lifetime."));
+        const auto badLine = parseModelResponse(tool(
+            "read_source", QJsonObject{{"path", "src/Core.cpp"},
+                                       {"start_line", 1.5}}));
+        QVERIFY(!badLine.ok());
+        const auto badPath = parseModelResponse(tool(
+            "read_source", QJsonObject{{"path",
+                QStringLiteral("src/") + QChar::Null + "private.cpp"}}));
+        QVERIFY(!badPath.ok());
+    }
+
     void localAgentThinkingRespectsDeepModeInEveryToolScope() {
         using namespace EmberAgent;
         const QJsonArray messages{
