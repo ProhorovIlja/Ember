@@ -1246,12 +1246,14 @@ ApplicationWindow {
                                         implicitHeight: bubbleBody.implicitHeight + 39
                                         radius: 16
                                         color: modelData.role === "you" ? "#123E68" : "#172434"
-                                        border.color: window.focusedArchiveSessionId === ember.currentSessionId &&
+                                        border.color: ember.historicalView &&
+                                                      window.focusedArchiveSessionId === ember.currentSessionId &&
                                                       window.focusedArchiveMessageId.length > 0 &&
                                                       String(modelData.id || "") === window.focusedArchiveMessageId
                                                       ? "#77C4FF"
                                                       : (modelData.role === "you" ? "#3576AF" : "#2F4056")
-                                        border.width: window.focusedArchiveSessionId === ember.currentSessionId &&
+                                        border.width: ember.historicalView &&
+                                                      window.focusedArchiveSessionId === ember.currentSessionId &&
                                                       window.focusedArchiveMessageId.length > 0 &&
                                                       String(modelData.id || "") === window.focusedArchiveMessageId ? 2 : 1
                                         Column {
@@ -1332,13 +1334,34 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                visible: ember.hasNewerMessages && !ember.privateMode
+                                visible: (ember.hasNewerMessages || ember.historicalView) &&
+                                         !ember.privateMode
                                 PillButton {
                                     Layout.fillWidth: true
                                     text: "Load newer messages"
                                     implicitHeight: 32
+                                    visible: ember.hasNewerMessages
                                     enabled: !ember.busy && !ember.listening && !ember.speaking
-                                    onClicked: ember.loadNewerMessages()
+                                    onClicked: {
+                                        // The previous last row is the reading boundary.
+                                        // Auto-scroll-to-end would skip up to 99 newly
+                                        // fetched messages; bring the FIRST new row into
+                                        // view instead after the synchronous backend page.
+                                        const previous = ember.messages
+                                        const anchor = previous.length > 0
+                                            ? String(previous[previous.length - 1].id || "")
+                                            : ""
+                                        ember.loadNewerMessages()
+                                        Qt.callLater(function() {
+                                            const page = ember.messages
+                                            for (let i = 0; i + 1 < page.length; ++i) {
+                                                if (String(page[i].id || "") === anchor) {
+                                                    timeline.positionViewAtIndex(i + 1, ListView.Beginning)
+                                                    break
+                                                }
+                                            }
+                                        })
+                                    }
                                     ToolTip.visible: hovered
                                     ToolTip.delay: 600
                                     ToolTip.text: "Load up to 100 newer saved messages from this conversation."
