@@ -98,6 +98,17 @@ foreach ($name in $runtimeFiles) {
 }
 
 if ($PruneDevelopmentTools) {
+    # A Release build can still retain PDB / static link artifacts. Remove
+    # these ONLY from the selected freshly deployed application payload, not
+    # from the source checkout, SDK or private build databases.
+    foreach ($symbol in @(Get-ChildItem -LiteralPath $payload -Recurse -File -Force)) {
+        if ($symbol.Extension.ToLowerInvariant() -in @('.pdb','.ilk','.exp','.obj','.lib')) {
+            if (($symbol.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'Developer symbol path is linked; refusing to follow it.'
+            }
+            Remove-Item -LiteralPath $symbol.FullName -Force
+        }
+    }
     # These EXEs are build-time tools. Bundling them pulls in Qt6Test.dll and
     # unnecessary libraries (and exposes test/debug functions to users).
     foreach ($name in @('ember-core-tests.exe', 'ember-icon-builder.exe', 'Qt6Test.dll')) {
