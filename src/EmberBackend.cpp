@@ -1246,8 +1246,8 @@ QString EmberBackend::inspectOfflineSetup() const {
 void EmberBackend::startLocalEngines() {
     // Foreground user action only; never auto-launch on app startup. The
     // selected LLM and optional speech.cpp are both children of Ember.
-    if (m_busy || m_listening || m_speaking) {
-        setStatus("Finish the active recording or reply before starting Ember engines.");
+    if (m_busy || m_listening || m_speaking || m_transcribingDictation) {
+        setStatus("Finish the active recording, transcription or reply before starting Ember engines.");
         return;
     }
     const bool needsNativeSpeech = m_voiceEngine == 1 ||
