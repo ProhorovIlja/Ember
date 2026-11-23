@@ -416,6 +416,7 @@ private:
     EmberDrive::Client m_driveClient;
     std::unique_ptr<EmberLocalEdit::EditBatchPlan> m_stagedCodeEdit;
     std::unique_ptr<EmberLocalEdit::NewFilePlan> m_stagedNewFile;
+    std::unique_ptr<EmberLocalEdit::NewFileBatchPlan> m_stagedNewFiles;
     QSet<QString> m_agentInspectedSourcePaths;
     QNetworkAccessManager m_wikipediaNetwork;
     QPointer<QNetworkReply> m_wikipediaReply;
