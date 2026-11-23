@@ -1052,6 +1052,9 @@ bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate,
                             (qint64(sampleRate) * channels * 2);
     return processedUsecs + 3000 >= expected;
 }
+bool pcmOutputWriteStalled(qint64 pendingBytes, qint64 msSinceLastWrite) {
+    return pendingBytes > 0 && msSinceLastWrite >= 8000;
+}
 
 void Pcm16OutputConverter::clear() {
     m_sourceRate = m_outputRate = m_channels = m_sampleBytes = 0;

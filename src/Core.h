@@ -95,6 +95,10 @@ QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice
 QString nativeDeliveryInstructions(int style);
 bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate, qint64 processedUsecs,
                         int channels = 1);
+// Abort a queued Windows PCM stream if the native sink has made no writable
+// progress for eight seconds. An EMPTY queue may legitimately be waiting for
+// slow TTS generation and must not trip this output-device watchdog.
+bool pcmOutputWriteStalled(qint64 pendingBytes, qint64 msSinceLastWrite);
 
 // Converts mono little-endian PCM16 streaming chunks into a supported Windows
 // sink format without a WAV file or a growing intermediate buffer. One source

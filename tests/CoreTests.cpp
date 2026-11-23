@@ -3724,6 +3724,20 @@ private slots:
         QVERIFY(!corrupt.configure(24000,48000,3,QAudioFormat::Int16));
         QVERIFY(!corrupt.configure(24000,48000,1,QAudioFormat::UInt8));
     }
+    void pcmOutputWatchdogRecoversFromStuckWindowsDevice() {
+        using EmberCore::pcmOutputWriteStalled;
+        QVERIFY(!pcmOutputWriteStalled(0, 8000));
+        QVERIFY(!pcmOutputWriteStalled(0, 120000));
+        QVERIFY(!pcmOutputWriteStalled(4096, -1));
+        QVERIFY(!pcmOutputWriteStalled(4096, 0));
+        QVERIFY(!pcmOutputWriteStalled(4096, 7999));
+        QVERIFY(pcmOutputWriteStalled(4096, 8000));
+        QVERIFY(pcmOutputWriteStalled(768 * 1024, 180000));
+        // A slow model may pause after an empty network/audio queue for
+        // minutes; only the ordinary HTTP/model timeout applies then.
+        QVERIFY(!pcmOutputWriteStalled(0, 180000));
+        QVERIFY(!pcmOutputWriteStalled(-1, 9000));
+    }
     void pcmDrainKeepsEndOfUtteranceIntact() {
         constexpr qint64 oneSecond24k = 48000;
         QVERIFY(!EmberCore::pcmPlaybackDrained(oneSecond24k, 24000, 950000));

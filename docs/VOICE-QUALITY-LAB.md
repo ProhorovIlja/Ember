@@ -1014,3 +1014,23 @@ are truncated to bypass the bound. CI tests exercise a >30k-character
 English story and both input guards. This is a functional continuity
 fix, not a measurement of 30k-character synthesis speed or voice quality
 on physical hardware.
+
+
+### PCM output-progress watchdog — 23 November 2026
+
+The native Qwen3-TTS PCM push-mode path now detects an output device
+that stops accepting **already queued** audio. Previously, the final
+drain timer started only once the entire pending PCM queue had emptied,
+so a stalled Windows WASAPI sink could keep Ember busy indefinitely
+with an unfinished streaming response. The new eight-second monotonic
+deadline starts when the first converted PCM frames enter an empty
+queue, resets on each successful device write, and fails the voice
+turn when buffered frames cannot advance. Empty queues awaiting a
+slow native model are explicitly exempt; the HTTP/model timeout still
+guards that separate situation. On failure, the existing cancel path
+aborts local synthesis, releases QAudioSink and allows retry.
+
+QtTest covers the exact seven-to-eight-second boundary, empty-queue
+exemption, invalid state, and long blocked queues. A green CI cannot
+prove actual Windows device hotplug, WASAPI underrun behavior or final
+headphone output: test those on the physical Windows 10/RTX 4070 host.

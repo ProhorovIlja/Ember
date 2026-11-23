@@ -3850,6 +3850,7 @@ void EmberBackend::resetPcmPlayback() {
     m_pcmTotalReceived = 0;
     m_pcmBytesSubmitted = 0;
     m_pcmDrainElapsed.invalidate();
+    m_pcmLastWriteElapsed.invalidate();
     m_pcmSampleRate = m_pcmSourceRate = m_pcmOutputChannels = 0;
     m_pcmOutputBytesPerFrame = 0;
     m_pcmHttpDone = false;
@@ -4013,6 +4014,11 @@ void EmberBackend::readPcmResponse(QNetworkReply *reply) {
             return;
         }
         m_pcmTotalReceived += incoming.size();
+        // A newly nonempty queue starts a fresh device-progress deadline.
+        // When Qwen3 is still thinking but no PCM is queued, there is no
+        // Windows output-device stall to penalize.
+        if (m_pcmPending.isEmpty() && !converted.isEmpty())
+            m_pcmLastWriteElapsed.start();
         m_pcmPending += converted;
     }
     // Do not finalize a one-byte-split frame until the last HTTP response
@@ -4028,6 +4034,8 @@ void EmberBackend::readPcmResponse(QNetworkReply *reply) {
             stopSpeechOnError("Native PCM stream could not finalize a complete audio frame.");
             return;
         }
+        if (m_pcmPending.isEmpty() && !finalFrames.isEmpty())
+            m_pcmLastWriteElapsed.start();
         m_pcmPending += finalFrames;
         m_speechReply = nullptr;
         reply->deleteLater();
@@ -4057,6 +4065,7 @@ void EmberBackend::pumpPcmPlayback() {
         if (written > 0) {
             m_pcmBytesSubmitted += written;
             m_pcmPending.remove(0, qsizetype(written));
+            m_pcmLastWriteElapsed.restart();
             if (!m_pcmStarted) {
                 m_pcmStarted = true;
                 setSpeaking(true);
@@ -4069,6 +4078,17 @@ void EmberBackend::pumpPcmPlayback() {
                 }
             }
         }
+    }
+    // The original drain watchdog starts only after *all* response bytes
+    // have entered Qt's output queue. If WASAPI stops accepting writes while
+    // pending PCM remains, that condition is never reached: fail the stuck
+    // output path even if the HTTP reply is still producing/backpressured.
+    if (EmberCore::pcmOutputWriteStalled(
+            m_pcmPending.size(), m_pcmLastWriteElapsed.isValid()
+                ? m_pcmLastWriteElapsed.elapsed() : -1)) {
+        stopSpeechOnError("Windows PCM output stopped accepting queued audio "
+                          "for eight seconds. Check the selected speaker.");
+        return;
     }
     // Qt starts push mode in IdleState before it has played a single sample.
     // A response that completes in one packet must not be torn down before
