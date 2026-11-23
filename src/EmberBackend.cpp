@@ -1100,6 +1100,8 @@ void EmberBackend::setBrainReady(bool value) {
     if (m_brainReady == value) return;
     m_brainReady = value;
     emit brainReadyChanged();
+    if (value && m_combinedStartPending && m_speechServerReady)
+        m_combinedStartPending = false; // both requested processes are ready
 }
 void EmberBackend::appendMessage(const QString &role, const QString &text) {
     m_messages.append(QVariantMap{{"role", role}, {"body", text}});
@@ -1282,15 +1284,31 @@ void EmberBackend::startLocalEngines() {
                   "No model downloads were started.");
         return;
     }
-    if (m_brain.state() == QProcess::NotRunning)
-        startBrain();
-    // A missing/malformed local GGUF or llama-server must not trigger a
-    // partially running native TTS service from the combined Start action.
-    if (m_brain.state() == QProcess::NotRunning) return;
-    if (needsNativeSpeech && m_speechServer.state() == QProcess::NotRunning)
+    if (m_brain.state() != QProcess::NotRunning ||
+        m_speechServer.state() != QProcess::NotRunning) {
+        setStatus("One-click Start requires both local engines to be stopped. "
+                  "Use Stop Ember before starting a new session.");
+        return;
+    }
+    m_combinedStartPending = needsNativeSpeech;
+    startBrain();
+    // Reject synchronous launch/preflight errors before touching speech.cpp.
+    if (m_brain.state() == QProcess::NotRunning) {
+        m_combinedStartPending = false;
+        return;
+    }
+    if (needsNativeSpeech) {
         startSpeechServer();
+        if (m_speechServer.state() == QProcess::NotRunning) {
+            m_combinedStartPending = false;
+            stopBrain();
+            setStatus("Start Ember failed: selected local speech engine did not "
+                      "start. The text engine was stopped to avoid half-start.");
+        }
+    }
 }
 void EmberBackend::stopLocalEngines() {
+    m_combinedStartPending = false; // user explicitly stopped the whole session
     // Stop native ASR/TTS first, so no late PCM or transcription callback
     // survives the user's explicit Stop Ember action.
     if (m_speechServer.state() != QProcess::NotRunning)
@@ -1379,6 +1397,8 @@ void EmberBackend::setSpeechServerReady(bool ready) {
     if (m_speechServerReady == ready) return;
     m_speechServerReady = ready;
     emit speechServerChanged();
+    if (ready && m_combinedStartPending && m_brainReady)
+        m_combinedStartPending = false; // the combined launch finished cleanly
 }
 void EmberBackend::setAllowSpeechDownloads(bool value) {
     if (m_allowSpeechDownloads == value) return;
