@@ -705,7 +705,10 @@ ApplicationWindow {
                                        ember.recognitionEngine > 0) &&
                                       !ember.speechServerReady)
                                      ? "Brain ready · voice still loading"
-                                     : "Ember ready locally")
+                                     : (ember.voiceEngine === 0 &&
+                                        ember.recognitionEngine === 0
+                                        ? "Text brain ready · voice loads on demand"
+                                        : "Ember local engines ready"))
                                   : ((ember.brainLaunching || ember.speechServerRunning)
                                      ? "Starting Ember locally" : "Ember offline")
                             color: window.silver
