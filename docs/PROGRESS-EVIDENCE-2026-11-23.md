@@ -229,3 +229,47 @@ The final obstacles are substantial: legal and accessible model/runtime
 weights, user-owned speaker/training data, real Qwen3.5 training/voice
 conditioning, deep multi-turn/code/tool QA, actual Windows build, VRAM/audio
 measurements, end-to-end offline installation, and accepted release evidence.
+
+## Part 44 — stable package must actually include working bilingual ASR
+
+As requested, priority remains the *whole Windows product*, not releasing
+independent test fragments. Audit of the full packaging path found a
+specific false-completion loophole: `build-complete-offline.ps1` ran
+actual LLM and native Qwen3-TTS checks but called the offline acceptance
+probe with **no** real EN/RU WAV samples. Its output explicitly stated
+dictation was `NOT TESTED`. A stable package could have reached the
+installer stage without that critical core capability being measured.
+
+Changes in this branch:
+1. `release/build-complete-offline.ps1` now accepts the four
+   EN/RU WAV/reference files and a bounded WER threshold; a stable SemVer
+   build refuses absent or incomplete audio inputs. The foreground
+   `offline_acceptance.py --run` transcribes both WAVs on real bundled
+   Whisper and compares with references, failing on excessive WER.
+   `release/build-complete-windows.ps1` forwards all these inputs.
+2. `release/build-dev-installer.ps1 -VerifyInstall -RequireOfflineBundle`
+   now re-verifies **every installed** runtime/model/license byte against
+   the approved manifest after actual Inno installation, rather than
+   merely checking Ember.exe/Qt startup. The full voice flag additionally
+   verifies installed Qwen3-TTS GGUF metadata.
+3. `tools/portable_zip.py` requires approved native TTS by default
+   for user-facing ZIP output. The historical text-only ZIP can be made
+   only by explicitly passing `--allow-text-only-development`.
+4. The main native Qt readiness text no longer treats an LLM with a
+   still-loading native TTS/ASR as fully ready.
+5. Managed combined sessions now track both processes beyond initial
+   startup; unexpected failure of one child kills the other to avoid
+   leaving an orphaned multi-GiB model process.
+6. The exact source paths were checked using seven read-only
+   source-contract assertions through the connected GitHub repository.
+   All seven source-contract checks passed; this is **NOT** an MSVC/Qt
+   compile, actual inference, synthetic Python test, or installed audio
+   acceptance.
+
+Still absent: on-target Windows build and all actual RU/EN WAV test outputs,
+model weights, expressive human-approved English voice, legal redistributable
+binaries, and independently approved stable release evidence. No complete
+installer or Release has been produced. The development branch contains
+zero GitHub Actions runs. This document records real code progress without
+reusing unsupported completion percentages.
+
