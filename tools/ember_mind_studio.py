@@ -42,9 +42,11 @@ def validate_example(item):
         fail("Unsupported example schema or field")
     short_string(item.get("sample_id"), "sample_id")
     short_string(item.get("group_id"), "group_id")
-    if (item.get("task") not in TASKS or item.get("language") not in LANGUAGES
-            or item.get("rights") not in RIGHTS):
-        fail("Unsupported task, language or rights declaration")
+    for name, allowed_values in (("task", TASKS), ("language", LANGUAGES),
+                                 ("rights", RIGHTS)):
+        value = item.get(name)
+        if not isinstance(value, str) or value not in allowed_values:
+            fail("Unsupported task, language or rights declaration")
     license_name = item.get("license", "")
     if item["rights"] == "user-authored":
         if license_name not in ("", None):
@@ -72,6 +74,14 @@ def validate_example(item):
         fail("Sample must end with an assistant response")
     return item
 
+def unique_json_keys(pairs):
+    result = {}
+    for name, value in pairs:
+        if name in result:
+            fail("Duplicate JSON key in training example")
+        result[name] = value
+    return result
+
 def read_examples(path):
     path = Path(path)
     if (not path.is_file() or path.is_symlink() or
@@ -83,7 +93,9 @@ def read_examples(path):
             if i > 20000 or not line.strip() or len(line) > 512 * 1024:
                 fail("Blank, excessive or too many JSONL examples")
             try:
-                obj = validate_example(json.loads(line))
+                obj = validate_example(json.loads(
+                    line, object_pairs_hook=unique_json_keys,
+                    parse_constant=lambda value: fail("Non-finite JSON number")))
             except json.JSONDecodeError:
                 fail("Malformed JSONL example")
             sample_id, group, task = obj["sample_id"], obj["group_id"], obj["task"]
@@ -207,6 +219,21 @@ def self_test():
             raise AssertionError("Duplicate accepted")
         except ValueError:
             assert not (root / "duplicate-out").exists()
+        for field in ("task", "language", "rights"):
+            bad_unhashable = dict(examples[0], **{field: []})
+            try:
+                validate_example(bad_unhashable)
+                raise AssertionError("Unhashable metadata was accepted")
+            except ValueError:
+                pass
+        duplicate_keys = root / "duplicate-keys.jsonl"
+        duplicate_keys.write_text(source.read_text().replace(
+            '"schema": ', '"schema": "invalid", "schema": ', 1), encoding="utf-8")
+        try:
+            read_examples(duplicate_keys)
+            raise AssertionError("Duplicate JSON keys accepted")
+        except ValueError:
+            pass
         bad = dict(examples[0], rights="arbitrary-scrape")
         try:
             validate_example(bad)
