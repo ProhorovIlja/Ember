@@ -3409,9 +3409,12 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
     // A search jump may be displaying an old bounded window. Preserve the
     // latest LLM context prepared above, but return the UI to the newest
     // messages BEFORE adding this turn; never append it to an ancient scene.
-    if (hasNewerMessages()) {
+    if (m_historicalWindowActive) {
         m_messages = m_store->messages(m_sessionId);
-        rebuildConversationHistory();
+        m_historicalWindowActive = false;
+        // Only the visible SQLite window changes here: m_history still
+        // contains the latest turn pairs prepared at session opening.
+        // Never replace that context with an arbitrary historic slice.
         emit messagesChanged();
     }
     m_pendingUser = text;
@@ -4905,6 +4908,11 @@ void EmberBackend::loadEarlierMessages() {
     // foreground page does not drag years of chat into the UI or GPU.
     for (int i = older.size() - 1; i >= 0; --i)
         m_messages.prepend(older.at(i));
+    // Scrolling through years of history must never accumulate unbounded
+    // rich-text/image delegates in the live Qt UI. Drop newest records
+    // while paging backward; SQLite still keeps the complete archive.
+    while (m_messages.size() > 300) m_messages.removeLast();
+    m_historicalWindowActive = true;
     emit messagesChanged();
     setStatus(QString("Loaded %1 earlier local messages.").arg(older.size()));
 }
@@ -4924,6 +4932,8 @@ void EmberBackend::loadNewerMessages() {
         return;
     }
     m_messages.append(newer);
+    while (m_messages.size() > 300) m_messages.removeFirst();
+    m_historicalWindowActive = true;
     emit messagesChanged();
     setStatus(QString("Loaded %1 newer local messages.").arg(newer.size()));
 }
@@ -4934,6 +4944,7 @@ void EmberBackend::showLatestMessages() {
         return;
     }
     m_messages = m_store->messages(m_sessionId);
+    m_historicalWindowActive = false;
     rebuildConversationHistory();
     emit messagesChanged();
     setStatus("Showing the latest messages from this local conversation.");
@@ -4988,6 +4999,7 @@ void EmberBackend::openSession(const QString &id) {
     m_recognitionHints = m_store->asrHints(id);
     emit recognitionHintsChanged();
     m_messages = m_store->messages(id);
+    m_historicalWindowActive = false;
     rebuildConversationHistory();
     m_pendingUser.clear();
     m_lastReply.clear();
@@ -5025,6 +5037,7 @@ int EmberBackend::openSessionAtMessage(const QString &sessionId,
     // context for a new LLM question.
     openSession(sessionId);
     m_messages = window;
+    m_historicalWindowActive = true;
     emit messagesChanged();
     setStatus("Opened the matching archived message and its nearby turns. "
               "Use Newer or Latest to return to the current conversation.");
@@ -5037,6 +5050,7 @@ void EmberBackend::clearConversation() {
         ? m_store->createSession() : QString();
     m_history.clear();
     m_messages.clear();
+    m_historicalWindowActive = false;
     m_continuityNotes.clear();
     emit continuityNotesChanged();
     m_recognitionHints.clear();
