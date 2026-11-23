@@ -246,7 +246,14 @@ def self_test():
             raise AssertionError("Invalid role order accepted")
         except ValueError:
             pass
-    print("EmberMind dataset curation self-tests passed (offline; no training)")
+    # The existing explicit local model-lab test entrypoint also exercises the
+    # one-shot training *preparation* and consented voice corpus boundaries.
+    # Neither test runs a trainer, downloads weights, or uses the network.
+    import ember_mind_qlora
+    import ember_voice_corpus
+    ember_mind_qlora.self_test()
+    ember_voice_corpus.self_test()
+    print("EmberMind + Ember Voice model preparation self-tests passed offline")
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
