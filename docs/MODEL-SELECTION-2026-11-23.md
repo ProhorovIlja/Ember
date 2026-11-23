@@ -6,7 +6,7 @@ This is a **candidate and acceptance matrix, not a claim of measured superiority
 
 Keep the existing C++20/Qt 6 native application and narrow provider interfaces. C++/Qt currently meets the low-overhead GUI/PCM and Windows integration target; switching to Rust or another language without profiling would add risk, not demonstrated performance. Python may remain a **development/benchmark/optional model runtime** for models that need it; avoid Python or a web server as a mandatory UI runtime. Rust can be evaluated for isolated helpers if there is a measurable benefit. Evaluate technologies on real memory, maintenance, security, licensing and packaging evidence, not language popularity.
 
-Do NOT merge unrelated text, ASR and TTS weights. They have different architectures, tokenizers and losses. Compose them through typed, local interfaces, with independently installable model packages, explicit selection and rollback. A LoRA fine-tune or a text-model merge is an optional compatible-model experiment, not a magic way to add reasoning or a Maya voice.
+Do NOT merge unrelated text, ASR and TTS weights. They have different architectures, tokenizers and losses. Compose them through typed, local interfaces, with independently installable **internally managed** model packages and operator-initiated rollback. Normal users see one Ember identity; they should not have to pick a different foreign model for each conversation. A LoRA fine-tune or a text-model merge is an optional compatible-model experiment, not a magic way to add reasoning or a Maya voice.
 
 ## Local text shortlist — re-evaluate after actual benchmarks
 
@@ -15,10 +15,14 @@ Do NOT merge unrelated text, ASR and TTS weights. They have different architectu
 | Qwen3.5-9B post-trained, Q4_K_M GGUF | Primary balanced conversation, coding, RU/EN, optional image understanding with proper mmproj | Apache-2.0, thinking/nonthinking; quantized community build around 5.84 GB *weights only* | Prove GGUF/llama.cpp version compatibility and response quality; KV/cache and TTS consume extra VRAM |
 | Qwen3.5-4B post-trained | Fast conversational/voice brain, fallback while heavier TTS occupies GPU | Lower memory footprint, same family | May sacrifice troubleshooting and code quality |
 | Qwen3-8B | Controlled comparison / compatibility reference | Already documented in Ember | No assumption that older generation beats 3.5 |
+| Qwen3.8-27B | Stronger open-weight research reference | Open weights exist from Aug 2026; relevant coding and general-ability comparator | 27B Q4 weights alone exceed RTX 4070 12 GB, so this is not a responsive always-on local default; CPU-offload performance must be measured |
+| Qwen3.8-Flash-Next (180B total) | Large-model research reference | Newer architecture and specialized sparse routing | Even aggressive quantized builds are far too large for the 12 GB local default |
 | Qwen4-Max | **Cloud research reference, not an offline candidate** | Alibaba released API model on 16 Nov 2026 | No released Max weights; cannot ship/install locally |
 | Dolphin instruction fine-tunes | Optional personality/alignment A/B research, only with exact base model/weights/license | Different response style and less refusal-oriented training may fit some roleplay | Dolphin is a *family of tuned LLMs*, not an independent memory/reasoning processor; it cannot be attached to Qwen3.5 as a universal "brain" plugin |
 
-Official Qwen3.5-9B inference examples differentiate non-thinking and thinking sampling (temperature, top-p, top-k and presence penalty). **Do not assume one global temperature is optimal for both**, or that optimizing text sampling changes synthesized vocal timbre. Tune defaults per actual tested family/mode; preserve user overrides and provide an Auto option. Current Ember settings are a foundation; there is no human-like naturalness benchmark result yet.
+On 23 November 2026, newer Qwen3.8 open-weight models exist, but availability alone does not make them suitable for this 12 GB target. Qwen4-Max is an API service rather than a distributable local checkpoint. Official Qwen3.5-9B inference examples differentiate non-thinking and thinking sampling (temperature, top-p, top-k and presence penalty). **Do not assume one global temperature is optimal for both**, or that optimizing text sampling changes synthesized vocal timbre. Tune defaults per actual tested family/mode; preserve user overrides and provide an Auto option. Current Ember settings are a foundation; there is no human-like naturalness benchmark result yet.
+
+**Qwen thinking compatibility:** Ember's Qwen-compatible llama.cpp request now sends `chat_template_kwargs.enable_thinking=false` for normal/voice text and `true` for Deep Mode. This is a request-level fix only. Actual GGUF chat templates and llama.cpp versions have had bugs where `false` was ignored; physical tests must confirm that non-thinking mode yields immediate visible text and that hidden reasoning never enters history or speech. See Issue #5.
 
 ## English female voice shortlist (must be heard blind on target PC)
 
@@ -67,3 +71,24 @@ Current status: code compiles in GitHub Windows CI, while 17 release gates and r
 - Chatterbox maintainer notice: https://github.com/resemble-ai/chatterbox
 - Sesame CSM demo vs base distinction: https://github.com/SesameAILabs/csm
 - Dolphin example family (not a modular brain processor): https://huggingface.co/TheBloke/dolphin-2.6-mistral-7B-GGUF
+
+## New custom-model QA tools (source-only)
+
+- `tools/ember_mind_studio.py` makes private group-separated SFT train/eval JSONL.
+- `tools/adapter_merge_preflight.py` pins locally trained PEFT LoRA adapter
+  configuration and safetensors hashes, then rejects incompatible base
+  revisions/configuration/tokenizer/LoRA signatures before someone attempts
+  a merge. This checks only metadata and hashes, not tensor shape, rights or
+  actual model quality.
+- `tools/blind_text_ab.py` writes captures exclusively (no clobber) and
+  tests both blinded left/right preference mappings. This is not a
+  substitute for live listening and target-hardware tests.
+
+Full usage and limits: [Custom Model Lab](CUSTOM-MODEL-LAB.md).
+
+## Model sources revisited
+
+- Qwen3.8 open weights: https://huggingface.co/Qwen/Qwen3.8-27B and https://github.com/QwenLM/Qwen3.8
+- Qwen3.5 GGUF compatibility: https://huggingface.co/Qwen/Qwen3.5-9B
+- llama.cpp chat-template arguments: https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
+- Qwen thinking-toggle runtime issues: https://github.com/ggml-org/llama.cpp/discussions/23351
