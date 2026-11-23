@@ -44,6 +44,20 @@ EditPlan planWithinProject(const QString &selectedRoot,
 EditResult applyApprovedEdit(const EditPlan &plan,
                              const QString &backupDirectory);
 
+// Strictly create ONE new UTF-8 source file inside an explicitly selected
+// existing project directory. The model can only stage; human approval of
+// the entire new file is required. Apply uses NewOnly, never replaces.
+// No directories are created and no external paths are accessible.
+struct NewFilePlan {
+    QString root, relativePath, path, displayPreview, error;
+    QByteArray proposedBytes, sha256;
+    bool ok() const { return error.isEmpty() && !path.isEmpty(); }
+};
+NewFilePlan planNewFileWithinProject(const QString &selectedRoot,
+                                     const QString &relativePath,
+                                     const QString &contents);
+EditResult applyApprovedNewFile(const NewFilePlan &plan);
+
 // Explicitly approved, bounded 1-3 distinct existing UTF-8 source files.
 // Planning only stages immutable snapshots; no source is written.
 struct SourceReplacement { QString relativePath, oldText, newText; };
