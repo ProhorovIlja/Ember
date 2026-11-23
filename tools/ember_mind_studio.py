@@ -89,7 +89,7 @@ def normalized_user_turns(messages):
     for message in messages:
         if isinstance(message, dict) and message.get("role") == "user":
             text = unicodedata.normalize("NFKC", message["content"])
-            prompts.append(re.sub(r"\\s+", " ", text).strip().casefold())
+            prompts.append(re.sub(r"\s+", " ", text).strip().casefold())
     if not prompts:
         fail("Example has no user turns")
     return sha(canonical(prompts))
@@ -257,7 +257,7 @@ def self_test():
                              "content": "A different synthetic answer."}])
         leaked = root / "cross-group-prompt.jsonl"
         leaked.write_text(source.read_text(encoding="utf-8") +
-                          json.dumps(repeated) + "\\n", encoding="utf-8")
+                          json.dumps(repeated) + "\n", encoding="utf-8")
         try:
             read_examples(leaked)
             raise AssertionError("Cross-group normalized prompt leak accepted")
