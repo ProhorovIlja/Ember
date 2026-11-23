@@ -30,7 +30,8 @@ struct Decision {
 };
 QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
                          Scope scope = Scope::LocalProject,
-                         bool mayProposeEdit = false);
+                         bool mayProposeEdit = false,
+                         bool enableThinking = false);
 Decision parseModelResponse(const QByteArray &json,
                             Scope scope = Scope::LocalProject,
                             bool mayProposeEdit = false);
