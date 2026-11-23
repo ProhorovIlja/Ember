@@ -647,6 +647,33 @@ private slots:
         QVERIFY(gallery.list().isEmpty());
         QVERIFY(gallery.dataUri(first).isEmpty());
     }
+    void nativeImageLibraryOpaqueArgbClipboardUsesCompactJpeg() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        ImageLibrary gallery(dir.filePath("library"));
+        // Windows clipboard screenshots commonly advertise an alpha channel
+        // even though all actual alpha samples are 255.
+        QImage clipboard(900, 520, QImage::Format_ARGB32);
+        clipboard.fill(qRgba(20, 40, 70, 255));
+        QVERIFY(clipboard.hasAlphaChannel());
+        QString error;
+        const QString id = gallery.importImage(clipboard, &error);
+        QVERIFY2(!id.isEmpty(), qPrintable(error));
+        QVERIFY(gallery.filePath(id).endsWith(".jpg"));
+        QVERIFY(gallery.dataUri(id).startsWith("data:image/jpeg;base64,"));
+        QCOMPARE(gallery.importImage(clipboard), id);
+        QCOMPARE(gallery.imageCount(), 1);
+        // The same pixel format with genuine transparency must remain PNG,
+        // even when only a single source pixel is translucent.
+        QImage withAlpha = clipboard.copy();
+        withAlpha.setPixel(225, 130, qRgba(20, 40, 70, 128));
+        const QString alphaId = gallery.importImage(withAlpha, &error);
+        QVERIFY2(!alphaId.isEmpty(), qPrintable(error));
+        QVERIFY(alphaId != id);
+        QVERIFY(gallery.filePath(alphaId).endsWith(".png"));
+        QVERIFY(gallery.dataUri(alphaId).startsWith("data:image/png;base64,"));
+        QCOMPARE(gallery.imageCount(), 2);
+    }
     void nativeImageLibraryResizesHighEntropyPngWithoutLosingTransparency() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
