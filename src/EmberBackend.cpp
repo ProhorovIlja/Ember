@@ -1242,7 +1242,8 @@ void EmberBackend::startBrain() {
     }
     // Trust the selected GGUF's architecture metadata, not its user-visible
     // filename or the mutable model alias advertised over the local API.
-    m_brainSupportsThinking = EmberCore::ggufSupportsThinkingFlag(model);
+    m_brainSupportsThinking = EmberCore::ggufSupportsThinkingFlag(
+        model, &m_brainQwen35);
     ++m_brainSession; // invalidate late HTTP health checks from earlier runs
     m_brain.setWorkingDirectory(QFileInfo(binary).absolutePath());
     m_brain.setProgram(binary);
@@ -1550,6 +1551,7 @@ void EmberBackend::stopBrain() {
     m_brainStartupTimedOut = false;
     m_brainVisionMode = false;
     m_brainSupportsThinking = false;
+    m_brainQwen35 = false;
     ++m_brainSession;
     // ASR is independent of llama-server. Stop the LLM without discarding
     // a long dictation, and make any pending "Transcribe & send" draft-only.
@@ -3204,6 +3206,11 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
         effectivePersona, m_history, text, boundedOutput,
         generation.temperature, recalled, deep, 8192, m_brainContextTokens,
         m_brainSupportsThinking);
+    // For genuine Qwen3.5 GGUFs use documented family-specific defaults;
+    // user temperature/top_p settings then take precedence. Other models
+    // retain their original Ember conversational/coding/voice profiles.
+    if (m_brainQwen35)
+        EmberCore::applyQwen35SamplingDefaults(payload, deep);
     // Per-request overrides never restart, modify, or merge model weights.
     // Keep Auto profile/native defaults for compatibility with new GGUFs.
     if (!payload.isEmpty() &&
