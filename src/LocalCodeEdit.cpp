@@ -289,6 +289,174 @@ EditResult applyApprovedEdit(const EditPlan &plan,
     return result;
 }
 
+NewFilePlan planNewFileWithinProject(const QString &selectedRoot,
+                                     const QString &relativePath,
+                                     const QString &contents) {
+    NewFilePlan result;
+    // Deliberately smaller than the model's general patch budget. This is
+    // one new source file, never a project generator or shell command.
+    if (contents.isEmpty() || contents.size() > 8000 ||
+        contents.contains(QChar::Null) ||
+        relativePath.isEmpty() || relativePath.size() > 240 ||
+        relativePath.startsWith('/') || relativePath.endsWith('/') ||
+        relativePath.contains('\\') || relativePath.contains(':') ||
+        relativePath.contains("//") || relativePath.contains('\r') ||
+        relativePath.contains('\n') || relativePath.contains(QChar::Null)) {
+        result.error = "New file needs a valid project-relative path and up "
+                       "to 8000 characters of source content.";
+        return result;
+    }
+    const QByteArray bytes = contents.toUtf8();
+    if (!validUtf8(bytes) || bytes.size() > 16000) {
+        result.error = "New source file must contain plain valid UTF-8 text.";
+        return result;
+    }
+    const QFileInfo rootInfo(selectedRoot);
+    if (!rootInfo.exists() || !rootInfo.isDir() ||
+        rootInfo.isSymLink() || rootInfo.isJunction()) {
+        result.error = "Select a real existing project directory.";
+        return result;
+    }
+    result.root = rootInfo.canonicalFilePath();
+    if (result.root.isEmpty()) {
+        result.error = "Cannot resolve the selected project directory.";
+        return result;
+    }
+    static const QSet<QString> blockedDirs{
+        ".git", ".hg", ".svn", ".idea", ".vs", ".vscode",
+        "venv", ".venv", "node_modules", "__pycache__", "cache",
+        "build", "dist", "bin", "obj", "target", "vendor"
+    };
+    const QStringList parts = relativePath.split('/');
+    QDir parent(result.root);
+    for (int i = 0; i < parts.size(); ++i) {
+        const QString part = parts.at(i);
+        if (part.isEmpty() || part == "." || part == ".." ||
+            part.startsWith('.') || part.endsWith('.') ||
+            part.endsWith(' ') || blockedDirs.contains(part.toLower()) ||
+            part.contains(QRegularExpression(R"([<>\"|?*])"))) {
+            result.error = "Hidden, reserved, traversal or invalid file path denied.";
+            return result;
+        }
+        const QString stem = part.section('.', 0, 0).toUpper();
+        static const QSet<QString> reserved{
+            "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3",
+            "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6",
+            "LPT7", "LPT8", "LPT9"
+        };
+        if (reserved.contains(stem)) {
+            result.error = "Windows device filenames are not project files.";
+            return result;
+        }
+        if (i + 1 < parts.size()) {
+            const QFileInfo directory(parent.filePath(part));
+            if (!directory.exists() || !directory.isDir() ||
+                directory.isSymLink() || directory.isJunction()) {
+                result.error = "Parent directory must already exist, without links.";
+                return result;
+            }
+            const QString canonical = directory.canonicalFilePath();
+            if (canonical.isEmpty()) {
+                result.error = "Cannot resolve a proposed source parent directory.";
+                return result;
+            }
+            parent.setPath(canonical);
+        }
+    }
+    const QString fileName = parts.last();
+    const QFileInfo nameInfo(fileName);
+    if (!kAllowedExtensions.contains(nameInfo.suffix().toLower()) &&
+        fileName.toLower() != "makefile" &&
+        fileName.toLower() != "dockerfile") {
+        result.error = "Creating executables, secrets or unsupported files is denied.";
+        return result;
+    }
+    const QFileInfo candidate(parent.filePath(fileName));
+    if (candidate.exists() || candidate.isSymLink() || candidate.isJunction()) {
+        result.error = "Target already exists. New files cannot overwrite.";
+        return result;
+    }
+    const QString canonicalRoot = QDir::fromNativeSeparators(result.root);
+    const QString canonicalParent = QDir::fromNativeSeparators(
+        QFileInfo(parent.path()).canonicalFilePath());
+#ifdef Q_OS_WIN
+    constexpr auto pathCase = Qt::CaseInsensitive;
+#else
+    constexpr auto pathCase = Qt::CaseSensitive;
+#endif
+    if (canonicalParent.compare(canonicalRoot, pathCase) != 0 &&
+        !canonicalParent.startsWith(
+            canonicalRoot.endsWith('/') ? canonicalRoot :
+            canonicalRoot + '/', pathCase)) {
+        result.error = "New source file would escape the selected project.";
+        return result;
+    }
+    result.relativePath = relativePath;
+    result.path = parent.filePath(fileName);
+    result.proposedBytes = bytes;
+    result.sha256 = sha(bytes);
+    // A complete preview, with no truncation or hidden generated lines.
+    result.displayPreview =
+        QString("NEW FILE (NOT WRITTEN): %1\n"
+                "Proposed UTF-8 bytes: %2\n"
+                "Proposed SHA-256: %3\n"
+                "Existing files will not be overwritten.\n"
+                "No directories, tests or commands will be run.\n\n"
+                "===== FULL NEW FILE CONTENT =====\n%4\n"
+                "===== END NEW FILE =====\n"
+                "Review this entire source before applying.")
+            .arg(result.path, QString::number(bytes.size()),
+                 QString::fromLatin1(result.sha256.toHex()), contents);
+    return result;
+}
+EditResult applyApprovedNewFile(const NewFilePlan &plan) {
+    EditResult result;
+    if (!plan.ok() || plan.sha256.size() != 32 ||
+        sha(plan.proposedBytes) != plan.sha256 ||
+        !validUtf8(plan.proposedBytes)) {
+        result.error = "Invalid staged new-file proposal; nothing created.";
+        return result;
+    }
+    // Revalidate ALL path components at the approval boundary. Fail closed
+    // when the target or a parent was replaced after preview generation.
+    const NewFilePlan fresh = planNewFileWithinProject(
+        plan.root, plan.relativePath, QString::fromUtf8(plan.proposedBytes));
+    if (!fresh.ok() || fresh.path != plan.path ||
+        fresh.sha256 != plan.sha256 || fresh.proposedBytes != plan.proposedBytes) {
+        result.error = "New-file path changed or was created after review; "
+                       "no file was overwritten.";
+        return result;
+    }
+    QFile output(fresh.path);
+    // NewOnly is mandatory: QSaveFile would REPLACE an existing target.
+    if (!output.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+        result.error = "Could not create a new file exclusively; target untouched.";
+        return result;
+    }
+    const bool complete = output.write(fresh.proposedBytes) ==
+                              fresh.proposedBytes.size() &&
+                          output.flush() && output.error() == QFileDevice::NoError;
+    output.close();
+    QFile check(fresh.path);
+    const bool verified = complete && check.open(QIODevice::ReadOnly) &&
+        sha(check.readAll()) == fresh.sha256;
+    check.close();
+    if (!verified) {
+        // Remove only the bytes WE wrote, avoiding deletion of a concurrently
+        // changed file. A crash could still leave a partial new file.
+        QFile cleanup(fresh.path);
+        if (cleanup.open(QIODevice::ReadOnly) &&
+            cleanup.readAll() == fresh.proposedBytes) {
+            cleanup.close();
+            QFile::remove(fresh.path);
+        }
+        result.error = "New-file write/verification failed. Inspect the "
+                       "target path for a partial file before retrying.";
+    }
+    return result;
+}
+
 EditBatchPlan planWithinProjectBatch(
     const QString &selectedRoot, const QVector<SourceReplacement> &changes) {
     EditBatchPlan batch;
