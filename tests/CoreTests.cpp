@@ -1181,6 +1181,48 @@ private slots:
         QVERIFY(archive.search("nonexistent-phrase").isEmpty());
     }
 
+    void boundedLocalHistoryPagingKeepsReadableOrderedWindows() {
+        auto makeRows = [](int first, int last) {
+            QVariantList rows;
+            for (int id = first; id <= last; ++id)
+                rows.append(QVariantMap{
+                    {"id", qint64(id)},
+                    {"role", id % 2 ? "you" : "ember"},
+                    {"body", QString("Scene %1").arg(id)}
+                });
+            return rows;
+        };
+        QVariantList visible = makeRows(701, 1000);
+        QCOMPARE(visible.size(), 300);
+        EmberCore::mergeVisibleHistoryPage(visible, makeRows(601, 700), true);
+        QCOMPARE(visible.size(), 300);
+        QCOMPARE(visible.first().toMap().value("id").toLongLong(), qint64(601));
+        QCOMPARE(visible.last().toMap().value("id").toLongLong(), qint64(900));
+        EmberCore::mergeVisibleHistoryPage(visible, makeRows(901, 1000), false);
+        QCOMPARE(visible.size(), 300);
+        QCOMPARE(visible.first().toMap().value("id").toLongLong(), qint64(701));
+        QCOMPARE(visible.last().toMap().value("id").toLongLong(), qint64(1000));
+        // Long user-driven navigation must not grow the live ListView.
+        for (int start = 601; start >= 1; start -= 100) {
+            EmberCore::mergeVisibleHistoryPage(
+                visible, makeRows(start - 99, start), true);
+            QVERIFY(visible.size() <= 300);
+            for (int i = 1; i < visible.size(); ++i) {
+                QVERIFY(visible[i - 1].toMap().value("id").toLongLong() <
+                        visible[i].toMap().value("id").toLongLong());
+            }
+        }
+        const QVariantList beforeEmpty = visible;
+        EmberCore::mergeVisibleHistoryPage(visible, {}, true);
+        QCOMPARE(visible, beforeEmpty);
+        // Navigating forward after repeated backward pages remains bounded.
+        for (int start = 101; start <= 901; start += 100) {
+            EmberCore::mergeVisibleHistoryPage(
+                visible, makeRows(start, start + 99), false);
+            QVERIFY(visible.size() <= 300);
+        }
+    }
+
     void opensExactArchivedSearchHitWithBoundedBidirectionalPages() {
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
