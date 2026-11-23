@@ -32,7 +32,7 @@ foreach ($releaseScript in @(
     $parseErrors = $null
     [void][System.Management.Automation.Language.Parser]::ParseFile(
         $scriptPath, [ref]$parseTokens, [ref]$parseErrors)
-    if (@($parseErrors).Count -gt 0) {
+    if ($null -ne $parseErrors -and $parseErrors.Count -gt 0) {
         throw "PowerShell syntax error in $releaseScript: $($parseErrors[0].Message)"
     }
 }
