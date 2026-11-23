@@ -26,6 +26,7 @@ ApplicationWindow {
     property bool preserveOlderScroll: false
     property string focusedArchiveMessageId: ""
     property string focusedArchiveSessionId: ""
+    property string focusedArchiveSnippet: ""
     // Purely foreground button-gesture state: no recording is triggered by
     // a clock, app startup, a scheduled task or a background watcher.
     property bool dictationHoldArmed: false
@@ -615,6 +616,7 @@ ApplicationWindow {
                                                        hitId !== "0"
                                     window.focusedArchiveMessageId = ""
                                     window.focusedArchiveSessionId = ""
+                                    window.focusedArchiveSnippet = ""
                                     if (!shouldJump) {
                                         ember.openSession(selectedSession)
                                         window.page = 1
@@ -623,11 +625,15 @@ ApplicationWindow {
                                         if (index >= 0) {
                                             window.focusedArchiveMessageId = hitId
                                             window.focusedArchiveSessionId = selectedSession
+                                            window.focusedArchiveSnippet = modelData.snippet || ""
                                             window.page = 1
                                             Qt.callLater(function() {
                                                 if (window.page === 1 &&
                                                     ember.currentSessionId === selectedSession)
-                                                    timeline.positionViewAtIndex(index, ListView.Center)
+                                                    // Long archive messages may exceed the
+                                                    // viewport: align the matched bubble's
+                                                    // heading/excerpt, not its distant middle.
+                                                    timeline.positionViewAtIndex(index, ListView.Beginning)
                                             })
                                         }
                                     }
@@ -1274,6 +1280,19 @@ ApplicationWindow {
                                             }
                                             Text {
                                                 width: parent.width
+                                                visible: ember.historicalView &&
+                                                    window.focusedArchiveSessionId === ember.currentSessionId &&
+                                                    String(modelData.id || "") === window.focusedArchiveMessageId &&
+                                                    window.focusedArchiveSnippet.length > 0
+                                                text: visible ? "SEARCH MATCH · " + window.focusedArchiveSnippet : ""
+                                                textFormat: Text.PlainText
+                                                wrapMode: Text.Wrap
+                                                color: "#95CEFF"
+                                                font.pixelSize: 12
+                                                lineHeight: 1.2
+                                            }
+                                            Text {
+                                                width: parent.width
                                                 text: modelData.role === "ember"
                                                     ? ember.formatReply(modelData.body)
                                                     : ember.messageText(modelData.body)
@@ -1374,6 +1393,7 @@ ApplicationWindow {
                                     onClicked: {
                                         window.focusedArchiveMessageId = ""
                                         window.focusedArchiveSessionId = ""
+                                        window.focusedArchiveSnippet = ""
                                         ember.showLatestMessages()
                                     }
                                     ToolTip.visible: hovered
