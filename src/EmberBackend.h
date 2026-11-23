@@ -42,6 +42,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(bool hasOlderSessions READ hasOlderSessions NOTIFY sessionsChanged)
     Q_PROPERTY(bool hasOlderMessages READ hasOlderMessages NOTIFY messagesChanged)
     Q_PROPERTY(bool hasNewerMessages READ hasNewerMessages NOTIFY messagesChanged)
+    Q_PROPERTY(bool historicalView READ historicalView NOTIFY messagesChanged)
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY sessionsChanged)
     Q_PROPERTY(bool privateMode READ privateMode WRITE setPrivateMode NOTIFY privateModeChanged)
     Q_PROPERTY(QString continuityNotes READ continuityNotes NOTIFY continuityNotesChanged)
@@ -116,6 +117,7 @@ public:
                m_store->hasMessageAfter(m_sessionId,
                    m_messages.last().toMap().value("id").toLongLong());
     }
+    bool historicalView() const { return m_historicalWindowActive; }
     QString currentSessionId() const { return m_sessionId; }
     bool privateMode() const { return m_privateMode; }
     QString continuityNotes() const { return m_continuityNotes; }
@@ -370,6 +372,9 @@ private:
     bool m_brainQwen35 = false; // documented sampling family
     QStringList m_voiceQueue;
     QVariantList m_messages;
+    // An explicit old-message window is NOT the active LLM context, even
+    // when that window happens to contain the latest persisted message.
+    bool m_historicalWindowActive = false;
     QList<EmberCore::Turn> m_history;
     int m_voiceId = 0, m_configurationRevision = 0, m_voiceEngine = 0, m_chatMode = 0;
     int m_recognitionLanguage = 0, m_recognitionEngine = 0, m_speechDevice = 0;
