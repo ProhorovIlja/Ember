@@ -279,6 +279,22 @@ def self_test():
             raise AssertionError("Evaluation recording used as voice reference")
         except ValueError:
             assert not (root / "eval-ref").exists()
+        # Same audio bytes under a new filename must not inflate the voice
+        # corpus or contaminate train/eval with exact repeated recordings.
+        duplicate = audio / "duplicate.wav"
+        duplicate.write_bytes((audio / "clip-0.wav").read_bytes())
+        duplicate_manifest = root / "duplicate-audio.jsonl"
+        duplicate_rows = examples + [{
+            "schema": SCHEMA, "audio": "duplicate.wav",
+            "text": "This duplicated audio must be rejected.",
+            "session": "session-b", "consent": True}]
+        duplicate_manifest.write_text("".join(
+            json.dumps(x) + "\n" for x in duplicate_rows))
+        try:
+            prepare(audio, duplicate_manifest, "ref.wav", root / "dup-output")
+            raise AssertionError("Identical duplicated WAV accepted")
+        except ValueError:
+            assert not (root / "dup-output").exists()
         examples[0]["consent"] = False
         source.write_text("".join(json.dumps(x) + "\n" for x in examples))
         try:
