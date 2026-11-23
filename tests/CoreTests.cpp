@@ -1157,6 +1157,9 @@ private slots:
             QVERIFY(recalled.contains("bell tower"));
             QVERIFY(recalled.contains("Following Ember reply excerpt"));
             QVERIFY(recalled.contains("Leon carefully explained"));
+            const QString bothMatch = db.historicalExcerpts(story, "silver compass");
+            QCOMPARE(bothMatch.count("[Earlier saved conversation]"), 1);
+            QVERIFY(bothMatch.contains("Leon carefully explained"));
             QVERIFY(recalled.indexOf("[User excerpt]") <
                     recalled.indexOf("[Following Ember reply excerpt]"));
             QVERIFY(!recalled.contains("Lantern"));
@@ -1190,7 +1193,7 @@ private slots:
         QVERIFY(db.append(project, "you",
             "Archivist Mara stored the silver compass beneath the western bell tower."));
         QVERIFY(db.append(project, "ember",
-            "Mara promised Leon they would return after midnight."));
+            "Mara promised Leon they would return after midnight with the silver compass."));
         QVERIFY(db.append(unrelated, "you",
             "Lantern is the owl at the quiet library."));
         QVERIFY(db.append(current, "you",
@@ -1201,6 +1204,7 @@ private slots:
         QVERIFY(recalled.contains("bell tower"));
         QVERIFY(recalled.contains("Following Ember reply excerpt"));
         QVERIFY(recalled.contains("Mara promised Leon"));
+        QCOMPARE(recalled.count("[Saved chat:"), 1); // one user/reply pair
         QVERIFY(!recalled.contains("Lantern"));
         const QString assistantHit = db.relatedSavedExcerpts(
             current, "When did Mara promise Leon to return after midnight?");
