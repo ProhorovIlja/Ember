@@ -108,6 +108,24 @@ if ($VerifyInstall) {
     if ($setup.ExitCode -ne 0) { throw "Silent install failed: $($setup.ExitCode)" }
     $installedExe = Join-Path $install 'Ember.exe'
     if (!(Test-Path $installedExe)) { throw 'Ember.exe missing after install.' }
+    if ($RequireOfflineBundle) {
+        # A successfully launched Qt shell is NOT evidence that a multi-GB
+        # offline installer actually included its LLM, RU/EN ASR and TTS.
+        # Rehash every installed model, runtime and license file before
+        # considering this a complete install/uninstall smoke test.
+        $installedManifest = Join-Path $install 'offline-assets.json'
+        if (!(Test-Path -LiteralPath $installedManifest -PathType Leaf)) {
+            throw 'Offline asset inventory missing from the INSTALLED directory.'
+        }
+        $installedVerifyArgs = @('verify', '--root', $install,
+            '--manifest', $installedManifest, '--redistribution-required')
+        if ($RequireVoiceBundle) { $installedVerifyArgs += '--require-voice' }
+        & python (Join-Path $root 'tools/offline_bundle.py') @installedVerifyArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Installed LLM, RU/EN ASR, speech model or license failed SHA-256/metadata validation.'
+        }
+        Write-Host 'Installed model and native engine inventory verified against approved hashes.'
+    }
     $env:QT_QPA_PLATFORM = 'offscreen'
     $env:QT_QUICK_BACKEND = 'software'
     $env:QT_OPENGL = 'software'
