@@ -1143,6 +1143,8 @@ private slots:
                 "Archivist Mara hid the silver compass under the bell tower."));
             QVERIFY(db.append(unrelated, "you",
                 "Private unrelated owl named Lantern in a second session."));
+            QVERIFY(db.append(story, "ember",
+                "Leon carefully explained that the silver compass still points north."));
             QVERIFY(db.append(story, "you", QString::fromUtf8(
                 "Анна спрятала серебряный ключ в старом саду.")));
             for (int i = 0; i < 58; ++i) {
@@ -1153,7 +1155,13 @@ private slots:
                 "Where did Mara hide the silver compass?");
             QVERIFY2(recalled.contains("Mara"), qPrintable(recalled));
             QVERIFY(recalled.contains("bell tower"));
+            QVERIFY(recalled.contains("Following Ember reply excerpt"));
+            QVERIFY(recalled.contains("Leon carefully explained"));
             QVERIFY(!recalled.contains("Lantern"));
+            const QString earlierAnswer = db.historicalExcerpts(
+                story, "What did Leon explain about the compass?");
+            QVERIFY(earlierAnswer.contains("Preceding user request excerpt"));
+            QVERIFY(earlierAnswer.contains("bell tower"));
             QCOMPARE(db.historicalExcerpts(story, "and the what this"), QString());
             const QString ru = db.historicalExcerpts(story,
                 QString::fromUtf8("Где Анна спрятала серебряный ключ?"));
@@ -1189,7 +1197,14 @@ private slots:
             current, "Where is Mara's silver compass?");
         QVERIFY2(recalled.contains("silver compass"), qPrintable(recalled));
         QVERIFY(recalled.contains("bell tower"));
+        QVERIFY(recalled.contains("Following Ember reply excerpt"));
+        QVERIFY(recalled.contains("Mara promised Leon"));
         QVERIFY(!recalled.contains("Lantern"));
+        const QString assistantHit = db.relatedSavedExcerpts(
+            current, "When did Mara promise Leon to return after midnight?");
+        QVERIFY(assistantHit.contains("Preceding user request excerpt"));
+        QVERIFY(assistantHit.contains("western bell tower"));
+        QVERIFY(!assistantHit.contains("amber lighthouse"));
         QVERIFY(!recalled.contains("amber lighthouse"));
         QCOMPARE(db.relatedSavedExcerpts(current, "amber lighthouse"),
                  QString());
