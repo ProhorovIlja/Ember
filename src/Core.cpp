@@ -225,8 +225,16 @@ bool validNativeSpeechInventory(const QByteArray &body,
                     (gender != QStringLiteral("female") &&
                      gender != QStringLiteral("male"))) return false;
                 seenSpeakers.insert(name);
-                if (language != QStringLiteral("en") ||
-                    gender != QStringLiteral("female")) continue;
+                // speech.cpp's per-speaker "language" records the
+                // speaker's NATIVE language, not all languages that speaker
+                // can synthesize. Official Qwen3-TTS CustomVoice Vivian and
+                // Serena are native zh but can produce English when the
+                // synthesis request selects language=en. Requiring the
+                // speaker row to be en made the default voice impossible
+                // with the genuine upstream model.
+                // The MODEL must declare English globally and the speaker
+                // must still be a uniquely identified female voice.
+                if (gender != QStringLiteral("female")) continue;
                 if (name == selectedVoice) hasVoice = true;
                 englishSpeakers.append(name);
             }
