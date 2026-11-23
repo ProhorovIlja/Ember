@@ -105,12 +105,32 @@ jobs:
       - name: Execute core regressions
         shell: pwsh
         run: |
-          ctest --test-dir build -C Release --output-on-failure -V
+          # CTest already reports test success/failure. Never print an entire
+          # failing QCOMPARE payload, which may be tens of kilobytes of chat.
+          ctest --test-dir build -C Release
           $code = $LASTEXITCODE
-          if (Test-Path 'build/ember-test-report.txt') {
-            Get-Content 'build/ember-test-report.txt'
+          $report = 'build/ember-test-report.txt'
+          if (Test-Path -LiteralPath $report) {
+            # Only the test function, source location, and totals. Never
+            # include Actual/Expected strings, source content or user text.
+            $lines = @(Select-String -LiteralPath $report -Pattern '^(FAIL!|Totals:|\s+Loc:)' |
+              Select-Object -First 32 | ForEach-Object { $_.Line })
+            if ($lines.Count -eq 0) { $lines = @('No QtTest failure details found.') }
+            $summary = [string]::Join("`n", $lines)
+            # 4,000 UTF-16 units cannot exceed 16 KiB UTF-8 plus header.
+            if ($summary.Length -gt 4000) { $summary = $summary.Substring(0, 4000) }
+            Set-Content -LiteralPath 'build/ember-test-summary.txt' -Value $summary -Encoding utf8
+            Write-Host $summary
           }
           if ($code -ne 0) { throw "QtTest failed with code $code" }
+      - name: Upload bounded CoreTests failure summary
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ember-core-failure-summary
+          path: build/ember-test-summary.txt
+          retention-days: 1
+          if-no-files-found: ignore
       - name: Deploy dynamic Qt runtime
         shell: pwsh
         run: |
