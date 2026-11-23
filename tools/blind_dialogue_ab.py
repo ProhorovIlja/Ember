@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import random
+import re
 import time
 from pathlib import Path
 from urllib.request import Request
@@ -54,6 +55,7 @@ SUITE_HASH = hashlib.sha256(json.dumps(SCENARIOS, ensure_ascii=False,
         separators=(",", ":")).encode("utf-8")).hexdigest()
 MAX_CAPTURE = 256 * 1024
 MAX_ANSWER = 12000
+THOUGHT_MARKER = re.compile(r"<\s*/?\s*think\b", re.IGNORECASE)
 
 
 def request_messages(system, turns, temperature, top_p, seed):
@@ -102,7 +104,7 @@ def request_once(system, turns, temperature, top_p, seed):
              msg["reasoning_content"].strip())):
         raise ValueError("Unexpected role or leaked reasoning in model response")
     if (not isinstance(answer, str) or not answer.strip() or
-            len(answer) > MAX_ANSWER or "<think" in answer.lower() or
+            len(answer) > MAX_ANSWER or THOUGHT_MARKER.search(answer) or
             "\x00" in answer):
         raise ValueError("Empty, oversized or unfiltered model answer")
     return answer, round((time.perf_counter() - start) * 1000, 1)
@@ -132,7 +134,7 @@ def validate_capture(path):
                     not isinstance(turn["text"], str) or
                     not 0 < len(turn["text"]) <= MAX_ANSWER or
                     "\x00" in turn["text"] or
-                    "<think" in turn["text"].lower() or
+                    THOUGHT_MARKER.search(turn["text"]) or
                     isinstance(turn["latency_ms"], bool) or
                     not isinstance(turn["latency_ms"], (int, float)) or
                     not math.isfinite(turn["latency_ms"]) or
@@ -232,6 +234,14 @@ def self_test():
         try:
             validate_capture(root / "short.json")
             raise AssertionError("Missing dialogue turn accepted")
+        except ValueError:
+            pass
+        altered = json.loads(json.dumps(fixture))
+        altered["scenarios"][0]["answers"][0]["text"] = "< think >secret</ think >"
+        single.save_new_json(root / "thought.json", altered)
+        try:
+            validate_capture(root / "thought.json")
+            raise AssertionError("Hidden reasoning accepted")
         except ValueError:
             pass
         altered = json.loads(json.dumps(fixture))
