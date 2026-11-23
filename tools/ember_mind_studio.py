@@ -10,7 +10,9 @@ import hashlib
 import json
 import math
 import os
+import re
 import tempfile
+import unicodedata
 from pathlib import Path
 
 SCHEMA = "ember-mind-sft-v1"
@@ -74,6 +76,25 @@ def validate_example(item):
         fail("Sample must end with an assistant response")
     return item
 
+def normalized_user_turns(messages):
+    """Case/Unicode/whitespace-normalized user prompts for leakage checks.
+
+    A duplicated user-side exchange across different groups is not an
+    independent evaluation example even if its assistant completion differs.
+    Normalization is used for fingerprints ONLY, never to modify training text.
+    """
+    if not isinstance(messages, list):
+        fail("Messages must be a list")
+    prompts = []
+    for message in messages:
+        if isinstance(message, dict) and message.get("role") == "user":
+            text = unicodedata.normalize("NFKC", message["content"])
+            prompts.append(re.sub(r"\\s+", " ", text).strip().casefold())
+    if not prompts:
+        fail("Example has no user turns")
+    return sha(canonical(prompts))
+
+
 def unique_json_keys(pairs):
     result = {}
     for name, value in pairs:
@@ -88,6 +109,7 @@ def read_examples(path):
             not 0 < path.stat().st_size <= 32 * 1024 * 1024):
         fail("Input must be a real local JSONL file <= 32 MiB")
     rows, ids, contents, group_tasks = [], set(), set(), {}
+    prompt_groups = {}
     with path.open(encoding="utf-8-sig") as f:
         for i, line in enumerate(f, 1):
             if i > 20000 or not line.strip() or len(line) > 512 * 1024:
@@ -100,6 +122,11 @@ def read_examples(path):
                 fail("Malformed JSONL example")
             sample_id, group, task = obj["sample_id"], obj["group_id"], obj["task"]
             content_fp = sha(canonical(obj["messages"]))
+            prompt_fp = normalized_user_turns(obj["messages"])
+            earlier = prompt_groups.setdefault(prompt_fp, group)
+            if earlier != group:
+                fail("Same normalized user prompts found in distinct "
+                     "conversation groups: independent eval is unsafe")
             if sample_id in ids or content_fp in contents:
                 fail("Duplicate sample ID or message sequence")
             ids.add(sample_id)
@@ -219,6 +246,26 @@ def self_test():
             raise AssertionError("Duplicate accepted")
         except ValueError:
             assert not (root / "duplicate-out").exists()
+        # Same user-facing question with different assistant completions
+        # is still train/eval leakage when groups can split independently.
+        repeated = dict(examples[0], sample_id="reworded-answer",
+                        group_id="other-group",
+                        messages=[
+                            {"role": "user",
+                             "content": "  " + examples[0]["messages"][0]["content"].upper() + "   "},
+                            {"role": "assistant",
+                             "content": "A different synthetic answer."}])
+        leaked = root / "cross-group-prompt.jsonl"
+        leaked.write_text(source.read_text(encoding="utf-8") +
+                          json.dumps(repeated) + "\\n", encoding="utf-8")
+        try:
+            read_examples(leaked)
+            raise AssertionError("Cross-group normalized prompt leak accepted")
+        except ValueError:
+            pass
+        # Normalization must never rewrite the user's actual training text.
+        assert normalized_user_turns(examples[0]["messages"]) == (
+            normalized_user_turns(repeated["messages"]))
         for field in ("task", "language", "rights"):
             bad_unhashable = dict(examples[0], **{field: []})
             try:
