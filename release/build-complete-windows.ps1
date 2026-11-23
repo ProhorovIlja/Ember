@@ -9,6 +9,11 @@ param(
     [Parameter(Mandatory=$true)][string]$ApprovedManifest,
     [Parameter(Mandatory=$true)][string]$DistributionDirectory,
     [Parameter(Mandatory=$true)][string]$Version,
+    [string]$EnglishWav = '',
+    [string]$EnglishReference = '',
+    [string]$RussianWav = '',
+    [string]$RussianReference = '',
+    [ValidateRange(0.0,1.0)][double]$MaxAsrWer = 0.25,
     [switch]$SkipLiveEngineChecks
 )
 Set-StrictMode -Version Latest
@@ -80,6 +85,11 @@ $arguments = @{
     ApprovedManifest = $ApprovedManifest
     DistributionDirectory = $target
     Version = $Version
+    EnglishWav = $EnglishWav
+    EnglishReference = $EnglishReference
+    RussianWav = $RussianWav
+    RussianReference = $RussianReference
+    MaxAsrWer = $MaxAsrWer
 }
 if ($SkipLiveEngineChecks) { $arguments.SkipLiveEngineChecks = $true }
 & (Join-Path $root 'release/build-complete-offline.ps1') @arguments
