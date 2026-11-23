@@ -349,6 +349,7 @@ private:
     QString m_pendingImageId;
     bool m_brainVisionMode = false;
     bool m_brainSupportsThinking = false; // parsed once from loaded GGUF metadata
+    bool m_brainQwen35 = false; // documented sampling family
     QStringList m_voiceQueue;
     QVariantList m_messages;
     QList<EmberCore::Turn> m_history;
