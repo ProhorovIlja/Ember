@@ -2073,6 +2073,142 @@ private slots:
         source.close();
         QVERIFY(!EmberLocalEdit::applyApprovedEdit(plan, backupDir).ok());
     }
+    void newSourceFileRequiresFullReviewAndCannotOverwrite() {
+        using namespace EmberLocalEdit;
+        QTemporaryDir scratch;
+        QVERIFY(scratch.isValid());
+        const QString root = scratch.path();
+        QVERIFY(QDir().mkpath(root + "/src"));
+        const QString target = root + "/src/component.cpp";
+        const QString source = QStringLiteral(
+            "#include <QString>\n"
+            "QString greet() { return QStringLiteral(\"Ember\"); }\n");
+        const auto plan = planNewFileWithinProject(
+            root, "src/component.cpp", source);
+        QVERIFY2(plan.ok(), qPrintable(plan.error));
+        QCOMPARE(plan.path, target);
+        QVERIFY(!QFileInfo::exists(target));
+        QCOMPARE(plan.proposedBytes, source.toUtf8());
+        QVERIFY(plan.displayPreview.contains(source));
+        QVERIFY(plan.displayPreview.contains("NOT WRITTEN"));
+        QCOMPARE(plan.sha256.size(), 32);
+        const auto applied = applyApprovedNewFile(plan);
+        QVERIFY2(applied.ok(), qPrintable(applied.error));
+        QFile output(target);
+        QVERIFY(output.open(QIODevice::ReadOnly));
+        QCOMPARE(output.readAll(), source.toUtf8());
+        output.close();
+        // Calling Apply twice must not turn a create operation into overwrite.
+        QVERIFY(!applyApprovedNewFile(plan).ok());
+        const auto duplicate = planNewFileWithinProject(
+            root, "src/component.cpp", "changed");
+        QVERIFY(!duplicate.ok());
+        QFile unchanged(target);
+        QVERIFY(unchanged.open(QIODevice::ReadOnly));
+        QCOMPARE(unchanged.readAll(), source.toUtf8());
+        for (const QString &path : {
+                 QString("../escape.cpp"), QString("/tmp/escape.cpp"),
+                 QString("src/../../bad.cpp"), QString("src/.hidden.cpp"),
+                 QString("src/CON.cpp"), QString("src/secret.pem"),
+                 QString("src/missing/created.cpp"),
+                 QString("vendor/evil.cpp"), QString("src/bad?.cpp"),
+                 QString("src/bad.cpp."), QString("src/../component.cpp")}) {
+            QVERIFY2(!planNewFileWithinProject(root, path, source).ok(),
+                     qPrintable(path));
+        }
+        QVERIFY(!planNewFileWithinProject(
+            root, "src/empty.cpp", "").ok());
+        QVERIFY(!planNewFileWithinProject(
+            root, "src/giant.cpp", QString(8001, 'a')).ok());
+        QVERIFY(!planNewFileWithinProject(
+            root, "src/control.cpp", "text\n\x01").ok());
+        // A competing user-created file after preview must block Apply.
+        const auto stale = planNewFileWithinProject(
+            root, "src/race.cpp", "original candidate\n");
+        QVERIFY2(stale.ok(), qPrintable(stale.error));
+        QFile competing(root + "/src/race.cpp");
+        QVERIFY(competing.open(QIODevice::WriteOnly | QIODevice::NewOnly));
+        QCOMPARE(competing.write("owned by the user"), qint64(17));
+        competing.close();
+        QVERIFY(!applyApprovedNewFile(stale).ok());
+        QVERIFY(competing.open(QIODevice::ReadOnly));
+        QCOMPARE(competing.readAll(), QByteArray("owned by the user"));
+        competing.close();
+    }
+    void localAgentNewSourceProposalToolIsPermissionScoped() {
+        using namespace EmberAgent;
+        const QJsonArray messages{
+            QJsonObject{{"role", "system"}, {"content", "Inspect project first"}},
+            QJsonObject{{"role", "user"}, {"content", "Create a module"}}
+        };
+        const auto inspect = modelRequest(messages, 2, Scope::LocalProject, false);
+        QCOMPARE(inspect.value("tools").toArray().size(), 3);
+        const auto propose = modelRequest(messages, 2, Scope::LocalProject, true);
+        QCOMPARE(propose.value("tools").toArray().size(), 6);
+        QCOMPARE(propose.value("tools").toArray().last().toObject()
+                     .value("function").toObject().value("name").toString(),
+                 QString("propose_new_file"));
+        const auto gh = modelRequest(messages, 2, Scope::GitHubRepository, true);
+        QCOMPARE(gh.value("tools").toArray().size(), 2);
+        const auto oneCall = [](const QString &toolName,
+                                const QJsonObject &args) {
+            const auto call = QJsonObject{
+                {"id", "new_1"}, {"type", "function"},
+                {"function", QJsonObject{
+                    {"name", toolName},
+                    {"arguments", QString::fromUtf8(
+                        QJsonDocument(args).toJson(QJsonDocument::Compact))}
+                }}
+            };
+            return QJsonDocument(QJsonObject{
+                {"choices", QJsonArray{QJsonObject{
+                    {"finish_reason", "tool_calls"},
+                    {"message", QJsonObject{{"role", "assistant"},
+                                             {"tool_calls", QJsonArray{call}}}}
+                }}}
+            }).toJson();
+        };
+        const QJsonObject args{{"path", "src/future.cpp"},
+                               {"content", "int answer() { return 42; }\n"}};
+        const auto result = parseModelResponse(
+            oneCall("propose_new_file", args), Scope::LocalProject, true);
+        QVERIFY2(result.ok(), qPrintable(result.error));
+        QCOMPARE(result.tool, QString("propose_new_file"));
+        QCOMPARE(result.path, QString("src/future.cpp"));
+        QCOMPARE(result.newText, QString("int answer() { return 42; }\n"));
+        const auto assistant = assistantToolMessage(result);
+        const auto function = assistant.value("tool_calls").toArray().first()
+                                 .toObject().value("function").toObject();
+        QCOMPARE(function.value("name").toString(), QString("propose_new_file"));
+        const QJsonDocument encoded = QJsonDocument::fromJson(
+            function.value("arguments").toString().toUtf8());
+        QVERIFY(encoded.isObject());
+        QCOMPARE(encoded.object(), args);
+        QVERIFY(!parseModelResponse(
+            oneCall("propose_new_file", args), Scope::LocalProject, false).ok());
+        QVERIFY(!parseModelResponse(
+            oneCall("propose_new_file", args), Scope::GitHubRepository, true).ok());
+        QVERIFY(!parseModelResponse(
+            oneCall("propose_new_file", args), Scope::WikipediaResearch, true).ok());
+        QVERIFY(!parseModelResponse(
+            oneCall("propose_new_file", QJsonObject{
+                {"path", "src/future.cpp"}, {"content", "safe\n"},
+                {"command", "powershell.exe"}}), Scope::LocalProject, true).ok());
+        QVERIFY(!parseModelResponse(
+            oneCall("propose_new_file", QJsonObject{
+                {"path", "src/future.cpp"}, {"content", ""}}),
+                Scope::LocalProject, true).ok());
+        QVERIFY(!parseModelResponse(
+            oneCall("propose_new_file", QJsonObject{
+                {"path", "src/future.cpp"}, {"content", QString(8001, 'a')}}),
+                Scope::LocalProject, true).ok());
+        QVERIFY(!parseModelResponse(
+            oneCall("propose_new_file", QJsonObject{
+                {"path", "src/future.cpp"}, {"content", "valid"},
+                {"repository", "attacker/repo"}}),
+                Scope::LocalProject, true).ok());
+    }
+
     void sourcePatchBatchMustReadEveryFileBeforeProposal() {
         using namespace EmberAgent;
         QSet<QString> read;
