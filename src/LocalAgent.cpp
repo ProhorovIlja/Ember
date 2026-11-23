@@ -59,7 +59,9 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
         request.insert("chat_template_kwargs",
             QJsonObject{{"enable_thinking", enableThinking}});
     if (qwen35Sampling)
-        EmberCore::applyQwen35SamplingDefaults(request, enableThinking);
+        EmberCore::applyQwen35SamplingDefaults(
+            request, enableThinking,
+            enableThinking && scope == Scope::LocalProject);
     if (callsRemaining > 0) {
         if (scope == Scope::GitHubRepository) {
             request.insert("tools", QJsonArray{
