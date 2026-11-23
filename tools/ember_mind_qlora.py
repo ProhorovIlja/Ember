@@ -104,6 +104,8 @@ def inspect_base(directory):
     token_cfg = require_file(root / "tokenizer_config.json", 8 * 1024 * 1024)
     # Sanity check that actual local shards are present, not just config.json.
     idx = root / "model.safetensors.index.json"
+    if idx.is_symlink():
+        fail("Model index cannot be a symlink")
     if idx.is_file():
         mapping = read_json(idx, 8 * 1024 * 1024).get("weight_map")
         if not isinstance(mapping, dict) or not mapping:
@@ -120,11 +122,18 @@ def inspect_base(directory):
         require_file(shard, 32 * 1024 * 1024 * 1024)
     if sum(p.stat().st_size for p in shards) < 256 * 1024 * 1024:
         fail("Model files too small to be a real 4B checkpoint")
+    # Compute actual SHA-256, not file sizes alone. Safetensors shards can be
+    # silently replaced with identically sized bytes between prep and train.
+    # This one-time preflight may take time on a full HF checkpoint.
+    shard_checksums = [{"name": p.name, "bytes": p.stat().st_size,
+                        "sha256": digest(p)} for p in shards]
     return {"path": str(root), "config_sha256": digest(root / "config.json"),
             "tokenizer_sha256": digest(tokenizer),
             "tokenizer_config_sha256": digest(token_cfg),
             "shard_count": len(shards),
-            "shard_sizes": [p.stat().st_size for p in shards]}
+            "shard_sizes": [p.stat().st_size for p in shards],
+            "shards": shard_checksums,
+            "index_sha256": digest(idx) if idx.is_file() else None}
 
 def yaml_string(value):
     # JSON double-quoted strings are also YAML-safe. This avoids path/config
@@ -318,6 +327,16 @@ def self_test():
         try:
             run_once(target, False)
             raise AssertionError("Unapproved training launch allowed")
+        except ValueError:
+            pass
+        # Simulate replacement of one shard without changing its byte count.
+        # A size-only fingerprint must never authorize the training launch.
+        with (base / "model.safetensors").open("r+b") as f:
+            f.write(b"changed-with-same-size")
+        assert inspect_base(base)["shards"] != x["base"]["shards"]
+        try:
+            run_once(target, True)
+            raise AssertionError("Same-size changed model weights accepted")
         except ValueError:
             pass
         (data / "train.jsonl").write_text('{"messages":[]}\n')
