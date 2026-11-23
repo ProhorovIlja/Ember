@@ -199,26 +199,46 @@ QVariantList SessionStore::search(const QString &text, int limit) const {
     QVariantList result;
     const QString term = text.trimmed();
     if (!m_ready || term.isEmpty() || term.size() > 120) return result;
-    // Quote the LIKE wildcard and escape character: a literal 100% search
-    // must not turn into an unbounded wildcard query.
-    QString escaped = term;
-    escaped.replace("\\", "\\\\");
-    escaped.replace("%", "\\%");
-    escaped.replace("_", "\\_");
-    const QString pattern = "%" + escaped + "%";
+    // SQLite's built-in LIKE normally folds ASCII only. Include bounded
+    // lowercase/uppercase/initial-capital variants for ordinary RU/EN names
+    // without creating a second persistent FTS index or touching other chats.
+    QStringList forms{term};
+    const bool nonAsciiLetters = std::any_of(term.cbegin(), term.cend(),
+        [](QChar ch) { return ch.unicode() > 127 && ch.isLetter(); });
+    if (nonAsciiLetters) {
+        const QString lower = term.toLower();
+        const QString upper = term.toUpper();
+        const QString capitalized = lower.left(1).toUpper() + lower.mid(1);
+        for (const QString &form : {lower, upper, capitalized})
+            if (!forms.contains(form)) forms.append(form);
+    }
+    // Quote every LIKE wildcard and escape character. Searching for "100%"
+    // must remain literal even when several case variants are bound.
+    QStringList patterns;
+    for (QString form : forms) {
+        form.replace("\\", "\\\\");
+        form.replace("%", "\\%");
+        form.replace("_", "\\_");
+        patterns.append("%" + form + "%");
+    }
+    const auto matchClause = [&](const QString &column) {
+        QStringList tests;
+        for (qsizetype i = 0; i < patterns.size(); ++i)
+            tests.append(column + " LIKE ? ESCAPE '\\'");
+        return "(" + tests.join(" OR ") + ")";
+    };
     QSqlQuery query(m_db);
     query.prepare(
         "SELECT s.id, s.title, s.updated_at,"
         "COALESCE((SELECT substr(m.body,1,65664) FROM messages m "
-        "WHERE m.session_id=s.id AND m.body LIKE ? ESCAPE '\\' "
-        "ORDER BY m.id DESC LIMIT 1),'') "
-        "FROM sessions s WHERE s.title LIKE ? ESCAPE '\\' "
-        "OR EXISTS(SELECT 1 FROM messages m WHERE m.session_id=s.id "
-        "AND m.body LIKE ? ESCAPE '\\') "
+        "WHERE m.session_id=s.id AND " + matchClause("m.body") +
+        " ORDER BY m.id DESC LIMIT 1),'') "
+        "FROM sessions s WHERE " + matchClause("s.title") +
+        " OR EXISTS(SELECT 1 FROM messages m WHERE m.session_id=s.id "
+        "AND " + matchClause("m.body") + ") "
         "ORDER BY s.updated_at DESC, s.rowid DESC LIMIT ?");
-    query.addBindValue(pattern);
-    query.addBindValue(pattern);
-    query.addBindValue(pattern);
+    for (int occurrence = 0; occurrence < 3; ++occurrence)
+        for (const QString &pattern : patterns) query.addBindValue(pattern);
     query.addBindValue(std::clamp(limit, 1, 100));
     if (!query.exec()) return result;
     while (query.next()) {
