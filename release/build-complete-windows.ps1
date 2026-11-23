@@ -74,6 +74,27 @@ if ($target.StartsWith(($build.TrimEnd([char[]]@('\','/')) +
         [System.StringComparison]::OrdinalIgnoreCase)) {
     throw 'Build and distribution trees must not overlap.'
 }
+# Fail FAST on a missing or license-unapproved multi-gigabyte model
+# bundle instead of wasting time compiling Qt first. This is only local
+# hashing and metadata checks; no model is downloaded or launched.
+$py = Get-Command python.exe -ErrorAction SilentlyContinue
+if (-not $py) { throw 'Python 3 is required on the manual Windows build machine.' }
+$approvedManifest = (Resolve-Path -LiteralPath $ApprovedManifest -ErrorAction Stop).Path
+& $py.Source (Join-Path $root 'tools/offline_bundle.py') verify `
+    --root $assetPath --manifest $approvedManifest `
+    --redistribution-required --require-voice
+if ($LASTEXITCODE -ne 0) {
+    throw 'Complete approved LLM/RU-EN ASR/English voice assets are absent, corrupt or unlicensed.'
+}
+if (-not $Version.EndsWith('-dev')) {
+    if ($SkipLiveEngineChecks) {
+        throw 'Stable Ember cannot bypass real dual-model inference.'
+    }
+    & $py.Source (Join-Path $root 'release/verify_release.py') --tag ('v' + $Version)
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Stable release evidence gates failed before native compilation.'
+    }
+}
 # One foreground compile, no GitHub Actions and no network setup.
 & cmake.exe -S $root -B $build -G 'Visual Studio 17 2022' -A x64 `
     "-DCMAKE_PREFIX_PATH=$qt" '-DBUILD_TESTING=ON'
@@ -99,7 +120,7 @@ Copy-Item -LiteralPath (Join-Path $root 'docs/SETUP.md') -Destination (Join-Path
 $arguments = @{
     ApplicationDirectory = $app
     AssetsDirectory = $assetPath
-    ApprovedManifest = $ApprovedManifest
+    ApprovedManifest = $approvedManifest
     DistributionDirectory = $target
     Version = $Version
     EnglishWav = $EnglishWav
