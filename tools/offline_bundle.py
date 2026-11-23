@@ -369,6 +369,14 @@ def assemble(staged_root, manifest, application, output, require_voice=False):
             raise ValueError("Deployed Qt app contains private data, secrets or untracked models")
         if not (candidate.is_file() or candidate.is_dir()):
             raise ValueError("Unexpected native application file type")
+        # A complete end-user package must not include test utilities,
+        # compiler/debug symbol files or Qt6Test. They bloat downloads,
+        # disclose local source paths and differ from approved runtime files.
+        if candidate.is_file() and (
+            candidate.suffix.casefold() in (".pdb", ".ilk", ".exp", ".obj", ".lib")
+            or candidate.name.casefold() in (
+                "ember-core-tests.exe", "ember-icon-builder.exe", "qt6test.dll")):
+            raise ValueError("Development or debug binary found in final app payload")
     out = Path(output)
     if out.exists():
         raise ValueError("Refusing to overwrite existing assembled directory")
