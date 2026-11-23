@@ -458,6 +458,133 @@ EditResult applyApprovedNewFile(const NewFilePlan &plan) {
     return result;
 }
 
+NewFileBatchPlan planNewFilesWithinProject(
+        const QString &selectedRoot, const QVector<NewFileSource> &sources) {
+    NewFileBatchPlan result;
+    if (sources.isEmpty() || sources.size() > 3) {
+        result.error = "A new-file batch needs one to three source files.";
+        return result;
+    }
+    QSet<QString> seenPaths;
+    qsizetype totalBytes = 0;
+    qsizetype totalCharacters = 0;
+    QStringList previews;
+    for (const auto &source : sources) {
+        auto single = planNewFileWithinProject(
+            selectedRoot, source.relativePath, source.content);
+        if (!single.ok()) {
+            result.error = "New-file batch refused: " + single.error;
+            return result;
+        }
+        // Case-insensitive on every platform to prevent a batch that passes
+        // on Linux but overwrites an identically named Windows target.
+        const QString key = QDir::cleanPath(
+            QDir::fromNativeSeparators(single.path)).toCaseFolded();
+        if (seenPaths.contains(key)) {
+            result.error = "Duplicate new-file paths in one proposal.";
+            return result;
+        }
+        seenPaths.insert(key);
+        totalBytes += single.proposedBytes.size();
+        totalCharacters += source.content.size();
+        if (totalBytes > 20000 || totalCharacters > 12000) {
+            result.error = "New-file batch exceeds 20 KiB UTF-8 "
+                           "or 12000 source characters.";
+            return result;
+        }
+        previews.append(single.displayPreview);
+        result.files.append(std::move(single));
+    }
+    result.displayPreview = QString(
+        "NEW FILE BATCH (NOT WRITTEN): %1 source files\n"
+        "Complete proposed source bytes: %2\n"
+        "No files, directories or processes will be changed without approval.\n"
+        "No existing target may be overwritten.\n"
+        "Multi-file creation is NOT crash-atomic; partial files may need "
+        "manual recovery after power loss.\n\n")
+        .arg(result.files.size()).arg(totalBytes) +
+        previews.join("\n\n=========== NEXT SOURCE FILE ===========\n\n");
+    return result;
+}
+NewFileBatchResult applyApprovedNewFiles(const NewFileBatchPlan &batch) {
+    NewFileBatchResult result;
+    if (!batch.ok() || batch.files.size() > 3) {
+        result.error = "Invalid new-file batch; no changes made.";
+        return result;
+    }
+    // Revalidate ALL files before the first write to avoid predictable
+    // partial writes when any target was created after the approval preview.
+    QVector<NewFilePlan> validated;
+    QSet<QString> seen;
+    qsizetype bytes = 0;
+    qsizetype chars = 0;
+    for (const auto &plan : batch.files) {
+        if (!plan.ok() || plan.sha256.size() != 32 ||
+            sha(plan.proposedBytes) != plan.sha256) {
+            result.error = "Staged new-file content hash changed.";
+            return result;
+        }
+        const QString text = QString::fromUtf8(plan.proposedBytes);
+        const auto fresh = planNewFileWithinProject(
+            plan.root, plan.relativePath, text);
+        if (!fresh.ok() || fresh.path != plan.path ||
+            fresh.proposedBytes != plan.proposedBytes ||
+            fresh.sha256 != plan.sha256) {
+            result.error = "New-file target changed since human review.";
+            return result;
+        }
+        const QString key = QDir::cleanPath(
+            QDir::fromNativeSeparators(fresh.path)).toCaseFolded();
+        if (seen.contains(key)) {
+            result.error = "New-file batch contains duplicate targets.";
+            return result;
+        }
+        seen.insert(key);
+        bytes += fresh.proposedBytes.size();
+        chars += text.size();
+        if (bytes > 20000 || chars > 12000) {
+            result.error = "Approved batch size limit exceeded.";
+            return result;
+        }
+        validated.append(fresh);
+    }
+    QVector<NewFilePlan> created;
+    for (const auto &plan : validated) {
+        const auto outcome = applyApprovedNewFile(plan);
+        if (outcome.ok()) {
+            created.append(plan);
+            continue;
+        }
+        // Best-effort rollback ONLY of exactly the bytes we created.
+        // Never delete a target whose data or type has changed since write.
+        QStringList retained;
+        for (int i = created.size() - 1; i >= 0; --i) {
+            const auto &done = created.at(i);
+            const QFileInfo info(done.path);
+            QFile check(done.path);
+            if (!info.isFile() || info.isSymLink() || info.isJunction() ||
+                !check.open(QIODevice::ReadOnly) ||
+                check.readAll() != done.proposedBytes) {
+                retained.append(done.path);
+                continue;
+            }
+            check.close();
+            if (!QFile::remove(done.path))
+                retained.append(done.path);
+        }
+        result.createdPaths = retained;
+        result.error = "New-file batch stopped: " + outcome.error +
+            (retained.isEmpty()
+                ? QString(" Earlier new files rolled back.")
+                : QString(" Some earlier new files may remain; inspect: ") +
+                  retained.join(", "));
+        return result;
+    }
+    for (const auto &plan : created)
+        result.createdPaths.append(plan.path);
+    return result;
+}
+
 EditBatchPlan planWithinProjectBatch(
     const QString &selectedRoot, const QVector<SourceReplacement> &changes) {
     EditBatchPlan batch;
