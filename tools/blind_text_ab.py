@@ -145,7 +145,11 @@ def save_new_json(path, payload):
     file = Path(path)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_NOFOLLOW", 0)
-    with os.fdopen(os.open(file, flags, 0o600), "w", encoding="utf-8") as handle:
+    try:
+        fd = os.open(file, flags, 0o600)
+    except FileExistsError:
+        raise ValueError("Output already exists: refusing to overwrite") from None
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
         handle.flush()
