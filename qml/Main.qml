@@ -750,8 +750,19 @@ ApplicationWindow {
                     }
                     Item { Layout.fillWidth: true }
                     PillButton {
-                        text: (ember.brainReady || ember.brainLaunching) ? "Stop brain" : "Start brain"
-                        onClicked: (ember.brainReady || ember.brainLaunching) ? ember.stopBrain() : ember.startBrain()
+                        text: (ember.brainReady || ember.brainLaunching ||
+                               ember.speechServerRunning) ? "Stop Ember" : "Start Ember"
+                        enabled: !ember.dictationTranscribing
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 700
+                        ToolTip.text: "One click starts or stops the local brain and, when selected, native voice/ASR. No cloud model and no automatic startup."
+                        onClicked: {
+                            if (ember.brainReady || ember.brainLaunching ||
+                                ember.speechServerRunning)
+                                ember.stopLocalEngines()
+                            else
+                                ember.startLocalEngines()
+                        }
                     }
                 }
 
