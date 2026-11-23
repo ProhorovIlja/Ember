@@ -2,6 +2,26 @@
 
 Goal: determine an **actual best voice for the target Ryzen 5 5600 / RTX 4070 12 GB**, rather than announcing an unmeasured winner. This is a development protocol, not a completed benchmark.
 
+## 23 November 2026 — clause-aware long-form TTS delivery
+
+The C++ text-to-speech chunker `EmberCore::speechChunks` now prefers
+**completed full sentences** as before; when a long passage contains no
+sentence end within the bounded TTS request, it tries a **comma, colon or
+em dash** followed by whitespace in the latter half of the allowed window
+before falling back to a word-space cut. This is especially relevant to
+stories, roleplay and emotionally nuanced conversational speech: separately
+synthesized chunks can otherwise adopt an unnatural final cadence in the
+middle of a clause. The algorithm preserves the original words and
+punctuation, caps each chunk, and never downloads models or adds a
+background process.
+
+Windows C++ tests check preservation and boundary decisions in long
+comma- and em-dash-separated passages. **This is a plausible prosody
+improvement, not proof of more natural audio.** The real outcome must be
+measured with the human blind WAV A/B listening workflow, the same
+selected English female speaker, first audible sound timing, actual
+Windows playback and concurrent LLM+TTS VRAM figures.
+
 ## Compare these open, modular candidates
 
 | Model/adapter | Reason to test | Limitation |
