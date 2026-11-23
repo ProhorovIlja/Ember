@@ -593,3 +593,66 @@ RU/EN ASR and text model quality; concurrent GPU performance; fully
 permissioned GitHub/Drive/local-file workflows, and real Win10/11 manual
 functional acceptance. Never advertise these source improvements as
 finished EmberMind/Ember Voice weights or a stable public release.
+
+## Part 51 — actual jump-to-message for long local chat archives
+
+The previous search upgrade had one important limitation: it found the correct
+saved conversation but clicked into the latest 300 messages, so a match in a
+very old scene/log was still inaccessible without paging repeatedly.
+
+Implemented as source on the existing development branch:
+1. `src/SessionStore.h/.cpp`: every persisted message page now carries the
+   durable SQLite row ID, and search returns the ID of the SAME row used for
+   the text preview (not a separately selected match). A title-only result
+   carries "0" and follows ordinary latest-chat navigation.
+2. Stable, session-scoped window query: `messagesAround(session,id,40,40)`
+   validates row ownership and loads no more than 81 records. Indexed
+   `messagesBefore`, `messagesAfter`, `hasMessageBefore`,
+   `hasMessageAfter` and `latestMessageId` provide 100-row paging and
+   latest-view detection without allocating the full history.
+3. `src/EmberBackend.h/.cpp`: `openSessionAtMessage` returns the selected
+   zero-based row index; `loadEarlierMessages` is now based on a stable
+   oldest ID instead of page size, and `loadNewerMessages` and
+   `showLatestMessages` are exposed to QML. Existing latest chat context
+   remains the LLM's working history while the UI displays a historic
+   window. A new submitted prompt returns the UI to the latest saved
+   messages only after all request preflight checks pass.
+4. After successful SQLite writes, `appendMessage` and
+   `finishChatStream` attach the actual persisted row ID to the UI
+   message; an unfinished/unsaved preview is never assigned a fake ID.
+5. `qml/Main.qml`: clicking a content-search hit jumps to the exact
+   selected chat message, requests list positioning after QML model
+   updates, marks it with a restrained blue outline, and permits paging
+   forward/returning to the latest. Title-only and invalid hits use
+   separate safe paths.
+6. `tests/CoreTests.cpp`: creates 470 story messages interleaved with
+   another private chat to check correct latest matching ID, 81-row
+   selection, ID ordering, 100-row older/newer pages, no cross-session
+   leakage, deleted hits and empty sessions.
+
+Commits:
+bc13ed36862084e5626ca6fadc8239bd8078b8c6
+f1dc07debe538f473b5d17d2a20a177aa60e31f3
+0a82104724aeb15cab9110179aa0b792458d4af1
+93c855f30f55e06df82edd5948273c5b58bb33a2
+9ef74255c5668bb528aea44eae5e01130854d32b
+ae5f90ae1152af7fc3d43fb590abf6f41f1d403c
+e3cf8627a54830dd097baba018fc56584fd1768b
+74f8fac537d7cb802a23dca0029137d0e38e9e91
+
+Readback: all changed source files and functions were reread from the
+connected GitHub branch. A standalone Python sqlite3 reproduction tested
+the SQL search select + ordered cursor window against 470 interleaved
+story/other-session messages: selected index 40 of 81, and subsequent
+newer rows were correctly ordered; the title-only match returned ID zero.
+This validates SQL reasoning, NOT C++ compilation, QSQLITE runtime,
+interactive QML layout, Win10/11 audio, GPU inference or real model
+quality. The current environment has no installed Qt6 SDK; no Actions or
+scheduled jobs were launched.
+
+Still blocking finished premium Ember: acquire and license genuine offline
+model/engine payloads, full native clean Windows installer, real concurrent
+LLM/TTS/ASR validation on the RTX4070 12GB machine, natural EN female
+voice, RU/EN long ASR, tool and cloud-consent end-to-end QA, UI polish,
+performance and complete release acceptance. Do not claim an end-user
+installer, trained EmberMind/Ember Voice or stable public Release exists.
