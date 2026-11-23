@@ -68,6 +68,114 @@ After a PASS, still perform a real merge with PEFT/MergeKit and evaluate its
 outputs against both original adapters and the untouched checkpoint. Store
 training examples privately; only aggregate test results belong in Git.
 
+## Concrete local QLoRA run — opt-in, offline, experimental
+
+The code in [\`tools/ember_mind_qlora.py\`](../tools/ember_mind_qlora.py)
+goes beyond curation: it generates a **locally executable Axolotl training
+configuration** for the original full Hugging Face **Qwen3.5-4B** model
+(post-trained or Base checkpoint, subject to user-chosen source), pinned
+dataset and 12 GB-friendly conservative hyperparameters. It can also invoke
+one locally installed Axolotl command, but only on explicit user request
+with a separate CLI switch.
+
+**Do not confuse Qwen3.5 GGUF inference files with trainable Hugging Face
+safetensors.** The latter must have all original model shards, config, tokenizer
+and an independently recorded exact upstream model revision. The preflight
+checks file existence, minimum size and metadata; it **cannot** establish true
+weight provenance, verify training compatibility or physically measure VRAM.
+It does not download anything. Axolotl/CUDA/FlashAttention installation is a
+separate user-controlled environment preparation; the native Windows Ember
+application does not require those training libraries. Linux or WSL2 with
+the right CUDA toolkit is a reasonable training environment.
+
+1. Prepare human-reviewed **private** data using \`ember_mind_studio.py\`
+   outside the Git repository. A normal run produces \`train.jsonl\`,
+   \`eval.jsonl\` and \`report.json\` with explicit hashes and independent
+   grouped holdout.
+2. With model files and Axolotl already installed locally, generate a recipe
+   without training:
+
+   \`\`\`sh
+   python tools/ember_mind_qlora.py prepare \
+     --base-dir /mnt/d/Ember/private/qwen35-4b-hf \
+     --dataset-dir /mnt/d/Ember/private/sft-v1 \
+     --output-dir /mnt/d/Ember/private/qlora-v1 \
+     --base-revision ACTUAL_40_HEX_COMMIT_SHA \
+     --sequence-len 1024 --epochs 1
+   \`\`\`
+
+3. Independently inspect \`qlora-v1/axolotl.yaml\`, confirm the exact
+   Axolotl version/available GPU resources, and **manually** begin one run
+   only when desired:
+
+   \`\`\`sh
+   python tools/ember_mind_qlora.py train \
+     --run-dir /mnt/d/Ember/private/qlora-v1 \
+     --i-approve-one-shot-training
+   \`\`\`
+
+The train entry point sets Hugging Face offline environment variables and
+disables telemetry, and rechecks the source data and metadata fingerprints.
+**There is no scheduled training, automatic retries or cloud upload.**
+The initial YAML uses Qwen3.5's \`qwen3_5\` chat template, QLoRA 4-bit,
+LoRA rank 16, 1024-token sequences, no sample packing and gradient
+checkpointing. This is a candidate, NOT a benchmarked configuration;
+it may run out of 12 GB VRAM or need training-stack fixes. It excludes
+evaluation data from training; after training, compare against held-out,
+independent and real development/voice cases. A genuine trained adapter
+can later be pinned with \`adapter_merge_preflight.py\` and evaluated before
+any merge. Even a completed fine-tune cannot guarantee a better model
+without independent quality evidence.
+
+## Concrete single-speaker Ember Voice training corpus
+
+[\`tools/ember_voice_corpus.py\`](../tools/ember_voice_corpus.py)
+prepares the **official Qwen3-TTS Base fine-tuning input format**:
+\`{"audio": "...wav", "text": "...", "ref_audio": "...wav"}\`
+per JSONL line. It checks that every recording has explicitly declared
+consent, verifies 24 kHz mono 16-bit PCM, bounds audio durations and
+rejects severely silent/clipped samples, rejects unsafe paths, holds
+recording sessions out of the training set and uses one consistent
+\`ref_audio\`. It cannot verify the actual speaker identity, acoustic
+naturalness, recording permission or transcript accuracy.
+
+A private input manifest row should look like:
+
+\`\`\`json
+{"schema":"ember-voice-source-v1","audio":"line001.wav","text":"I was wondering if you'd like to talk for a while.","session":"session-001","consent":true}
+\`\`\`
+
+Create multiple such user-authorized utterances across at least two
+independent recording sessions; the program insists on at least four
+clips for the *software* preflight, but a genuinely natural stable voice
+requires **far more** clean, phonetically varied, consented speech and
+blind listening tests. A reference \`ref.wav\` must use the same authorized
+speaker. For example:
+
+\`\`\`sh
+python tools/ember_voice_corpus.py prepare \
+  --audio-root /mnt/d/Ember/private/voice-clips \
+  --manifest /mnt/d/Ember/private/voice-manifest.jsonl \
+  --reference ref.wav \
+  --output-dir /mnt/d/Ember/private/voice-v1
+\`\`\`
+
+This creates private \`train_raw.jsonl\`, \`eval_raw.jsonl\` and an aggregate
+\`report.json\` without moving audio or recording/transcribing anything.
+The output is ready as **input** for Qwen's published
+\`finetuning/prepare_data.py\` audio-code step, followed by its
+\`sft_12hz.py\` script against the correct local **0.6B/1.7B Base**
+checkpoint. Those upstream scripts have not been invoked or validated
+on the target RTX 4070, and the manifest tool does not train an acoustic
+model. Official 12 Hz Base is single-speaker training only; this should not
+be marketed as a Maya clone or guaranteed expressive voice.
+
+No personal recordings, transcripts, training shards or checkpoints are
+part of GitHub commits, Google Drive engineering notes or test fixtures.
+\`.gitignore\` additionally excludes common dataset and model extensions.
+The built-in self-tests use tiny synthetic waveforms and sparse placeholder
+model files; they never use a person's voice.
+
 ## What this does **not** provide yet
 
 - No actual weights are downloaded, fine-tuned, merged or evaluated in GitHub CI.
