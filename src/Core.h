@@ -38,7 +38,8 @@ qint64 speechAwareAsrFreshBytes(const QByteArray &candidate,
 QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source);
 // Examine the bounded, local GGUF metadata prefix for a supported Qwen3/3.5
 // architecture. Unknown/malformed files return false; never guess from a name.
-bool ggufSupportsThinkingFlag(const QString &modelPath);
+bool ggufSupportsThinkingFlag(const QString &modelPath,
+                              bool *isQwen35 = nullptr);
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, const QString &user, int maxTokens = 1024, double temperature = 0.8,
                         const QString &historicalExcerpts = {},
                         bool enableThinking = false,
@@ -60,6 +61,9 @@ ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep = fa
 // These are per-request controls: model weights and resident runtimes stay put.
 bool validSamplingTemperaturePercent(int percent);
 bool validSamplingTopPPercent(int percent);
+// Official Qwen3.5 thinking/nonthinking baseline, applied only when GGUF
+// metadata verifies qwen35/qwen35moe. User sampling overrides apply after.
+void applyQwen35SamplingDefaults(QJsonObject &request, bool thinking);
 bool applySamplingOverrides(QJsonObject &request, int temperaturePercent,
                             int topPPercent);
 // Windows: prove the IPv4 127.0.0.1 listener belongs to the exact managed
