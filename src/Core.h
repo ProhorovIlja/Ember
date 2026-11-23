@@ -75,8 +75,12 @@ bool ownedLoopbackTcpListener(quint16 port, quint64 processId);
 // Accept application/json with an optional charset for llama.cpp/speech.cpp.
 bool validManagedHealthResponse(const QByteArray &body, const QByteArray &contentType);
 // speech.cpp /v1/models must contain the selected Qwen3 TTS / ASR task(s),
-// sizes, languages and selected English female speaker. A healthy HTTP
-// port alone is not sufficient. Export only English female voice names.
+// sizes, global supported languages (including English for TTS) and the
+// selected verified female speaker. A speaker's language is NATIVE language,
+// not its complete synthesis capabilities: Qwen3-TTS Vivian/Serena are
+// native zh but the model can synthesize English. A healthy HTTP port alone
+// is insufficient. Export female speaker names usable for English synthesis;
+// accent and naturalness still require listening tests.
 bool validNativeSpeechInventory(const QByteArray &body, const QByteArray &contentType,
                                 const QString &ttsAlias, const QString &asrAlias,
                                 const QString &selectedVoice,
