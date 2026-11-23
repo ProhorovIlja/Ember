@@ -11,6 +11,7 @@ import json
 import math
 import os
 import random
+import re
 import time
 from pathlib import Path
 from urllib.request import ProxyHandler, HTTPRedirectHandler, Request, build_opener
@@ -48,15 +49,23 @@ def validate_endpoint(url):
         raise ValueError("Only the fixed localhost Ember text endpoint is allowed")
 
 
-def one_response(system, prompt, temperature, top_p, seed):
-    validate_endpoint(ENDPOINT)
-    body = json.dumps({
+def make_request(system, prompt, temperature, top_p, seed):
+    # Default-enabled Qwen3.5 hidden thinking must not eat the compact
+    # naturalness/voice-response benchmark's finite visible token budget.
+    return {
         "model": "ember", "stream": False,
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": prompt}],
         "temperature": temperature, "top_p": top_p,
-        "seed": seed, "max_tokens": 384
-    }, ensure_ascii=False).encode("utf-8")
+        "seed": seed, "max_tokens": 384,
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+
+
+def one_response(system, prompt, temperature, top_p, seed):
+    validate_endpoint(ENDPOINT)
+    body = json.dumps(make_request(system, prompt, temperature, top_p, seed),
+                      ensure_ascii=False).encode("utf-8")
     req = Request(ENDPOINT, data=body, method="POST",
                   headers={"Content-Type": "application/json", "Accept": "application/json"})
     start = time.perf_counter()
@@ -74,13 +83,20 @@ def one_response(system, prompt, temperature, top_p, seed):
         raise ValueError("Incomplete text answer")
     message = choice.get("message")
     answer = message.get("content") if isinstance(message, dict) else None
+    if (isinstance(message, dict) and
+            isinstance(message.get("reasoning_content"), str) and
+            message["reasoning_content"].strip()):
+        raise ValueError("Local template ignored the non-thinking request")
+    if isinstance(answer, str) and re.search(r"<\s*think\s*>", answer, re.I):
+        raise ValueError("Hidden reasoning leaked into text comparison")
     if not isinstance(answer, str) or not answer.strip() or len(answer) > MAX_ANSWER_CHARS:
         raise ValueError("Missing, oversized or non-text model answer")
     return answer, round((time.perf_counter() - start) * 1000, 1)
 
 
 def validate_configuration(config):
-    expected = {"temperature", "top_p", "seed", "max_tokens", "hardware_label"}
+    expected = {"temperature", "top_p", "seed", "max_tokens",
+                "hardware_label", "nonthinking_requested"}
     if not isinstance(config, dict) or set(config) != expected:
         raise ValueError("Capture has missing or unexpected sampling/hardware fields")
     for name, low, high in (("temperature", 0.1, 1.5), ("top_p", 0.1, 1.0)):
@@ -88,6 +104,8 @@ def validate_configuration(config):
         if (isinstance(value, bool) or not isinstance(value, (int, float))
                 or not math.isfinite(value) or not low <= value <= high):
             raise ValueError("Invalid capture sampling: " + name)
+    if config["nonthinking_requested"] is not True:
+        raise ValueError("Only explicit non-thinking captures can be compared")
     if (isinstance(config["seed"], bool) or not isinstance(config["seed"], int)
             or not 0 <= config["seed"] < 2147483600
             or isinstance(config["max_tokens"], bool)
@@ -112,7 +130,7 @@ def read_capture(path):
     if not file.is_file() or file.is_symlink() or file.stat().st_size > MAX_REPORT_BYTES:
         raise ValueError("Capture is missing or exceeds local size limit")
     report = json.loads(file.read_text(encoding="utf-8"))
-    if (not isinstance(report, dict) or report.get("schema") != "ember-text-blind-ab-v1"
+    if (not isinstance(report, dict) or report.get("schema") != "ember-text-blind-ab-v2"
             or report.get("prompt_sha256") != PROMPT_HASH
             or not isinstance(report.get("label"), str)
             or not 1 <= len(report["label"]) <= 80
@@ -169,13 +187,14 @@ def capture(args):
         raise ValueError("Destination exists; not running inference or overwriting capture")
     config = {"temperature": args.temperature, "top_p": args.top_p,
               "seed": args.seed, "max_tokens": 384,
-              "hardware_label": args.hardware_label}
+              "hardware_label": args.hardware_label,
+              "nonthinking_requested": True}
     cases = []
     for i, (id_, system, prompt) in enumerate(CASES):
         print("Evaluating case", i + 1, "of", len(CASES), id_, flush=True)
         answer, ms = one_response(system, prompt, args.temperature, args.top_p, args.seed)
         cases.append({"id": id_, "answer": answer, "latency_ms": ms})
-    save_new_json(args.output, {"schema": "ember-text-blind-ab-v1", "label": args.label,
+    save_new_json(args.output, {"schema": "ember-text-blind-ab-v2", "label": args.label,
                                 "prompt_sha256": PROMPT_HASH,
                                 "configuration": config, "cases": cases})
     print("Saved local-only capture. It contains complete generated answers; keep it private.")
@@ -218,6 +237,9 @@ def score(args):
 
 def self_test():
     validate_endpoint(ENDPOINT)
+    payload = make_request("Be concise", "Hello", 0.7, 0.9, 42)
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payload["seed"] == 42 and payload["max_tokens"] == 384
     assert selected_winner("1", False) == "baseline"
     assert selected_winner("2", False) == "candidate"
     assert selected_winner("1", True) == "candidate"
@@ -236,11 +258,12 @@ def self_test():
     import tempfile
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "first.json"
-        base = {"schema": "ember-text-blind-ab-v1", "label": "model-a",
+        base = {"schema": "ember-text-blind-ab-v2", "label": "model-a",
                 "prompt_sha256": PROMPT_HASH,
                 "configuration": {"temperature": 0.7, "top_p": 0.9,
                                   "seed": 17, "max_tokens": 384,
-                                  "hardware_label": "test-4070"},
+                                  "hardware_label": "test-4070",
+                                  "nonthinking_requested": True},
                 "cases": [{"id": id_, "answer": "A safe synthetic test answer",
                            "latency_ms": 20} for id_, _, _ in CASES]}
         save_new_json(path, base)
