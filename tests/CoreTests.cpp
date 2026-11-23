@@ -1978,7 +1978,7 @@ private slots:
             QJsonObject{{"role", "user"}, {"content", "Repair one C++ bug"}}
         };
         QCOMPARE(modelRequest(prompt, 3, Scope::LocalProject, true)
-                    .value("tools").toArray().size(), 6);
+                    .value("tools").toArray().size(), 7);
         QCOMPARE(modelRequest(prompt, 3, Scope::LocalProject, false)
                     .value("tools").toArray().size(), 3);
         QCOMPARE(modelRequest(prompt, 3, Scope::GitHubRepository, true)
@@ -1989,8 +1989,10 @@ private slots:
                      .value("name").toString(), QString("propose_patch"));
         QCOMPARE(tools.at(4).toObject().value("function").toObject()
                      .value("name").toString(), QString("propose_patch_batch"));
-        QCOMPARE(tools.last().toObject().value("function").toObject()
+        QCOMPARE(tools.at(5).toObject().value("function").toObject()
                      .value("name").toString(), QString("propose_new_file"));
+        QCOMPARE(tools.last().toObject().value("function").toObject()
+                     .value("name").toString(), QString("propose_new_files"));
         QVERIFY(!modelRequest(prompt, 0, Scope::LocalProject, true)
                     .contains("tools"));
         const auto message = [](const QJsonObject &arguments) {
@@ -2146,10 +2148,13 @@ private slots:
         const auto inspect = modelRequest(messages, 2, Scope::LocalProject, false);
         QCOMPARE(inspect.value("tools").toArray().size(), 3);
         const auto propose = modelRequest(messages, 2, Scope::LocalProject, true);
-        QCOMPARE(propose.value("tools").toArray().size(), 6);
-        QCOMPARE(propose.value("tools").toArray().last().toObject()
+        QCOMPARE(propose.value("tools").toArray().size(), 7);
+        QCOMPARE(propose.value("tools").toArray().at(5).toObject()
                      .value("function").toObject().value("name").toString(),
                  QString("propose_new_file"));
+        QCOMPARE(propose.value("tools").toArray().last().toObject()
+                     .value("function").toObject().value("name").toString(),
+                 QString("propose_new_files"));
         const auto gh = modelRequest(messages, 2, Scope::GitHubRepository, true);
         QCOMPARE(gh.value("tools").toArray().size(), 2);
         const auto oneCall = [](const QString &toolName,
@@ -2240,11 +2245,13 @@ private slots:
                                              {"content", "Update two modules"}}};
         auto active = modelRequest(history, 2, Scope::LocalProject, true);
         const auto tools = active.value("tools").toArray();
-        QCOMPARE(tools.size(), 6);
+        QCOMPARE(tools.size(), 7);
         QCOMPARE(tools.at(4).toObject().value("function").toObject()
                      .value("name").toString(), QString("propose_patch_batch"));
-        QCOMPARE(tools.last().toObject().value("function").toObject()
+        QCOMPARE(tools.at(5).toObject().value("function").toObject()
                      .value("name").toString(), QString("propose_new_file"));
+        QCOMPARE(tools.last().toObject().value("function").toObject()
+                     .value("name").toString(), QString("propose_new_files"));
         QCOMPARE(modelRequest(history, 0, Scope::LocalProject, true)
                      .value("tool_choice").toString(), QString("none"));
         auto completion = [](const QJsonObject &args) {
