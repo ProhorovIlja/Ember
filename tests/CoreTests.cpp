@@ -1261,7 +1261,8 @@ private slots:
         QVERIFY(applySamplingOverrides(voice, 40, 0));
         QCOMPARE(voice.value("temperature").toDouble(), 0.4);
         QVERIFY(!voice.contains("top_p"));
-        QVERIFY(!applySamplingOverrides(QJsonObject(), 0, 0));
+        QJsonObject empty;
+        QVERIFY(!applySamplingOverrides(empty, 0, 0));
         // No cloud model IDs, arbitrary hosts, file paths, or inference
         // binaries can be changed by these per-turn numeric overrides.
     }
