@@ -2102,9 +2102,11 @@ private slots:
                                              {"content", "Update two modules"}}};
         auto active = modelRequest(history, 2, Scope::LocalProject, true);
         const auto tools = active.value("tools").toArray();
-        QCOMPARE(tools.size(), 5);
-        QCOMPARE(tools.last().toObject().value("function").toObject()
+        QCOMPARE(tools.size(), 6);
+        QCOMPARE(tools.at(4).toObject().value("function").toObject()
                      .value("name").toString(), QString("propose_patch_batch"));
+        QCOMPARE(tools.last().toObject().value("function").toObject()
+                     .value("name").toString(), QString("propose_new_file"));
         QCOMPARE(modelRequest(history, 0, Scope::LocalProject, true)
                      .value("tool_choice").toString(), QString("none"));
         auto completion = [](const QJsonObject &args) {
