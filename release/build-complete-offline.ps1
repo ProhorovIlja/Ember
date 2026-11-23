@@ -87,11 +87,11 @@ if (-not $Version.EndsWith('-dev')) {
     if ($SkipLiveEngineChecks) {
         throw 'Stable release cannot skip real offline LLM and English speech inference.'
     }
-    Run-CheckedPython @((Join-Path $root 'release/verify_release.py'),
+    Run-CheckedPython -Arguments @((Join-Path $root 'release/verify_release.py'),
         '--tag', ('v' + $Version))
 }
 $offline = Join-Path $root 'tools/offline_bundle.py'
-Run-CheckedPython @($offline, 'verify', '--root', $assets, '--manifest',
+Run-CheckedPython -Arguments @($offline, 'verify', '--root', $assets, '--manifest',
     $manifest, '--redistribution-required', '--require-voice')
 
 # Never leave a partially assembled release directory at the final path.
@@ -105,18 +105,18 @@ $committed = $false
 try {
     New-Item -ItemType Directory -Path $work -ErrorAction Stop | Out-Null
     New-Item -ItemType Directory -Path $publish -ErrorAction Stop | Out-Null
-    Run-CheckedPython @($offline, 'assemble', '--root', $assets,
+    Run-CheckedPython -Arguments @($offline, 'assemble', '--root', $assets,
         '--manifest', $manifest, '--application', $app,
         '--output', $payload, '--require-voice')
     # Check every executable/DLL import before producing a downloadable file.
-    Run-CheckedPython @((Join-Path $root 'tools/windows_pe_audit.py'),
+    Run-CheckedPython -Arguments @((Join-Path $root 'tools/windows_pe_audit.py'),
         '--root', $payload)
     # This is a FOREGROUND, user-invoked packaging command, not a recurring
     # background monitor. Real engine checks launch trusted bundled workers
     # once, verify the generated text/PCM and stop them before packaging.
     # Development candidates may opt out explicitly, but stable may not.
     if (-not $SkipLiveEngineChecks) {
-        Run-CheckedPython @((Join-Path $root 'tools/offline_acceptance.py'),
+        Run-CheckedPython -Arguments @((Join-Path $root 'tools/offline_acceptance.py'),
             '--root', $payload, '--run', '--gpu-layers', '99', '--context', '8192')
         $voiceModel = if (Test-Path -LiteralPath
             (Join-Path $payload 'models/speech/qwen3-tts-1.7b.gguf')) {
@@ -124,7 +124,7 @@ try {
         } else {
             'qwen3-tts-0.6b'
         }
-        Run-CheckedPython @((Join-Path $root 'tools/native_speech_acceptance.py'),
+        Run-CheckedPython -Arguments @((Join-Path $root 'tools/native_speech_acceptance.py'),
             '--root', $payload, '--run', '--model', $voiceModel,
             '--device', 'auto', '--samples', '2')
     } else {
@@ -132,7 +132,7 @@ try {
     }
     $zipName = "Ember-$Version-Windows-x64-portable.zip"
     $zipPath = Join-Path $publish $zipName
-    Run-CheckedPython @((Join-Path $root 'tools/portable_zip.py'),
+    Run-CheckedPython -Arguments @((Join-Path $root 'tools/portable_zip.py'),
         '--root', $payload, '--output', $zipPath, '--require-voice')
     & (Join-Path $root 'release/build-dev-installer.ps1') `
         -PayloadDirectory $payload `
