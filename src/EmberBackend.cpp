@@ -2054,6 +2054,7 @@ void EmberBackend::inspectPublicGitHub() {
 QString EmberBackend::stageLocalCodeEdit() {
     m_stagedCodeEdit.reset();
     m_stagedNewFile.reset();
+    m_stagedNewFiles.reset();
     if (m_busy || m_listening) {
         setStatus("Finish current work before editing local source.");
         return {};
@@ -2110,9 +2111,23 @@ QString EmberBackend::stageLocalCodeEdit() {
     return preview;
 }
 bool EmberBackend::applyStagedLocalCodeEdit() {
-    if ((!m_stagedCodeEdit && !m_stagedNewFile) || m_busy || m_listening) {
+    if ((!m_stagedCodeEdit && !m_stagedNewFile && !m_stagedNewFiles) ||
+        m_busy || m_listening) {
         setStatus("No approved local code edit is ready.");
         return false;
+    }
+    if (m_stagedNewFiles) {
+        const auto batch = std::move(m_stagedNewFiles);
+        const auto outcome = EmberLocalEdit::applyApprovedNewFiles(*batch);
+        if (!outcome.ok()) {
+            setStatus(outcome.error);
+            return false;
+        }
+        setStatus(QString("Created %1 reviewed source files, without "
+                          "overwriting existing project files. "
+                          "Run tests manually; this batch is not crash-atomic.")
+                          .arg(outcome.createdPaths.size()));
+        return true;
     }
     if (m_stagedNewFile) {
         // The user has independently reviewed the complete proposed content.
@@ -2146,6 +2161,7 @@ bool EmberBackend::applyStagedLocalCodeEdit() {
 void EmberBackend::discardStagedLocalCodeEdit() {
     m_stagedCodeEdit.reset();
     m_stagedNewFile.reset();
+    m_stagedNewFiles.reset();
 }
 void EmberBackend::collectProjectTestOutput() {
     const QByteArray out = m_projectTestProcess.readAllStandardOutput();
@@ -2456,6 +2472,7 @@ bool EmberBackend::beginLocalProjectAgent(const QString &goal,
     m_agentAuthenticatedGitHub = false;
     m_stagedCodeEdit.reset();
     m_stagedNewFile.reset();
+    m_stagedNewFiles.reset();
     m_agentInspectedSourcePaths.clear();
     m_agentProjectMapObserved = false;
     m_agentStagedEdit = false;
@@ -2475,8 +2492,9 @@ bool EmberBackend::beginLocalProjectAgent(const QString &goal,
             "propose_patch(path,old_text,new_text) once for one file, or "
             "propose_patch_batch(edits) ONCE for up to three DIFFERENT "
             "existing source files, after reading exact original text. "
-            "Or use propose_new_file(path,content) for ONE new source "
-            "inside an existing subdirectory only AFTER project_map; "
+            "Or use propose_new_file(path,content) for ONE new source, "
+            "or propose_new_files(files) for 2-3 new source files, "
+            "inside existing project directories only AFTER project_map; "
             "no file or directory is created until explicit approval. "
             "This only STAGES the change and requires independent human "
             "diff review and approval before any source write. "
@@ -2574,6 +2592,48 @@ void EmberBackend::requestLocalAgentStep() {
             requestAgentWikipediaRead(decision);
             return;
         }
+        if (decision.tool == "propose_new_files") {
+            if (!m_agentMayProposeEdit || m_agentStagedEdit ||
+                !m_agentProjectMapObserved) {
+                m_agentMessages.append(EmberAgent::assistantToolMessage(decision));
+                m_agentMessages.append(EmberAgent::toolResultMessage(
+                    decision, "New-file batch REJECTED: explicit Propose Fix "
+                              "permission and successful project_map are required. "
+                              "No files were written."));
+                ++m_agentCalls;
+                requestLocalAgentStep();
+                return;
+            }
+            QVector<EmberLocalEdit::NewFileSource> sources;
+            for (const auto &file : decision.newFiles)
+                sources.append({file.path, file.content});
+            auto plan = EmberLocalEdit::planNewFilesWithinProject(
+                m_agentRoot, sources);
+            if (!plan.ok()) {
+                m_agentMessages.append(EmberAgent::assistantToolMessage(decision));
+                m_agentMessages.append(EmberAgent::toolResultMessage(
+                    decision, "New-file batch REJECTED, nothing changed: " +
+                              plan.error));
+                ++m_agentCalls;
+                requestLocalAgentStep();
+                return;
+            }
+            m_stagedNewFiles = std::make_unique<EmberLocalEdit::NewFileBatchPlan>(
+                std::move(plan));
+            m_stagedNewFile.reset();
+            m_stagedCodeEdit.reset();
+            m_agentStagedEdit = true;
+            m_agentTrace += "\nNew files staged (NOT CREATED): " +
+                QString::number(m_stagedNewFiles->files.size()) + "\n";
+            m_agentMessages.append(EmberAgent::assistantToolMessage(decision));
+            m_agentMessages.append(EmberAgent::toolResultMessage(
+                decision, "New-source batch staged for full independent "
+                          "human review. Nothing has been created and no "
+                          "tests were run. Finish with an explanation."));
+            m_agentCalls = maxCalls;
+            requestLocalAgentStep();
+            return;
+        }
         if (decision.tool == "propose_new_file") {
             if (!m_agentMayProposeEdit || m_agentStagedEdit ||
                 !m_agentProjectMapObserved) {
@@ -2599,6 +2659,7 @@ void EmberBackend::requestLocalAgentStep() {
             }
             m_stagedNewFile =
                 std::make_unique<EmberLocalEdit::NewFilePlan>(std::move(plan));
+            m_stagedNewFiles.reset();
             m_stagedCodeEdit.reset();
             m_agentStagedEdit = true;
             m_agentTrace += "\nNew source staged (NOT CREATED): " +
@@ -2912,8 +2973,21 @@ void EmberBackend::endLocalAgent(const QString &error, const QString &result) {
         if (stagedEdit) {
             m_stagedCodeEdit.reset();
             m_stagedNewFile.reset();
+            m_stagedNewFiles.reset();
         }
         setStatus("Local agent stopped: " + error.left(230));
+        return;
+    }
+    if (stagedEdit && m_stagedNewFiles && m_stagedNewFiles->ok()) {
+        emit localAgentEditReady(
+            m_stagedNewFiles->displayPreview +
+            QStringLiteral("\n\n---\nLOCAL MODEL EXPLANATION "
+                           "(unverified: no tests have run):\n") +
+            result.left(5200) +
+            QStringLiteral("\n--- End proposed new files ---"));
+        setStatus("New source batch staged: " +
+                  QString::number(m_stagedNewFiles->files.size()) +
+                  " files. Review all content, approve separately. No overwrite.");
         return;
     }
     if (stagedEdit && m_stagedNewFile && m_stagedNewFile->ok()) {
