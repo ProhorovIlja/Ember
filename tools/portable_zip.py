@@ -43,10 +43,10 @@ def validate_portable_members(names):
         raise ValueError("Windows portable archive has file/directory name collision")
 
 
-def archive(root, output):
+def archive(root, output, *, require_voice=False):
     folder = Path(root).resolve(strict=True)
     expected = folder / "offline-assets.json"
-    verify(folder, expected, approved=True)
+    verify(folder, expected, approved=True, require_voice=require_voice)
     for required in ("Ember.exe", "Qt6Core.dll", "LICENSE"):
         if not (folder / required).is_file():
             raise ValueError(f"Missing complete native app: {required}")
@@ -156,6 +156,13 @@ def self_test():
                             app, base / "complete")
         count, sha = archive(complete, base / "portable.zip")
         assert count >= 10 and len(sha) == 64
+        # A model merely RENAMED to the expected voice GGUF alias is not
+        # a compatible Qwen3-TTS model and must never ship as "complete".
+        try:
+            archive(complete, base / "fake-voice.zip", require_voice=True)
+            raise AssertionError("Stable ZIP accepted a fake TTS model")
+        except ValueError:
+            pass
         with zipfile.ZipFile(base / "portable.zip") as zipped:
             assert zipped.read("Ember.exe") == b"mock app"
             assert zipped.read("models/llm/model.gguf")[:8] == fake_gguf()[:8]
@@ -186,6 +193,8 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--root", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--require-voice", action="store_true",
+                        help="Required for complete product: check Qwen3-TTS metadata as well as LLM and ASR")
     args = parser.parse_args()
     try:
         if args.self_test:
@@ -193,7 +202,8 @@ def main():
         else:
             if args.root is None or args.output is None:
                 parser.error("--root and --output are required")
-            files, sha = archive(args.root, args.output)
+            files, sha = archive(args.root, args.output,
+                                 require_voice=args.require_voice)
             print(f"ZIP64 portable archived {files} files. SHA256: {sha}")
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         parser.error(f"{type(exc).__name__}: {exc}")
