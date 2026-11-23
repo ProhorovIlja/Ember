@@ -906,16 +906,20 @@ bool applySamplingOverrides(QJsonObject &request, int temperaturePercent,
         request.insert("top_p", double(topPPercent) / 100.0);
     return true;
 }
-void applyQwen35SamplingDefaults(QJsonObject &request, bool thinking) {
+void applyQwen35SamplingDefaults(QJsonObject &request, bool thinking,
+                                 bool preciseCoding) {
     if (request.isEmpty()) return;
-    // Qwen's model card distinguishes these two distributions. These are
-    // conservative published baselines, not proven optimum conversational
-    // settings. Manual temperature/top_p overrides are applied afterward.
-    request.insert("temperature", thinking ? 0.6 : 0.7);
+    // Qwen/Qwen3.5-9B publishes SEPARATE distributions for general thinking
+    // and precise coding. Do not apply the narrow coding preset to casual
+    // conversation or storytelling just because the user enabled Deep Mode.
+    // Source: https://huggingface.co/Qwen/Qwen3.5-9B
+    const bool coding = thinking && preciseCoding;
+    request.insert("temperature", coding ? 0.6 : (thinking ? 1.0 : 0.7));
     request.insert("top_p", thinking ? 0.95 : 0.8);
     request.insert("top_k", 20);
     request.insert("min_p", 0.0);
-    request.insert("presence_penalty", thinking ? 0.0 : 1.5);
+    request.insert("presence_penalty", coding ? 0.0 : 1.5);
+    request.insert("repeat_penalty", 1.0);
 }
 ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep) {
     if (voice) return {512, 0.65};
