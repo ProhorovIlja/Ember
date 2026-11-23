@@ -25,6 +25,20 @@
 #include <windows.h>
 #endif
 namespace EmberCore {
+// Keep Qt's live model bounded even after arbitrarily many manually
+// requested history pages. The complete archive remains in SQLite.
+void mergeVisibleHistoryPage(QVariantList &visible,
+                             const QVariantList &page, bool older) {
+    if (page.isEmpty()) return;
+    if (older) {
+        for (int i = page.size() - 1; i >= 0; --i)
+            visible.prepend(page.at(i));
+        while (visible.size() > 300) visible.removeLast();
+    } else {
+        visible.append(page);
+        while (visible.size() > 300) visible.removeFirst();
+    }
+}
 namespace {
 // Parse only the bounded GGUF metadata prefix, never multi-gigabyte tensors.
 // Reject malformed, oversized or unfamiliar metadata rather than guessing a
