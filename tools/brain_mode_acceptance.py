@@ -2,8 +2,9 @@
 """One-shot, metrics-only Qwen3.5/llama.cpp reasoning-mode contract test.
 
 Run manually against an ALREADY STARTED managed Windows llama-server.
-No model downloads, process launch, file access beyond an optional NEW report,
-recurring work, personal prompt capture, response logging, or cloud requests.
+No model downloads, inference-server launches, file access beyond an
+optional NEW report, recurring work, personal prompt capture, response
+logging, or cloud requests. Foreground Windows netstat checks the listener PID.
 Synthetic, built-in prompts only. No external network host is configurable.
 This is a protocol acceptance test, NOT an evaluation of naturalness or voice.
 """
@@ -183,7 +184,9 @@ def parse_sse(stream, started, expected_exact=None, allow_reasoning=False):
                         raise ValueError("Model thinking markers appeared in visible text")
                     marker_tail = combined[-24:]
                     if exact_answer is not None:
-                        exact_answer = (exact_answer + content)[:len(expected_exact) + 2]
+                        if visible_chars > len(expected_exact) + 2:
+                            raise ValueError("Synthetic exact-answer response has surplus text")
+                        exact_answer += content
     elapsed = round((time.perf_counter() - started) * 1000, 2)
     if not seen_done or final_reason != "stop" or visible_chars == 0:
         raise ValueError("Missing visible completed answer / [DONE] / stop")
@@ -254,6 +257,7 @@ def self_test():
         (event("anything", finish="stop"), {}),
         (event("", "hidden", finish="stop") + b"data: [DONE]\n\n", {"allow_reasoning": True}),
         (event("WRONG", finish="stop") + b"data: [DONE]\n\n", {"expected_exact": "EMBER_READY"}),
+        (event("EMBER_READY plus extra commentary", finish="stop") + b"data: [DONE]\n\n", {"expected_exact": "EMBER_READY"}),
     ]
     for data, opts in invalid_cases:
         try:
@@ -262,7 +266,7 @@ def self_test():
             pass
         else:
             raise AssertionError("Malformed SSE should fail closed")
-    print("brain_mode_acceptance: 4 payload and 8 stream-fixture checks passed")
+    print("brain_mode_acceptance: 4 payload and 9 stream-fixture checks passed")
 
 
 def main():
