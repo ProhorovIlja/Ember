@@ -420,9 +420,10 @@ EmberBackend::EmberBackend(QObject *parent)
             : "Native speech engine loading locally. Catalog downloads are disabled.");
     });
     connect(&m_speechServer, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
-        // If the ONE-click launch loses speech before both workers are ready,
-        // stop the matching brain rather than leaving a half-started app.
-        if (m_combinedStartPending) {
+        // A user-started combined session owns both children. Do not strand
+        // an unnecessary multi-GB brain if speech exits during/after startup.
+        if (m_combinedSessionActive) {
+            m_combinedSessionActive = false;
             m_combinedStartPending = false;
             if (m_brain.state() != QProcess::NotRunning) m_brain.kill();
         }
@@ -455,7 +456,8 @@ EmberBackend::EmberBackend(QObject *parent)
                     : "Managed native speech engine stopped.");
     });
     connect(&m_speechServer, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
-        if (m_combinedStartPending) {
+        if (m_combinedSessionActive) {
+            m_combinedSessionActive = false;
             m_combinedStartPending = false;
             if (m_brain.state() != QProcess::NotRunning) m_brain.kill();
         }
@@ -468,7 +470,8 @@ EmberBackend::EmberBackend(QObject *parent)
             [this](QProcess::ProcessState) { emit brainReadyChanged(); });
     connect(&m_brain, &QProcess::finished, this,
             [this](int, QProcess::ExitStatus) {
-                if (m_combinedStartPending) {
+                if (m_combinedSessionActive) {
+                    m_combinedSessionActive = false;
                     m_combinedStartPending = false;
                     if (m_speechServer.state() != QProcess::NotRunning)
                         m_speechServer.kill();
@@ -494,7 +497,8 @@ EmberBackend::EmberBackend(QObject *parent)
                 }
             });
     connect(&m_brain, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
-        if (m_combinedStartPending) {
+        if (m_combinedSessionActive) {
+            m_combinedSessionActive = false;
             m_combinedStartPending = false;
             if (m_speechServer.state() != QProcess::NotRunning)
                 m_speechServer.kill();
@@ -1311,16 +1315,19 @@ void EmberBackend::startLocalEngines() {
         return;
     }
     m_combinedStartPending = needsNativeSpeech;
+    m_combinedSessionActive = needsNativeSpeech;
     startBrain();
     // Reject synchronous launch/preflight errors before touching speech.cpp.
     if (m_brain.state() == QProcess::NotRunning) {
         m_combinedStartPending = false;
+        m_combinedSessionActive = false;
         return;
     }
     if (needsNativeSpeech) {
         startSpeechServer();
         if (m_speechServer.state() == QProcess::NotRunning) {
             m_combinedStartPending = false;
+            m_combinedSessionActive = false;
             stopBrain();
             setStatus("Start Ember failed: selected local speech engine did not "
                       "start. The text engine was stopped to avoid half-start.");
@@ -1329,6 +1336,7 @@ void EmberBackend::startLocalEngines() {
 }
 void EmberBackend::stopLocalEngines() {
     m_combinedStartPending = false; // user explicitly stopped the whole session
+    m_combinedSessionActive = false;
     // Stop native ASR/TTS first, so no late PCM or transcription callback
     // survives the user's explicit Stop Ember action.
     if (m_speechServer.state() != QProcess::NotRunning)
