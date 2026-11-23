@@ -72,6 +72,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QString persona READ persona WRITE setPersona NOTIFY configurationChanged)
     Q_PROPERTY(int chatMode READ chatMode WRITE setChatMode NOTIFY configurationChanged)
     Q_PROPERTY(bool deepReasoning READ deepReasoning WRITE setDeepReasoning NOTIFY configurationChanged)
+    Q_PROPERTY(bool crossChatRecall READ crossChatRecall WRITE setCrossChatRecall NOTIFY configurationChanged)
     Q_PROPERTY(int recognitionLanguage READ recognitionLanguage WRITE setRecognitionLanguage NOTIFY configurationChanged)
     Q_PROPERTY(int recognitionEngine READ recognitionEngine WRITE setRecognitionEngine NOTIFY configurationChanged)
     Q_PROPERTY(int voiceId READ voiceId WRITE setVoiceId NOTIFY configurationChanged)
@@ -141,6 +142,7 @@ public:
     QString persona() const { return m_persona; }
     int chatMode() const { return m_chatMode; }
     bool deepReasoning() const { return m_deepReasoning; }
+    bool crossChatRecall() const { return m_crossChatRecall; }
     int recognitionLanguage() const { return m_recognitionLanguage; }
     int recognitionEngine() const { return m_recognitionEngine; }
     int voiceId() const { return m_voiceId; }
@@ -169,6 +171,7 @@ public:
     Q_INVOKABLE void setPersona(const QString &persona);
     Q_INVOKABLE void setChatMode(int mode);
     Q_INVOKABLE void setDeepReasoning(bool enabled);
+    Q_INVOKABLE void setCrossChatRecall(bool enabled);
     Q_INVOKABLE void setRecognitionLanguage(int language);
     Q_INVOKABLE void setRecognitionEngine(int index);
     Q_INVOKABLE void setVoiceId(int index);
@@ -368,6 +371,7 @@ private:
     bool m_voiceEarlyActive = false, m_voiceEarlyFailed = false;
     bool m_earlySpeechEnabled = true;
     bool m_deepReasoning = false; // deliberate local-compute opt-in
+    bool m_crossChatRecall = false; // explicit local cross-chat memory opt-in
     bool m_allowSpeechDownloads = false; // user explicit opt-in, not assumed
     bool m_allowExternalSpeechProvider = false; // no unowned TTS by default
     bool m_speechTtsPathMode = false, m_speechAsrPathMode = false;
