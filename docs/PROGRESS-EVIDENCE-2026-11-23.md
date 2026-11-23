@@ -273,3 +273,85 @@ installer or Release has been produced. The development branch contains
 zero GitHub Actions runs. This document records real code progress without
 reusing unsupported completion percentages.
 
+## Part 45 — eliminate the oversized full-Ember installer release blocker
+
+This update addresses two **hard file-size constraints** that invalidate a
+"one single installer EXE attached to GitHub" strategy for a fully offline
+LLM + ASR + English voice distribution:
+- Inno Setup / Windows effectively limits an individual Setup.exe to
+  about **4 GB**; `DiskSpanning=yes` is supported for larger payloads.
+- GitHub Releases requires **each asset under 2 GiB**. Its unlimited
+  total Release size does not remove the per-asset limit.
+
+Source changes in isolated branch:
+1. `release/ember.iss` uses `#ifdef AppDiskSpanning` to turn on
+   `DiskSpanning=yes`, `DiskSliceSize=2100000000` and
+   `SlicesPerDisk=1` for a complete package. The old small developer
+   installer remains without disk spanning. Large `models/` content
+   uses a separate `nocompression` [Files] entry rather than redundant
+   solid-LZMA2 model recompression/duplication.
+2. `release/build-dev-installer.ps1` adds explicit `-DiskSpanning`
+   and asks ISCC to emit numbered data slices. The installed Qt headless
+   smoke test restores the caller's original QT_QPA_PLATFORM,
+   QT_QUICK_BACKEND, QT_OPENGL and EMBER_SMOKE_REPORT_PATH variables
+   even when the test process fails; otherwise the build shell could
+   leave later GUI launches headless.
+3. `tools/installer_bundle.py` is a new **locally executed**
+   standard-library Python tool. Exact locally tested Git blob SHA:
+   `4c64cccfe4a738c4b7054458879a7e464446e770`.
+   `python -m py_compile` and
+   `python ... --self-test` succeeded with output
+   `installer_bundle: 9 synthetic ZIP64 slice/integrity checks passed`.
+   Its protocol checks exact Inno Setup executable + contiguous
+   `-1.bin .. -N.bin`, rejects missing/linked/unrecognized setup
+   files, builds a single lossless ZIP64 download, and rereads every
+   entry with full SHA-256 before publishing.
+4. `release/build-complete-offline.ps1` now explicitly compiles the
+   full Inno package with disk spanning and verified install/uninstall
+   WITH all slices present, then packages one
+   `Ember-VERSION-Windows-x64-installer-bundle.zip` and one
+   `Ember-VERSION-Windows-x64-portable.zip`. Only these two complete
+   ZIPs and `SHA256SUMS.txt` remain after removal of private temp
+   Setup.exe / raw slices / old checksum. Unexpected output files
+   trigger failure; final folder is still published by one successful
+   move from staging.
+5. `tools/large_release_asset.py` is an OPTIONAL manual under-2GiB
+   GitHub release transport fallback: splits either entire ZIP into
+   at most 2,000,000,000-byte pieces and a bounded SHA-256 JSON index,
+   then losslessly restores/validates the full original ZIP. Exact
+   locally tested Git blob SHA:
+   `a53b3886242784911cc8e2f7d0fff444c42acf0e`.
+   `py_compile` and `self-test` passed using real filesystem and
+   synthetic bytes, including missing/tampered/reordered/extra slices,
+   output overwrite refusal and exact reconstructed SHA. This is
+   **not** a live multi-gigabyte upload test.
+6. `src/EmberBackend.cpp`: deliberate expert Stop speech/brain
+   now clears the combined-session crash cascade, so text chat remains
+   available when a user explicitly stops native speech, and offline
+   dictation remains available after explicit Stop brain. Unexpected
+   worker exits can still stop the other combined-session worker.
+7. `qml/Main.qml`: Kokoro+Whisper on-demand configuration is now
+   labeled `Text brain ready · voice loads on demand` rather than
+   falsely presenting untested voice as `Ember ready locally`.
+
+**Verification:** nine connected-GitHub source-contract checks passed,
+confirming compile defines, no double model inclusion, disk-spanning
+handoff, ZIP64 bundle, complete-slice rule, cleanup to exactly
+three final files, shell environment restoration and README wording.
+These are source assertions, NOT Qt/MSVC/Inno installation evidence.
+Connected Drive search for GGUF, llama-server and Ember executable
+found project records but no clearly available model or engine
+binary suitable for a build; this does not establish that every
+possible connected folder was exhaustively enumerated.
+
+**No final Ember edition exists yet:** the current Linux environment
+has no Windows/MSVC/Qt6 build toolchain or real RTX 4070 audio stack;
+a Windows installer, model weights, tested TTS naturalness, fully
+offline clean installation, long text/code-agent QA, 17 accepted
+release gates and live GitHub/Drive tool tests are still missing.
+Neither GitHub Actions nor scheduled/automated jobs were launched.
+
+References:
+https://jrsoftware.org/inno-setup/documentation/topic_setup_diskspanning.htm
+https://jrsoftware.org/inno-setup/documentation/topic_filessection.htm
+https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
