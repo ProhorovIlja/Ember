@@ -163,6 +163,26 @@ def self_test():
             raise AssertionError("Stable ZIP accepted a fake TTS model")
         except ValueError:
             pass
+        # Positive structural path: a genuine speech.cpp metadata schema
+        # passes the Qwen3-TTS identity gate. Synthetic tensor data does NOT
+        # prove native voice inference or English prosody on target hardware.
+        from native_gguf_metadata import _fixture_gguf
+        voice_name = "models/speech/qwen3-tts-0.6b.gguf"
+        voice_file = complete / voice_name
+        voice_bytes = _fixture_gguf("qwen3-tts", "0.6B", "synthesis")
+        voice_file.write_bytes(voice_bytes)
+        revised = json.loads(json.dumps(data))
+        for item in revised["assets"]:
+            if item["path"] == voice_name:
+                item["bytes"] = len(voice_bytes)
+                item["sha256"] = hashlib.sha256(voice_bytes).hexdigest()
+        (complete / "offline-assets.json").write_text(
+            json.dumps(revised, ensure_ascii=False), encoding="utf-8")
+        voice_count, voice_sha = archive(
+            complete, base / "voice-approved.zip", require_voice=True)
+        assert voice_count == count and len(voice_sha) == 64
+        with zipfile.ZipFile(base / "voice-approved.zip") as approved_zip:
+            assert approved_zip.read(voice_name)[:4] == b"GGUF"
         with zipfile.ZipFile(base / "portable.zip") as zipped:
             assert zipped.read("Ember.exe") == b"mock app"
             assert zipped.read("models/llm/model.gguf")[:8] == fake_gguf()[:8]
