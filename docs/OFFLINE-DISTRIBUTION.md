@@ -1,3 +1,51 @@
+## Part 47 — real RU/EN ASR while both resident models stay loaded
+
+The previously added combined acceptance kept llama.cpp and speech.cpp loaded
+together, but verified Whisper RU/EN dictation separately, after both were
+terminated. That could certify an ostensibly complete offline assistant
+that could not **recognize speech while its LLM and voice occupied memory**.
+This integration is now repaired:
+
+- `tools/combined_runtime_acceptance.py` accepts real
+  `--en-wav`, `--en-reference`, `--ru-wav`, `--ru-reference`
+  and `--max-wer`. It rejects incomplete pairs and invalid local paths
+  before launching models. Existing Whisper validation requires mono
+  16-kHz PCM16 WAV and a real UTF-8 transcript; the same native Whisper
+  CLI measures actual English and Russian WER/CER. User WAV and
+  recognized transcripts are never copied into the distributable archive.
+- Those two ASR tests run in the middle of the **same** foreground process
+  lifetime as the actual local LLM and Qwen3-TTS. The script re-verifies
+  the two original listener PIDs before and after each language and then
+  reruns a Russian text request. Either ASR failure terminates both
+  managed model workers. A report explicitly records
+  `simultaneous_llm_tts_asr: PASS` or `NOT_TESTED`.
+- `release/build-complete-offline.ps1` now forwards the actual accepted
+  EN/RU recordings to **both** separate ASR QA and this concurrent
+  check. Non-dev stable versions already refuse missing recordings;
+  only internal `-dev` builds can disclose `NOT_TESTED`.
+- `release/build-dev-installer.ps1 -VerifyInstall` now places the entire
+  test installation inside an isolated, new GUID temp path and attempts
+  the package's real uninstaller via a `finally` block even if QML
+  startup, installed model SHA-256 or privacy checks fail. No recursive
+  deletion is performed on unexpected leftovers; an unsuccessful
+  uninstaller fails the test. After successful uninstall, the checker
+  refuses any remaining installed files, including multi-gigabyte GGUF
+  and DLL content. The caller's Qt headless variables are restored.
+  Real user installations/chats are not touched.
+
+**Verification boundary:** The updated combined Python source passed
+`py_compile` and a local isolated mock test of concurrent EN/RU-ASR,
+missing reference rejection and simulated ASR OOM with both model
+children terminated. Tested Git blob:
+`770167e94f7a84bf077709487d0863c0df1b11e5`.
+This is NOT a Windows Whisper experiment and uses synthetic mock
+model processes; the actual complete Windows installer has not
+yet been compiled or installed. The real Windows PowerShell
+installer cleanup is only source-verified here, not executed under
+Inno Setup/Windows.
+
+---
+
 ## Blocking fixes for real offline source-to-setup execution — Part 46 (23 Nov 2026)
 
 The previous `release/build-complete-offline.ps1` source was **not runnable**:
