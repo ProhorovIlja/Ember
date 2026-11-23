@@ -41,6 +41,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
     Q_PROPERTY(bool hasOlderSessions READ hasOlderSessions NOTIFY sessionsChanged)
     Q_PROPERTY(bool hasOlderMessages READ hasOlderMessages NOTIFY messagesChanged)
+    Q_PROPERTY(bool hasNewerMessages READ hasNewerMessages NOTIFY messagesChanged)
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY sessionsChanged)
     Q_PROPERTY(bool privateMode READ privateMode WRITE setPrivateMode NOTIFY privateModeChanged)
     Q_PROPERTY(QString continuityNotes READ continuityNotes NOTIFY continuityNotesChanged)
@@ -105,8 +106,15 @@ public:
     bool hasOlderSessions() const { return m_hasOlderSessions; }
     bool hasOlderMessages() const {
         return !m_privateMode && m_store && m_store->ready() &&
-               !m_sessionId.isEmpty() &&
-               m_store->totalMessages(m_sessionId) > m_messages.size();
+               !m_sessionId.isEmpty() && !m_messages.isEmpty() &&
+               m_store->hasMessageBefore(m_sessionId,
+                   m_messages.first().toMap().value("id").toLongLong());
+    }
+    bool hasNewerMessages() const {
+        return !m_privateMode && m_store && m_store->ready() &&
+               !m_sessionId.isEmpty() && !m_messages.isEmpty() &&
+               m_store->hasMessageAfter(m_sessionId,
+                   m_messages.last().toMap().value("id").toLongLong());
     }
     QString currentSessionId() const { return m_sessionId; }
     bool privateMode() const { return m_privateMode; }
@@ -243,12 +251,18 @@ public:
     Q_INVOKABLE void clearConversation();
     Q_INVOKABLE void setPrivateMode(bool enabled);
     Q_INVOKABLE void openSession(const QString &id);
+    // Returns zero-based index of the matched archived message, or -1.
+    // Never loads the entire conversation just to navigate to a search hit.
+    Q_INVOKABLE int openSessionAtMessage(const QString &sessionId,
+                                        const QString &messageId);
     Q_INVOKABLE void deleteCurrentSession();
     Q_INVOKABLE void setContinuityNotes(const QString &text);
     Q_INVOKABLE void setRecognitionHints(const QString &text);
     Q_INVOKABLE QVariantList searchHistory(const QString &text) const;
     Q_INVOKABLE void loadOlderSessions();
     Q_INVOKABLE void loadEarlierMessages();
+    Q_INVOKABLE void loadNewerMessages();
+    Q_INVOKABLE void showLatestMessages();
     Q_INVOKABLE void exportCurrentSession();
     Q_INVOKABLE void exportCompactHistory();
     Q_INVOKABLE void restoreCompactHistory();
