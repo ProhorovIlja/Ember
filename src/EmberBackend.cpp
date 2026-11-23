@@ -259,7 +259,22 @@ EmberBackend::EmberBackend(QObject *parent)
                 emit driveExcerptReady(text);
             });
     if (!EmberCore::englishFemaleKokoroSid(m_voiceId)) m_voiceId = 0;
-    m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
+    // A true full offline package ships speech.exe + a genuine local
+    // Qwen3-TTS GGUF, not Kokoro. Select that *installed* voice on first
+    // launch, while preserving explicit existing user settings. This reads
+    // local file headers only; no model loads, downloads or tasks are started.
+    const bool nativeSpeechInstalled = isRegularFile(defaultPath("speechExe"));
+    const QString preferredSpeechModel =
+        nativeSpeechInstalled &&
+        !EmberCore::offlineSpeechModelFile(
+            appFolder(), "qwen3-tts-1.7b").isEmpty()
+        ? QStringLiteral("qwen3-tts-1.7b")
+        : QStringLiteral("qwen3-tts-0.6b");
+    const bool bundledNativeVoice = nativeSpeechInstalled &&
+        !EmberCore::offlineSpeechModelFile(
+            appFolder(), preferredSpeechModel).isEmpty();
+    m_voiceEngine = qBound(
+        0, m_settings.value("voice/engine", bundledNativeVoice ? 1 : 0).toInt(), 1);
     m_speechDevice = qBound(0, m_settings.value("voice/speechDevice", 0).toInt(), 2);
     m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 5);
     m_customDeliveryPrompt = m_settings.value("voice/customDeliveryPrompt").toString();
@@ -274,7 +289,8 @@ EmberBackend::EmberBackend(QObject *parent)
     m_allowExternalSpeechProvider = m_settings.value(
         "voice/allowUnmanagedSpeech", false).toBool();
     m_autoEndOnSilence = m_settings.value("voice/autoEndOnSilence", false).toBool();
-    m_localModel = m_settings.value("voice/localModel", "qwen3-tts-0.6b").toString();
+    m_localModel = m_settings.value(
+        "voice/localModel", preferredSpeechModel).toString();
     m_localVoice = m_settings.value("voice/localVoice", "vivian").toString();
     const QRegularExpression modelRx("^[A-Za-z0-9_./-]{1,80}$");
     const QRegularExpression voiceRx("^[A-Za-z0-9_-]{1,80}$");
