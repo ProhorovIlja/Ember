@@ -2303,7 +2303,7 @@ private slots:
         QVERIFY(!EmberLocalSearch::outlineDirectory(
             root.filePath("missing"), {}).ok());
     }
-    void optionalDeepReasoningIsOnlyAddedWhenUserOptsIn() {
+    void localQwenChatTemplatesReceiveExplicitThinkingChoice() {
         const auto standard = EmberCore::chatGenerationProfile(3, false, false);
         const auto deep = EmberCore::chatGenerationProfile(3, false, true);
         QCOMPARE(standard.maxTokens, 2048);
@@ -2318,7 +2318,17 @@ private slots:
                     .value("enable_thinking").toBool());
         const auto ordinary = EmberCore::chatRequest(
             "Be accurate", {}, "Hello", 2048, 0.73);
-        QVERIFY(!ordinary.contains("chat_template_kwargs"));
+        QVERIFY(ordinary.contains("chat_template_kwargs"));
+        const QJsonObject normalOptions = ordinary.value("chat_template_kwargs").toObject();
+        QVERIFY(normalOptions.contains("enable_thinking"));
+        QCOMPARE(normalOptions.value("enable_thinking").toBool(), false);
+        const auto voiceReply = EmberCore::chatRequest(
+            "Speak naturally", {}, "Good morning", quickVoice.maxTokens,
+            quickVoice.temperature, {}, false);
+        QVERIFY(voiceReply.value("chat_template_kwargs").toObject()
+                    .contains("enable_thinking"));
+        QCOMPARE(voiceReply.value("chat_template_kwargs").toObject()
+                     .value("enable_thinking").toBool(), false);
         // The clamping guard remains bounded even if the UI is changed.
         const auto bound = EmberCore::chatRequest(
             "Be accurate", {}, "Hello", 1000000, 0.73, {}, true);
