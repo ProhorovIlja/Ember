@@ -1486,8 +1486,26 @@ QStringList speechChunks(const QString &input, int maxCharacters) {
             }
             if (sentence > pos) end = sentence;
             else {
-                const qsizetype space = text.lastIndexOf(' ', end);
-                if (space > pos + limit / 3) end = space;
+                // A long spoken reply with no full stop should end a TTS
+                // request at a natural clause pause when possible. Cutting
+                // after an arbitrary word gives separately synthesized chunks
+                // unnatural sentence-final intonation in the middle of a
+                // thought. Do not add, remove or rephrase any actual text.
+                qsizetype clause = -1;
+                for (qsizetype at = end - 1;
+                     at >= pos + limit / 2; --at) {
+                    const QChar ch = text[at];
+                    if ((ch == ',' || ch == ':' || ch == QChar(0x2014)) &&
+                        (at + 1 == text.size() || text[at + 1].isSpace())) {
+                        clause = at + 1;
+                        break;
+                    }
+                }
+                if (clause > pos) end = clause;
+                else {
+                    const qsizetype space = text.lastIndexOf(' ', end);
+                    if (space > pos + limit / 3) end = space;
+                }
             }
         }
         const QString chunk = text.mid(pos, end - pos).trimmed();
