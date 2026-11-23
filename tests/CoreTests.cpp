@@ -1216,11 +1216,16 @@ private slots:
         EmberCore::mergeVisibleHistoryPage(visible, {}, true);
         QCOMPARE(visible, beforeEmpty);
         // Navigating forward after repeated backward pages remains bounded.
-        for (int start = 401; start <= 901; start += 100) {
+        for (int start = 301; start <= 901; start += 100) {
             EmberCore::mergeVisibleHistoryPage(
                 visible, makeRows(start, start + 99), false);
             QVERIFY(visible.size() <= 300);
+            for (int i = 1; i < visible.size(); ++i)
+                QVERIFY(visible[i - 1].toMap().value("id").toLongLong() <
+                        visible[i].toMap().value("id").toLongLong());
         }
+        QCOMPARE(visible.first().toMap().value("id").toLongLong(), qint64(701));
+        QCOMPARE(visible.last().toMap().value("id").toLongLong(), qint64(1000));
     }
 
     void opensExactArchivedSearchHitWithBoundedBidirectionalPages() {
