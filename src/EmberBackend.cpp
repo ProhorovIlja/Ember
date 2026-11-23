@@ -922,8 +922,9 @@ void EmberBackend::setLocalVoice(const QString &value) {
     }
     if (m_voiceEngine == 1 && m_speechServerReady &&
         !m_speechEnglishVoices.contains(value)) {
-        setStatus("This voice is not an English female speaker in the loaded GGUF. "
-                  "Choose a verified female voice from the list.");
+        setStatus("The selected voice is not a verified female speaker in "
+                  "this English-capable native model. Check the loaded speaker "
+                  "list; native language and output language may differ.");
         return;
     }
     m_localVoice = value;
