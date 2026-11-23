@@ -36,11 +36,19 @@ model quality or completed Windows deployment. No public previews.
   sequentially. `--device auto` may place TTS on CPU; record actual
   GPU/CPU placements, peak VRAM, wall latency and Windows RAM usage
   separately rather than inferring GPU use from a successful HTTP reply.
-- [ ] Run real microphone EN/RU ASR during LLM+TTS residency, verify
-  user-initiated interruptions and recovered draft integrity, and
-  human-rate multi-turn natural English female voice. The source
-  co-residency check alone does not establish full-duplex barge-in,
-  12 GB capacity margin or natural conversation quality.
+- [x] Source-level `combined_runtime_acceptance.py` now requires
+  actual English/Russian WAV+reference input for complete stable releases.
+  Whisper runs both languages while LLM and Qwen3-TTS processes stay
+  resident. Real scored WER/CER and a final text request are part of
+  the *same manual invocation*; mocked success and ASR OOM cleanup tests pass.
+- [ ] Run actual EN/RU ASR on a real RTX 4070 12 GB while LLM+TTS are
+  loaded, recording GPU memory and response quality, and separately test
+  microphone capture, user-initiated interruptions and recovered draft
+  integrity. Human-rate natural English female voice. Source tests
+  do not establish full-duplex barge-in, VRAM margin or naturalness.
+- [ ] On real Windows test forced installer-QML failure and injected model
+  hash corruption. Confirm that the isolated test-only Inno installation
+  is rolled back and no GGUF/DLL remains, without removing personal chats.
 
 ## Native Image Library and multimodal release checks
 
