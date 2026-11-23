@@ -80,9 +80,11 @@ with a separate CLI switch.
 
 **Do not confuse Qwen3.5 GGUF inference files with trainable Hugging Face
 safetensors.** The latter must have all original model shards, config, tokenizer
-and an independently recorded exact upstream model revision. The preflight
-checks file existence, minimum size and metadata; it **cannot** establish true
-weight provenance, verify training compatibility or physically measure VRAM.
+and an independently recorded exact upstream model revision. The preflight verifies metadata and SHA-256 hashes **every actual
+safetensors shard**. The explicit training command recomputes them to reject
+a same-size weight change between preparation and launch. These checks do not
+authenticate the model's origin, prove Axolotl compatibility or establish
+a 12 GB VRAM fit. Hashing the full checkpoint requires disk I/O.
 It does not download anything. Axolotl/CUDA/FlashAttention installation is a
 separate user-controlled environment preparation; the native Windows Ember
 application does not require those training libraries. Linux or WSL2 with
@@ -132,13 +134,14 @@ without independent quality evidence.
 [\`tools/ember_voice_corpus.py\`](../tools/ember_voice_corpus.py)
 prepares the **official Qwen3-TTS Base fine-tuning input format**:
 \`{"audio": "...wav", "text": "...", "ref_audio": "...wav"}\`
-per JSONL line. It checks that every recording has explicitly declared
-consent, verifies 24 kHz mono 16-bit PCM, bounds audio durations and
-rejects severely silent/clipped samples, rejects unsafe paths, holds
-recording sessions out of the training set and uses one consistent
-\`ref_audio\`. It cannot verify the actual speaker identity, acoustic
-naturalness, recording permission or transcript accuracy.
-
+per JSONL line. It requires an explicit positive consent declaration for every listed WAV,
+verifies mono 16-bit 24 kHz PCM, bounds duration, rejects badly silent or
+clipped material, unsafe paths and duplicate WAV **content**, and splits
+recording sessions for evaluation. The reference voice clip must itself be
+a consent-declared manifest entry from a **training-side** recording session;
+using held-out evaluation audio as `ref_audio` is prohibited. These
+declarations cannot independently authenticate recording rights, identity
+or transcript correctness.
 A private input manifest row should look like:
 
 \`\`\`json
@@ -149,8 +152,9 @@ Create multiple such user-authorized utterances across at least two
 independent recording sessions; the program insists on at least four
 clips for the *software* preflight, but a genuinely natural stable voice
 requires **far more** clean, phonetically varied, consented speech and
-blind listening tests. A reference \`ref.wav\` must use the same authorized
-speaker. For example:
+blind listening tests. A reference `ref.wav` must come from the same authorized speaker,
+have its own positive consent row in the manifest, and belong to a training
+session rather than an evaluation session. For example:
 
 \`\`\`sh
 python tools/ember_voice_corpus.py prepare \
