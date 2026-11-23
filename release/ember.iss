@@ -11,6 +11,15 @@
   #define BuildNumericVersion "0.1.0.0"
 #endif
 [Setup]
+#ifdef AppDiskSpanning
+; A full 9B-class GGUF + Qwen3-TTS + ASR is normally much larger than
+; Windows' ~4 GB single executable limit. Inno's official DiskSpanning
+; writes a small Setup.exe plus complete numbered -N.bin data slices.
+; Distribute the slices together in ONE separately verified ZIP64 file.
+DiskSpanning=yes
+DiskSliceSize=2100000000
+SlicesPerDisk=1
+#endif
 AppId={{FA314CE1-42F0-4D27-86B6-4375143BD155}
 AppName=Ember
 AppVersion={#BuildVersion}
