@@ -618,18 +618,19 @@ ApplicationWindow {
                                     if (!shouldJump) {
                                         ember.openSession(selectedSession)
                                         window.page = 1
-                                        return
+                                    } else {
+                                        const index = ember.openSessionAtMessage(selectedSession, hitId)
+                                        if (index >= 0) {
+                                            window.focusedArchiveMessageId = hitId
+                                            window.focusedArchiveSessionId = selectedSession
+                                            window.page = 1
+                                            Qt.callLater(function() {
+                                                if (window.page === 1 &&
+                                                    ember.currentSessionId === selectedSession)
+                                                    timeline.positionViewAtIndex(index, ListView.Center)
+                                            })
+                                        }
                                     }
-                                    const index = ember.openSessionAtMessage(selectedSession, hitId)
-                                    if (index < 0) return
-                                    window.focusedArchiveMessageId = hitId
-                                    window.focusedArchiveSessionId = selectedSession
-                                    window.page = 1
-                                    Qt.callLater(function() {
-                                        if (window.page === 1 &&
-                                            ember.currentSessionId === selectedSession)
-                                            timeline.positionViewAtIndex(index, ListView.Center)
-                                    })
                                 }
                             }
                         }
