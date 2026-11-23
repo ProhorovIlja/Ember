@@ -3781,6 +3781,25 @@ private slots:
             QVERIFY(chunk.endsWith('.') || chunk == chunks.last());
         }
         QCOMPARE(chunks.join(" "), input);
+        // Distinct TTS chunks should preserve breath-sized spoken clauses,
+        // not close an arbitrary word with sentence-final intonation.
+        const QString clauses = QString("The hunter listened carefully, ")
+                                    .repeated(30).trimmed();
+        const auto clauseChunks = EmberCore::speechChunks(clauses, 170);
+        QVERIFY(clauseChunks.size() > 3);
+        QCOMPARE(clauseChunks.join(" "), clauses);
+        for (int i = 0; i < clauseChunks.size() - 1; ++i) {
+            QVERIFY2(clauseChunks[i].endsWith(','),
+                     qPrintable(clauseChunks[i]));
+            QVERIFY(clauseChunks[i].size() <= 170);
+        }
+        const QString dashes = QString::fromUtf8(
+            "She answered softly — ").repeated(25).trimmed();
+        const auto dashChunks = EmberCore::speechChunks(dashes, 130);
+        QCOMPARE(dashChunks.join(" "), dashes);
+        QVERIFY(dashChunks.size() > 2);
+        for (int i = 0; i < dashChunks.size() - 1; ++i)
+            QVERIFY(dashChunks[i].endsWith(QChar(0x2014)));
         const auto forced = EmberCore::speechChunks(QString(1500, 'x'), 600);
         QVERIFY(forced.size() >= 3);
         for (const auto &chunk : forced) QVERIFY(chunk.size() <= 600);
