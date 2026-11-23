@@ -214,22 +214,16 @@ try {
     # standalone installer checksum references the removed raw EXE; only
     # SHA256SUMS.txt is distributed.
     $sliceRx = '^' + [regex]::Escape("Ember-$Version-Windows-x64") +
-               '-[1-9][0-9]*[.]bin
-    Write-Host 'Packaging/smoke success is NOT real model/voice/GPU acceptance.'
-} finally {
-    # This folder was created by this invocation with a fresh GUID; never
-    # delete an unrelated user path or a prior completed distribution.
-    if (Test-Path -LiteralPath $work) {
-        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+               '-[1-9][0-9]*[.]bin$'
+    $rawSlices = @(Get-ChildItem -LiteralPath $publish -File |
+        Where-Object { $_.Name -cmatch $sliceRx })
+    if ($rawSlices.Count -lt 1) {
+        throw 'Verified disk-spanned setup unexpectedly has no raw slices.'
     }
-}
-if (-not $committed) { throw 'Offline distribution was not completed.' }
-
-    foreach ($slice in @(Get-ChildItem -LiteralPath $publish -File |
-            Where-Object { $_.Name -match $sliceRx })) {
-        Remove-Item -LiteralPath $slice.FullName -Force
+    foreach ($slice in $rawSlices) {
+        Remove-Item -LiteralPath $slice.FullName -Force -ErrorAction Stop
     }
-    Remove-Item -LiteralPath $installerPath -Force
+    Remove-Item -LiteralPath $installerPath -Force -ErrorAction Stop
     $oldChecksum = if ($Version.EndsWith('-dev')) {
         'Ember-dev-installer-SHA256.txt'
     } else {
@@ -237,29 +231,29 @@ if (-not $committed) { throw 'Offline distribution was not completed.' }
     }
     $oldChecksumPath = Join-Path $publish $oldChecksum
     if (Test-Path -LiteralPath $oldChecksumPath -PathType Leaf) {
-        Remove-Item -LiteralPath $oldChecksumPath -Force
+        Remove-Item -LiteralPath $oldChecksumPath -Force -ErrorAction Stop
     }
-    # The published folder must contain ONLY the two one-download choices
-    # plus their checksum manifest. An unexpected file/folder might be
-    # unverified native data, a duplicate multi-GB slice, or a private trace.
+    # Only the two complete, independently downloadable ZIP64 distributions
+    # and their checksums may be published. Never leave a raw model slice.
     $expectedPublished = @($bundleName, $zipName, 'SHA256SUMS.txt')
     $actualPublished = @(Get-ChildItem -LiteralPath $publish -Force |
         Select-Object -ExpandProperty Name)
     if (($actualPublished.Count -ne $expectedPublished.Count) -or
-        @($expectedPublished | Where-Object { $_ -cnotin $actualPublished }).Count -ne 0) {
+        @($expectedPublished | Where-Object {
+            $_ -cnotin $actualPublished
+        }).Count -ne 0) {
         throw 'Distribution staging includes unverified or duplicate outputs.'
     }
-    # Keep two complete, independently downloadable distributions (installer
-    # bundle ZIP and portable ZIP) plus checksums; no extra model copy.
-    Remove-Item -LiteralPath $payload -Recurse -Force
+    # Avoid retaining a third multi-GB copy of LLM/TTS weights in staging.
+    Remove-Item -LiteralPath $payload -Recurse -Force -ErrorAction Stop
     Move-Item -LiteralPath $publish -Destination $target -ErrorAction Stop
     $committed = $true
     Write-Host "Offline Ember package built locally: $target"
-    Write-Host 'Contains complete installer-bundle ZIP, portable ZIP and SHA256SUMS.txt.'
+    Write-Host 'Complete installer-bundle ZIP, portable ZIP and SHA256SUMS.txt.'
     Write-Host 'Packaging/smoke success is NOT real model/voice/GPU acceptance.'
 } finally {
-    # This folder was created by this invocation with a fresh GUID; never
-    # delete an unrelated user path or a prior completed distribution.
+    # Delete only the freshly created, GUID-named staging folder. Never
+    # overwrite or erase an existing completed user distribution directory.
     if (Test-Path -LiteralPath $work) {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
     }
