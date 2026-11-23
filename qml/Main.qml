@@ -693,10 +693,21 @@ ApplicationWindow {
                         spacing: 9
                         Rectangle {
                             width: 8; height: 8; radius: 4
-                            color: ember.brainReady ? window.mint : "#FFB97D"
+                            color: ember.brainReady &&
+                                   ((ember.voiceEngine !== 1 &&
+                                     ember.recognitionEngine === 0) ||
+                                    ember.speechServerReady)
+                                   ? window.mint : "#FFB97D"
                         }
                         Text {
-                            text: ember.brainReady ? "Brain online" : "Brain offline"
+                            text: ember.brainReady
+                                  ? (((ember.voiceEngine === 1 ||
+                                       ember.recognitionEngine > 0) &&
+                                      !ember.speechServerReady)
+                                     ? "Brain ready · voice still loading"
+                                     : "Ember ready locally")
+                                  : ((ember.brainLaunching || ember.speechServerRunning)
+                                     ? "Starting Ember locally" : "Ember offline")
                             color: window.silver
                             font.pixelSize: 13
                         }
