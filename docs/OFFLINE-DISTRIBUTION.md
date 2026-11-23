@@ -1,3 +1,56 @@
+## Single foreground build of a complete offline Windows candidate
+
+The new `release/build-complete-offline.ps1` connects the previously separate
+asset-verification, native Qt deployment, Windows PE import audit, real
+LLM/TTS smoke, ZIP64 packaging and Inno Setup installation/uninstallation
+steps. **It does not acquire weights or claim that the project has already
+shipped a complete package.** A user-supplied, clean deployed Qt app and a
+local `engines/`, `models/`, `licenses/` directory tree with all actual
+approved binaries/weights and a reviewed `offline-assets.json` are mandatory
+inputs.
+
+On a Windows packaging machine with Python 3, Inno Setup 6 and the approved
+installed source assets already present, invoke explicitly from the checkout:
+
+```powershell
+& .\release\build-complete-offline.ps1 `
+  -ApplicationDirectory "D:\EmberInputs\QtDeployed" `
+  -AssetsDirectory "D:\EmberInputs\ReviewedAssets" `
+  -ApprovedManifest "D:\EmberInputs\approved-assets.json" `
+  -DistributionDirectory "D:\EmberDistributions\candidate-0.1.0" `
+  -Version "0.1.0-dev"
+```
+
+The chosen output directory must NOT exist and must be outside the source,
+application and model asset trees. A fresh local staging directory is used
+and removed on any failure; output appears only after checks and both files
+complete. The resulting folder contains the Windows installer, portable ZIP
+and SHA256SUMS.txt (the installer may also leave a separate checksum file).
+The script never contacts GitHub or Hugging Face, downloads dependencies,
+publishes a Release, registers monitoring or runs scheduled tasks.
+
+The ordinary command launches real *bundled* LLM and native English TTS
+workers **synchronously in the current user-initiated build**, checks
+functioning text/PCM and stops them before preparing final archives. Only
+for a `-dev` candidate, `-SkipLiveEngineChecks` can skip those real
+inference checks, leaving a clearly unverified development build. Stable
+`-Version MAJOR.MINOR.PATCH` refuses the skip flag and requires the
+separately approved 17-check `release/acceptance.json` and matching source
+version. These build-time tests are NOT a substitute for human voice-quality
+listening, genuine user data dictation, multi-turn dialogue, privacy and GPU
+acceptance. The new script has not yet been executed under Windows/MSVC,
+because this environment lacks Qt6, Windows and the user's GGUF/audio stack.
+
+On a clean initial install, Ember now picks a bundled native Qwen3-TTS
+English voice by default if both native `speech.exe` and a supported
+local TTS GGUF are present; 1.7B is preferred over 0.6B. Existing user
+preferences remain authoritative. An explicit **Start Ember** click launches
+the local LLM and selected native voice/ASR worker together; it refuses
+missing local speech assets and does not invoke model catalog downloads.
+Kokoro/Whisper remain available as user-selected alternatives.
+
+---
+
 # Ember — offline, country-resilient Windows distribution
 
 **2026-11-22 structural approval gate:** Approved bundles must contain Ember's exact native text-first default paths: `engines/llama/llama-server.exe` (LLM runtime), `models/llm/model.gguf` (GGUF LLM), `engines/whisper/whisper-cli.exe` (ASR runtime), and `models/stt/ggml-base.bin` (multilingual GGML ASR weights). The matching components must be `llm` or `asr`, not merely arbitrary placeholder labels. For every packaged Windows executable/DLL under `engines/`, the verifier checks MZ/PE/AMD64; for all `models/*.gguf` it checks GGUF v2/v3 and a 1-MiB minimum; the default Whisper model must start with original GGML `lmgg` magic and meet the same size minimum. Synthetic CI assets carry valid *headers* but are intentionally not executable or inference-capable. The test includes rehashed forgery attempts and renamed-file attacks. SHA-256 detects tampering relative to a trusted manifest, not self-consistent forgery. This is only structural preflight: binaries, licenses, CUDA dependencies, actual GGUF tensor contents, multilingual ability, and offline end-to-end inference still require manual validation on the target Windows machine.
