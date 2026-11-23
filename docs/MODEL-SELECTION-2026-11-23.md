@@ -139,3 +139,38 @@ Full usage and limits: [Custom Model Lab](CUSTOM-MODEL-LAB.md).
 - Qwen3.5 GGUF compatibility: https://huggingface.co/Qwen/Qwen3.5-9B
 - llama.cpp chat-template arguments: https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
 - Qwen thinking-toggle runtime issues: https://github.com/ggml-org/llama.cpp/discussions/23351
+
+## Manual multi-turn quality comparison (experimental EmberMind research)
+
+`tools/blind_dialogue_ab.py` extends the one-turn evaluation without changing
+the original `blind_text_ab.py` capture schema. Its five *original, non-private*
+three-turn scripts evaluate natural conversational follow-up in English/Russian,
+correcting an assumption, collaborative fiction continuity, troubleshooting,
+and obeying revised instructions. The second/third user turns receive the
+model's **own preceding assistant replies**, as they would in a real chat.
+For every scenario the human evaluator compares the **whole conversation**,
+blind to model labels, for naturalness, context retention and task usefulness.
+
+Each command is explicitly initiated by the operator and only contacts the
+existing **127.0.0.1:43821** local text server. Separate captures are required
+for each manually selected installed GGUF. No models are automatically
+loaded or downloaded; no external endpoints or private user conversations are
+accessed. The scored report contains only outcomes, while full synthetic
+generated dialogue remains in the designated local capture JSONs.
+
+```powershell
+python tools/blind_dialogue_ab.py self-test
+python tools/blind_dialogue_ab.py capture --label baseline-Qwen --hardware-label win10-rtx4070 --output baseline-dialogue.json
+# Manually stop the old local model and select/start the candidate.
+python tools/blind_dialogue_ab.py capture --label EmberMind-QLoRA --hardware-label win10-rtx4070 --output candidate-dialogue.json
+python tools/blind_dialogue_ab.py score --baseline baseline-dialogue.json --candidate candidate-dialogue.json --output dialogue-scores.json
+```
+
+All comparisons use `chat_template_kwargs.enable_thinking=false` and a fixed
+384-token response budget per turn to align with short natural conversation.
+Identical sampling and hardware labels are enforced; user-defined prompts
+and personal chats are deliberately excluded from the built-in suite.
+Human ratings have small sample size and are NOT proof of frontier model
+parity, long-context reliability, safe tool use, or actual Maya-like voice
+prosody. Real fine-tuning, GGUF conversion, quality evaluation and target GPU
+benchmarking remain unperformed.
