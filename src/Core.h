@@ -63,7 +63,8 @@ bool validSamplingTemperaturePercent(int percent);
 bool validSamplingTopPPercent(int percent);
 // Official Qwen3.5 thinking/nonthinking baseline, applied only when GGUF
 // metadata verifies qwen35/qwen35moe. User sampling overrides apply after.
-void applyQwen35SamplingDefaults(QJsonObject &request, bool thinking);
+void applyQwen35SamplingDefaults(QJsonObject &request, bool thinking,
+                                 bool preciseCoding = false);
 bool applySamplingOverrides(QJsonObject &request, int temperaturePercent,
                             int topPPercent);
 // Windows: prove the IPv4 127.0.0.1 listener belongs to the exact managed
