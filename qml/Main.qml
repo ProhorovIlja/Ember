@@ -24,6 +24,8 @@ ApplicationWindow {
     property string localEditPreview: ""
     property string offlineSetupReport: ""
     property bool preserveOlderScroll: false
+    property string focusedArchiveMessageId: ""
+    property string focusedArchiveSessionId: ""
     // Purely foreground button-gesture state: no recording is triggered by
     // a clock, app startup, a scheduled task or a background watcher.
     property bool dictationHoldArmed: false
@@ -607,8 +609,27 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    ember.openSession(modelData.id)
+                                    const selectedSession = modelData.id
+                                    const hitId = modelData.messageId || "0"
+                                    const shouldJump = window.historyQuery.length > 0 &&
+                                                       hitId !== "0"
+                                    window.focusedArchiveMessageId = ""
+                                    window.focusedArchiveSessionId = ""
+                                    if (!shouldJump) {
+                                        ember.openSession(selectedSession)
+                                        window.page = 1
+                                        return
+                                    }
+                                    const index = ember.openSessionAtMessage(selectedSession, hitId)
+                                    if (index < 0) return
+                                    window.focusedArchiveMessageId = hitId
+                                    window.focusedArchiveSessionId = selectedSession
                                     window.page = 1
+                                    Qt.callLater(function() {
+                                        if (window.page === 1 &&
+                                            ember.currentSessionId === selectedSession)
+                                            timeline.positionViewAtIndex(index, ListView.Center)
+                                    })
                                 }
                             }
                         }
@@ -1224,7 +1245,14 @@ ApplicationWindow {
                                         implicitHeight: bubbleBody.implicitHeight + 39
                                         radius: 16
                                         color: modelData.role === "you" ? "#123E68" : "#172434"
-                                        border.color: modelData.role === "you" ? "#3576AF" : "#2F4056"
+                                        border.color: window.focusedArchiveSessionId === ember.currentSessionId &&
+                                                      window.focusedArchiveMessageId.length > 0 &&
+                                                      String(modelData.id || "") === window.focusedArchiveMessageId
+                                                      ? "#77C4FF"
+                                                      : (modelData.role === "you" ? "#3576AF" : "#2F4056")
+                                        border.width: window.focusedArchiveSessionId === ember.currentSessionId &&
+                                                      window.focusedArchiveMessageId.length > 0 &&
+                                                      String(modelData.id || "") === window.focusedArchiveMessageId ? 2 : 1
                                         Column {
                                             id: bubbleBody
                                             anchors.left: parent.left
@@ -1298,6 +1326,35 @@ ApplicationWindow {
                                             timeline.positionViewAtEnd()
                                         }
                                     }
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                visible: ember.hasNewerMessages && !ember.privateMode
+                                PillButton {
+                                    Layout.fillWidth: true
+                                    text: "Load newer messages"
+                                    implicitHeight: 32
+                                    enabled: !ember.busy && !ember.listening && !ember.speaking
+                                    onClicked: ember.loadNewerMessages()
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 600
+                                    ToolTip.text: "Load up to 100 newer saved messages from this conversation."
+                                }
+                                PillButton {
+                                    Layout.fillWidth: true
+                                    text: "Latest messages"
+                                    implicitHeight: 32
+                                    enabled: !ember.busy && !ember.listening && !ember.speaking
+                                    onClicked: {
+                                        window.focusedArchiveMessageId = ""
+                                        window.focusedArchiveSessionId = ""
+                                        ember.showLatestMessages()
+                                    }
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 600
+                                    ToolTip.text: "Return to recent messages without deleting the old archive."
                                 }
                             }
                             Rectangle {
