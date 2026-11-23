@@ -1,0 +1,149 @@
+# User-initiated, all-in-one Ember offline Windows distribution assembly.
+# No fetching, recurring jobs, monitoring, scheduled tasks, GitHub Actions or
+# publishing. All EXEs, GGUFs, WAV models and reviewed license files must
+# already be present in trusted local directories.
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory=$true)][string]$ApplicationDirectory,
+    [Parameter(Mandatory=$true)][string]$AssetsDirectory,
+    [Parameter(Mandatory=$true)][string]$ApprovedManifest,
+    [Parameter(Mandatory=$true)][string]$DistributionDirectory,
+    [Parameter(Mandatory=$true)][string]$Version
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+if ($Version -notmatch '^([0-9]+)[.]([0-9]+)[.]([0-9]+)(-dev)?$') {
+    throw 'Version must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-dev.'
+}
+$root = Split-Path -Parent $PSScriptRoot
+$pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+if (-not $pythonCommand) { throw 'Python 3 is needed on the BUILD machine (not in the packaged app).' }
+$python = $pythonCommand.Source
+$innoCandidates = @(
+    (Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'),
+    (Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Inno Setup 6\ISCC.exe')
+)
+$inno = $innoCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
+if (-not $inno) {
+    $innoCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+    if ($innoCommand) { $inno = $innoCommand.Source }
+}
+if (-not $inno) {
+    throw 'Inno Setup 6 ISCC.exe must be installed manually before compiling a Windows installer.'
+}
+
+function Must-BeRealDirectory([string]$Path, [string]$Label) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        throw "$Label is missing: $Path"
+    }
+    $item = Get-Item -LiteralPath $Path -Force
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "$Label must not be a junction or symlink: $Path"
+    }
+    return $item.FullName.TrimEnd([char[]]@('\','/'))
+}
+function Run-CheckedPython([string[]]$Arguments) {
+    & $python @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Offline build check failed (Python exit code $LASTEXITCODE)."
+    }
+}
+function Under-Directory([string]$Candidate, [string]$Parent) {
+    $prefix = $Parent.TrimEnd([char[]]@('\','/')) +
+              [System.IO.Path]::DirectorySeparatorChar
+    return $Candidate.StartsWith($prefix,
+        [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+$app = Must-BeRealDirectory $ApplicationDirectory 'Clean deployed Qt app'
+$assets = Must-BeRealDirectory $AssetsDirectory 'Manually collected offline assets'
+if (-not (Test-Path -LiteralPath $ApprovedManifest -PathType Leaf)) {
+    throw 'Approved asset SHA-256/license manifest is missing.'
+}
+$manifestFile = Get-Item -LiteralPath $ApprovedManifest -Force
+if (($manifestFile.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw 'Asset manifest must not be a symlink.'
+}
+$manifest = $manifestFile.FullName
+$target = [System.IO.Path]::GetFullPath($DistributionDirectory).TrimEnd([char[]]@('\','/'))
+if (Test-Path -LiteralPath $target) {
+    throw 'Refusing to overwrite an existing distribution directory.'
+}
+$parentPath = Split-Path -Parent $target
+$parent = Must-BeRealDirectory $parentPath 'Distribution parent'
+if ((Under-Directory $target $app) -or (Under-Directory $target $assets) -or
+    (Under-Directory $target $root) -or
+    (Under-Directory $app $target) -or (Under-Directory $assets $target) -or
+    ($target -ieq $app) -or ($target -ieq $assets) -or ($target -ieq $root)) {
+    throw 'Distribution must be outside the repository, app and asset folders.'
+}
+# Guard the release path before copies of multi-gigabyte GGUF files are made.
+# A production SemVer build requires the EXISTING independently approved
+# release record. A development candidate is not silently promoted to stable.
+if (-not $Version.EndsWith('-dev')) {
+    Run-CheckedPython @((Join-Path $root 'release/verify_release.py'),
+        '--tag', ('v' + $Version))
+}
+$offline = Join-Path $root 'tools/offline_bundle.py'
+Run-CheckedPython @($offline, 'verify', '--root', $assets, '--manifest',
+    $manifest, '--redistribution-required', '--require-voice')
+
+# Never leave a partially assembled release directory at the final path.
+# This transaction creates a uniquely named private staging folder on the
+# SAME volume as the final destination and moves it only after both outputs
+# and their hashes are verified.
+$work = Join-Path $parent ('.ember-build-' + [guid]::NewGuid().ToString('N'))
+$payload = Join-Path $work 'payload'
+$publish = Join-Path $work 'distribution'
+$committed = $false
+try {
+    New-Item -ItemType Directory -Path $work -ErrorAction Stop | Out-Null
+    New-Item -ItemType Directory -Path $publish -ErrorAction Stop | Out-Null
+    Run-CheckedPython @($offline, 'assemble', '--root', $assets,
+        '--manifest', $manifest, '--application', $app,
+        '--output', $payload, '--require-voice')
+    # Check every executable/DLL import before producing a downloadable file.
+    Run-CheckedPython @((Join-Path $root 'tools/windows_pe_audit.py'),
+        '--root', $payload)
+    $zipName = "Ember-$Version-Windows-x64-portable.zip"
+    $zipPath = Join-Path $publish $zipName
+    Run-CheckedPython @((Join-Path $root 'tools/portable_zip.py'),
+        '--root', $payload, '--output', $zipPath, '--require-voice')
+    & (Join-Path $root 'release/build-dev-installer.ps1') `
+        -PayloadDirectory $payload `
+        -OutputDirectory $publish `
+        -Version $Version `
+        -RequireOfflineBundle `
+        -RequireVoiceBundle `
+        -VerifyInstall
+    if (-not $?) { throw 'Inno Setup installation/uninstallation verification failed.' }
+    $installerName = "Ember-$Version-Windows-x64.exe"
+    $installerPath = Join-Path $publish $installerName
+    if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $zipPath -PathType Leaf)) {
+        throw 'Expected complete offline installer and ZIP are missing.'
+    }
+    $installerHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $checksums = @("$installerHash  $installerName", "$zipHash  $zipName") -join "`n"
+    [System.IO.File]::WriteAllText(
+        (Join-Path $publish 'SHA256SUMS.txt'), $checksums + "`n",
+        (New-Object System.Text.UTF8Encoding($false)))
+    # Keep exactly the two installable distributions plus their checksums,
+    # without another multi-GiB working copy of every GGUF.
+    Remove-Item -LiteralPath $payload -Recurse -Force
+    Move-Item -LiteralPath $publish -Destination $target -ErrorAction Stop
+    $committed = $true
+    Write-Host "Offline Ember package built locally: $target"
+    Write-Host 'Contains an installer, portable ZIP and SHA256SUMS.txt.'
+    Write-Host 'Packaging/smoke success is NOT real model/voice/GPU acceptance.'
+} finally {
+    # This folder was created by this invocation with a fresh GUID; never
+    # delete an unrelated user path or a prior completed distribution.
+    if (Test-Path -LiteralPath $work) {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+if (-not $committed) { throw 'Offline distribution was not completed.' }
