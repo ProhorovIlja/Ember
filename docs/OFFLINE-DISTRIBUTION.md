@@ -708,9 +708,14 @@ allowed Qwen3-TTS
 `speech.task=synthesis`, layout 1, compatible `speech.requires`,
 English in `general.languages`, paired `speech.voices`,
 `speech.voice_languages`, `speech.voice_genders` and
-`speech.voice_descriptions`, and at least one English female speaker. When the
-user selects a specific speaker in the manual native TTS acceptance
-utility, its identity must already appear as English in the GGUF.
+`speech.voice_descriptions`, and at least one **verified female speaker**.
+`speech.voice_languages` describes each speaker's **native language**;
+it does not restrict that speaker to synthesizing only the native language.
+The model itself must explicitly declare `en` in `general.languages`.
+When the user selects a speaker in manual native TTS acceptance, the
+identity must be female in the GGUF, even if its native language is `zh`
+(as with official Vivian and Serena). Actual English accent, intelligibility
+and naturalness remain subject to separate human listening tests.
 
 Optional bundled Qwen3-ASR 0.6B/1.7B files must advertise
 `speech.task=recognition`, the correct architecture/size/layout and
@@ -736,16 +741,29 @@ and https://github.com/ggml-org/ggml/blob/master/src/ggml-common.h .
 Converter reference: https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-tts
 and https://github.com/nyosegawa/speech.cpp/tree/v0.11.2/reference/qwen3-asr
 
-### Runtime gender enforcement for selected English speaker
+### Runtime gender and English synthesis eligibility (corrected 23 November)
 
-The stable full-voice package already requires at least one English
-female speaker in the approved Qwen3-TTS GGUF. The runtime now also
-enforces that the **actually selected** voice has
-`language=en` and `gender=female` in the real process-owned
-`speech.cpp /v1/models` response. The Settings dropdown displays
-only verified English female speakers; an installed checkpoint that
-contains both female and male English voices does not cause male
-voices to appear in Ember's female voice list. The manual
-`tools/native_speech_acceptance.py` rechecks the selected voice
-against both GGUF and live inventory metadata before PCM trials.
-This does not establish voice naturalness or licence provenance.
+The stable full-voice package requires the **TTS model** to declare
+English synthesis support and the **selected speaker** to be verified
+female. The original per-speaker `language=en` test was incorrect:
+the official Qwen3-TTS CustomVoice Vivian and Serena are native Chinese
+(`zh`) female speakers that can synthesize English when the request's
+output language is set to `en`. The old gate would always reject the
+genuine default model. The code now checks the native language belongs
+to the model's advertised language list, rejects malformed or duplicate
+speaker names and unknown genders, and allows a female speaker whose
+native language differs from the requested output language.
+
+Qt Settings lists female voices eligible for English synthesis by model
+capability, not English-*native* female voices. `tools/native_speech_acceptance.py`
+checks the same condition using the actual PID-owned `/v1/models`
+response before a real PCM trial. Ember's spoken request still explicitly
+sets `language=en`. The official CustomVoice inventory has **no
+English-native female speaker**; the English-native voices Ryan/Aiden
+are male. Therefore a selected Vivian/Serena does not establish an
+English-native accent or reach the user's human voice quality goal.
+Compare their recorded English speech blind against native-English
+female alternatives such as licensed Kokoro voices or an appropriate
+custom-voice checkpoint; no acoustic superiority is claimed.
+
+Source: https://github.com/QwenLM/Qwen3-TTS/blob/main/README.md .
