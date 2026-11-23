@@ -59,6 +59,18 @@ training is launched from the application, and CI uses synthetic data only.
 Never check private datasets into Git or treat synthetic CI as proof of
 intelligence, speech or model quality.
 
+## Manual local Qwen3.5 runtime acceptance (experimental)
+
+A new standard-library-only, foreground probe checks **real** local
+Qwen3.5 `llama-server` thinking/nonthinking stream behavior for English,
+Russian, general reasoning and precise coding. It verifies a Windows
+listener PID and rejects exposed private reasoning; only latency/counts
+are reported. Run `py -3 tools/brain_mode_acceptance.py --self-test` to
+check its synthetic fixtures, or follow
+[the exact Windows manual test instructions](docs/LOCAL-MODEL-ACCEPTANCE.md)
+with an already running, user-started local model. The source self-test
+has passed but **real GGUF/RTX 4070 acceptance has not been performed**.
+
 ## Development state and downloads
 
 GitHub Actions compiles the native Qt app and **tests** a versioned Inno Setup installer with silent installation, real QML startup and uninstall. Developer build files stay inside CI and are **not uploaded as previews**, by request. The public [Releases](https://github.com/ProhorovIlja/Ember/releases) page is reserved for accepted final installers with checksums, detailed notes, tested model inventory and GitHub source archives. The separate `.github/workflows/stable-release.yml` enforces reviewed hardware/quality/security gates, matching SemVer and clean installer acceptance before publication.
