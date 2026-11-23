@@ -371,6 +371,7 @@ private:
     // True only while a single user-initiated combined brain + speech launch
     // is still pending readiness. Roll back the peer if either worker fails.
     bool m_combinedStartPending = false;
+    bool m_combinedSessionActive = false; // keep a user-started two-engine session together
     bool m_speechStartupTimedOut = false;
     bool m_privateMode = false; // never stored in QSettings
     bool m_speaking = false, m_voicePending = false, m_cliTtsActive = false;
