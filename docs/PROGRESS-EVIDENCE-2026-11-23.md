@@ -477,3 +477,71 @@ listening, full 17-check release acceptance or final installer
 was created. These are source changes and mock tests only.
 No workflows, scheduled tasks, background searches or automation
 were run or created.
+
+## Part 48 — authentic Qwen3-TTS voices were blocked by our own gate
+
+**Root cause identified using the official upstream Qwen3-TTS CustomVoice
+speaker table (2026-11-23):** Vivian and Serena are *Chinese-native female*
+speakers, while the native-English speakers Ryan and Aiden are male.
+The model nevertheless supports English synthesis with every listed speaker.
+Our native Qt `validNativeSpeechInventory`, Python
+`native_gguf_metadata.py` and `native_speech_acceptance.py` all incorrectly
+required `speaker.language=en AND speaker.gender=female`. Consequently
+an authentic Qwen3-TTS 0.6B/1.7B CustomVoice GGUF could pass offline
+file hashing but **never become Ready for the default Vivian voice**.
+It was a functional startup blocker, not just a documentation difference.
+
+**Actual source changes:**
+1. `src/Core.cpp` now requires the *model* globally advertises `en`,
+   each advertised speaker's native language appears in the same supported
+   language inventory, every speaker ID is unique and has explicit
+   male/female metadata, and the **selected** speaker is female. It no
+   longer wrongly requires the selected speaker's native language = en.
+   `src/Core.h` documents the corrected semantics.
+2. `tools/native_gguf_metadata.py` applies the same model-level-English
+   and speaker-level-gender semantics to the real bounded GGUF metadata.
+   The synthetic Qwen fixture now models native-zh Vivian/Serena and
+   global EN/RU/ZH. A Japanese-native female fixture with model-wide
+   English support is accepted, while a model missing `en`, or
+   containing only male, duplicate, unsupported-native-language or
+   unrecognized speakers, is rejected.
+3. `tools/native_speech_acceptance.py` accepts a native-zh female
+   speaker when the loaded English-capable TTS model is verified and
+   the selected gender is female. Its self-test fixture is corrected
+   to `vivian, native=zh` and explicitly rejects a model with no
+   global `en`, even when Vivian is female.
+4. `tests/CoreTests.cpp` uses native-zh female speakers and global
+   EN/RU/ZH instead of a fabricated English-native female Vivian/Serena,
+   with assertions retaining male-voice rejection and accurate loaded
+   Qwen inventory handling.
+5. `qml/Main.qml` now displays an explicit native-Chinese-speaker
+   disclosure and calls the picker female voices for English synthesis,
+   rather than incorrectly describing those voices as English-native.
+   No silent voice-model switch or fabricated audio-quality claim.
+6. `README.md`, `docs/OFFLINE-DISTRIBUTION.md`,
+   `docs/VOICE-QUALITY-LAB.md`, `docs/RELEASE-GATES.md` updated
+   for real upstream language/gender semantics.
+
+**Verified source contract:** twelve read-only checks of the connected
+GitHub branch passed across C++, Qt unit-test fixtures, Python validators
+and QML documentation. These checks prove source wiring, not an actual
+MSVC/Qt build. No real GGUF, installed English female acoustic voice,
+on-device RTX4070 listening, GPU metrics, or stable Ember release was
+produced. A native-Chinese speaker *can generate* English; whether it
+sounds natively fluent or like the desired Ember Voice **is unproven**
+and still needs human A/B against licensed native-English female voices.
+
+**Source evidence:**
+https://github.com/QwenLM/Qwen3-TTS/blob/main/README.md
+official Custom Voice Generate speaker table explicitly lists native
+languages of Vivian/Serena/Ryan/Aiden, with a note that any supported
+speaker may speak any supported model language.
+https://github.com/nyosegawa/speech.cpp/blob/main/docs/models.md
+official server model inventory and speaker IDs.
+
+**Release boundary:** Still no actually compiled and installed full
+Windows Ember package, no custom-trained EmberMind or Ember Voice,
+no legal pinned GGUF asset inventory, no signed 17-gate acceptance,
+and no real-device audio validation. No scheduled task, automation,
+background monitor, GitHub Action or Release was started.
+
