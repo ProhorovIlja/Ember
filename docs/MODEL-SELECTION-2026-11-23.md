@@ -88,6 +88,18 @@ Example on the PC (same hardware-label and parameters both times):
     python tools/blind_text_ab.py capture --label qwen3.5-4b-Q4KM --hardware-label win10-ryzen5600-rtx4070 --output qwen35small.json
     python tools/blind_text_ab.py score --baseline qwen35.json --candidate qwen35small.json --output text-scores.json
 
+Since the 23 November quality-lab update, new text captures use
+`ember-text-blind-ab-v2` and explicitly request
+`chat_template_kwargs.enable_thinking=false`, matching Ember's ordinary
+conversational and speech-response path. Responses containing exposed
+`reasoning_content` or `<think>` are rejected rather than silently rated.
+The capture records `nonthinking_requested=true` so differently generated
+results cannot be accidentally paired. Previously saved v1 captures must
+be kept for archival purposes and **recaptured** for a valid v2 comparison;
+changing the label on old JSON would not make its generation conditions
+equivalent. The actual Qwen/llama.cpp chat-template build must still prove
+that it obeys the flag in live hardware tests.
+
 These matched fixed-sampling tests rank user preference, **not universal truth**. After a fair baseline, repeat with each model's manufacturer-supported *tuned* sampling and a separately labeled experiment; do not conceal different configs in a paired comparison. Tool-calling reliability, factual correctness and multi-hour stability require separate tests. Never substitute a synthetic success for real target-device acceptance.
 
 ## Release priority and remaining proof
