@@ -330,7 +330,8 @@ def self_test():
         assert result["pairs"] == 4
         assert sum(result["counts"]["naturalness"].values()) == 4
         raw = (root / "scores.json").read_text()
-        assert "RIFF" not in raw and "input" not in raw
+        assert "RIFF" not in raw
+        assert "t0_base.wav" not in raw and "t0_new.wav" not in raw
         try:
             prepare(source, manifest, out)
             raise AssertionError("Session overwrite accepted")
