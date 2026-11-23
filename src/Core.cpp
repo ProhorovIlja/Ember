@@ -1263,7 +1263,7 @@ QString visibleAssistantText(const QString &draft) {
     return consumeVisibleAssistantDelta(state, draft);
 }
 QString speechFriendlyText(const QString &markdown) {
-    if (markdown.size() > 16384) return {};
+    if (markdown.size() > kMaxVisibleChatCharacters) return {};
     QString speechSource = markdown;
     // Exclude model-internal reasoning from spoken output even when the
     // non-streaming Kokoro or generic WAV adapter is selected.
@@ -1313,7 +1313,8 @@ QString speechFriendlyText(const QString &markdown) {
 }
 QStringList takeCommittedSpeech(const QString &draft, qsizetype &cursor, bool final) {
     QStringList ready;
-    if (draft.size() > 16384 || cursor < 0 || cursor > draft.size()) return ready;
+    if (draft.size() > kMaxVisibleChatCharacters || cursor < 0 ||
+        cursor > draft.size()) return ready;
     // Only read completed punctuation/whitespace spans. Half-written fenced
     // code stays withheld until its closing fence arrives.
     while (cursor < draft.size()) {
@@ -1415,9 +1416,16 @@ bool mostlyCyrillic(const QString &text) {
 // everything after the first 700 characters. Prefer natural sentence ends,
 // then word boundaries. Never pass more than 700 UTF-16 code units to either
 // offline TTS provider. The API stays turn-based, not fake full duplex.
+bool englishFemaleKokoroSid(int sid) {
+    // Upstream sherpa-onnx kokoro-en-v0_19 speaker mapping. Preserve the
+    // original SID when filtering the UI: 7/8 are NOT speaker IDs 5/6.
+    return (sid >= 0 && sid <= 4) || sid == 7 || sid == 8;
+}
+// A long text answer must not become silent at an unrelated 16 Ki-character
+// TTS cap. The chat's bounded visible text is already <= 65,536 QChars.
 QStringList speechChunks(const QString &input, int maxCharacters) {
     const QString text = input.simplified();
-    if (text.isEmpty() || text.size() > 16384) return {};
+    if (text.isEmpty() || text.size() > kMaxVisibleChatCharacters) return {};
     const int limit = std::clamp(maxCharacters, 80, 700);
     QStringList chunks;
     for (qsizetype pos = 0; pos < text.size();) {

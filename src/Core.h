@@ -178,6 +178,9 @@ QProcessEnvironment sanitizedChildProcessEnvironment(QProcessEnvironment inherit
 QProcessEnvironment speechProcessEnvironment(QProcessEnvironment inherited);
 // Speech.cpp device choices are explicit; CPU can free RTX 4070 VRAM for LLM.
 QString nativeSpeechDeviceArg(int deviceIndex);
+// kokoro-en-v0_19 has fixed 11 SIDs; this English-only edition exposes
+// its seven female US/UK speakers, never the male SIDs 5,6,9,10.
+bool englishFemaleKokoroSid(int sid);
 bool validSpeechWav(const QByteArray &wav);
 // Suppress hallucinations only for *digitally near-silent* canonical 16kHz
 // mono PCM16 input; never gate ordinary quiet voices or unrecognized WAVs.

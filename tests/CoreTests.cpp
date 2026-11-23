@@ -3545,7 +3545,8 @@ private slots:
         cursor = -1;
         QVERIFY(EmberCore::takeCommittedSpeech(text, cursor, true).isEmpty());
         cursor = 0;
-        QVERIFY(EmberCore::takeCommittedSpeech(QString(16385, 'a'), cursor, true).isEmpty());
+        QVERIFY(EmberCore::takeCommittedSpeech(
+            QString(EmberCore::kMaxVisibleChatCharacters + 1, 'a'), cursor, true).isEmpty());
     }
     void preservesEverySentenceInBatchedSseBurst() {
         qsizetype cursor = 0;
@@ -3564,6 +3565,14 @@ private slots:
         QVERIFY(EmberCore::mostlyCyrillic(QString::fromUtf8("Привет!")));
         QVERIFY(EmberCore::mostlyCyrillic(QString::fromUtf8("Это очень важно.")));
     }
+    void kokoroFemaleVoicePickerPreservesOriginalSpeakerIds() {
+        // sherpa-onnx kokoro-en-v0_19: US female 0..4, UK female 7..8.
+        for (const int sid : {0, 1, 2, 3, 4, 7, 8})
+            QVERIFY2(EmberCore::englishFemaleKokoroSid(sid),
+                     "Supported English female Kokoro voice was removed.");
+        for (const int sid : {-1, 5, 6, 9, 10, 11, 100})
+            QVERIFY(!EmberCore::englishFemaleKokoroSid(sid));
+    }
     void longSpokenRepliesAreSplitWithoutSilentTruncation() {
         const QString input = QString("A thoughtful reply has a natural pause. ").repeated(70).trimmed();
         const auto chunks = EmberCore::speechChunks(input);
@@ -3578,7 +3587,22 @@ private slots:
         QVERIFY(forced.size() >= 3);
         for (const auto &chunk : forced) QVERIFY(chunk.size() <= 600);
         QVERIFY(EmberCore::speechChunks({}).isEmpty());
-        QVERIFY(EmberCore::speechChunks(QString(17000, 'y')).isEmpty());
+        // Long collaborative stories previously became entirely silent at
+        // 16,385 UTF-16 characters although the chat supports 65,536.
+        const QString story = QString("The story continues naturally. ")
+                                  .repeated(1100).trimmed();
+        QVERIFY(story.size() > 16384);
+        QVERIFY(story.size() < EmberCore::kMaxVisibleChatCharacters);
+        QCOMPARE(EmberCore::speechFriendlyText(story), story);
+        QCOMPARE(EmberCore::speechChunks(story).join(' '), story);
+        qsizetype cursor = 0;
+        QCOMPARE(EmberCore::takeCommittedSpeech(story, cursor, true).join(' '),
+                 story);
+        QCOMPARE(cursor, qsizetype(story.size()));
+        QVERIFY(EmberCore::speechChunks(
+            QString(EmberCore::kMaxVisibleChatCharacters + 1, 'y')).isEmpty());
+        QVERIFY(EmberCore::speechFriendlyText(
+            QString(EmberCore::kMaxVisibleChatCharacters + 1, 'y')).isEmpty());
     }
     void localSpeechBoundaryAndRequestShape() {
         QVERIFY(EmberCore::allowedLocalSpeechEndpoint(

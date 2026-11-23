@@ -2252,24 +2252,23 @@ ApplicationWindow {
                                     }
                                     ComboBox {
                                         id: voiceSelector
+                                        // Preserve upstream sherpa-onnx voice SIDs when
+                                        // removing male voices from this female-only picker.
+                                        property var femaleVoiceSids: [0, 1, 2, 3, 4, 7, 8]
                                         Layout.preferredWidth: 268
                                         Layout.preferredHeight: 43
                                         model: [
-                                            "af · Female · US",
+                                            "AF · Female · US",
                                             "Bella · Female · US",
                                             "Nicole · Female · US",
                                             "Sarah · Female · US",
                                             "Sky · Female · US",
-                                            "Adam · Male · US",
-                                            "Michael · Male · US",
                                             "Emma · Female · UK",
-                                            "Isabella · Female · UK",
-                                            "George · Male · UK",
-                                            "Lewis · Male · UK"
+                                            "Isabella · Female · UK"
                                         ]
-                                        currentIndex: ember.voiceId
+                                        currentIndex: femaleVoiceSids.indexOf(ember.voiceId)
                                         enabled: !ember.busy && !ember.listening && !ember.speaking
-                                        onActivated: ember.voiceId = currentIndex
+                                        onActivated: ember.voiceId = femaleVoiceSids[currentIndex]
                                         contentItem: Text {
                                             text: voiceSelector.displayText
                                             color: "#EAF4FF"

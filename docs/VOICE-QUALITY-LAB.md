@@ -982,6 +982,13 @@ subjective or objective speech-quality scores.
 
 ### Consistent female voice selection at runtime — 22 November 2026
 
+The fixed sherpa-onnx `kokoro-en-v0_19` pack has seven English female
+speakers with original SIDs 0, 1, 2, 3, 4, 7 and 8 (US and UK).
+The native Kokoro picker now displays just these voices, preserving
+the non-contiguous model SIDs. Saved male/invalid SIDs fall back to
+the female default, and backend setters reject those IDs even when
+called outside the UI. Source: https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html .
+
 The native Qwen3 GGUF offline preflight already checks for an English
 female voice, but that property must also be enforced **after model
 startup**. The v0.11.2 `speech.cpp` `/v1/models` inventory provides
@@ -994,3 +1001,16 @@ script reject an English male, unknown-gender or unlisted speaker
 rather than silently substituting another voice. English female voice
 identity is a metadata property, **not a blind naturalness score**;
 listening acceptance remains required.
+
+
+### Long-story English TTS continuity — 23 November 2026
+
+`speechFriendlyText`, `speechChunks` and the streamed
+`takeCommittedSpeech` cursor now accept the same 65,536 UTF-16-character
+visible-response cap as the local chat renderer, instead of suppressing
+speech after 16,384 characters. Individual TTS requests remain split
+into bounded <=700-character segments; neither chat history nor audio
+are truncated to bypass the bound. CI tests exercise a >30k-character
+English story and both input guards. This is a functional continuity
+fix, not a measurement of 30k-character synthesis speed or voice quality
+on physical hardware.

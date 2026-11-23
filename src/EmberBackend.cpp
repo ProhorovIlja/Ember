@@ -248,7 +248,7 @@ EmberBackend::EmberBackend(QObject *parent)
             this, [this](const QString &text) {
                 emit driveExcerptReady(text);
             });
-    m_voiceId = qBound(0, m_voiceId, 10);
+    if (!EmberCore::englishFemaleKokoroSid(m_voiceId)) m_voiceId = 0;
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
     m_speechDevice = qBound(0, m_settings.value("voice/speechDevice", 0).toInt(), 2);
     m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 4);
@@ -717,7 +717,9 @@ void EmberBackend::setPersona(const QString &persona) {
     storeConfig();
 }
 void EmberBackend::setVoiceId(int index) {
-    if (index < 0 || index > 10 || index == m_voiceId) return;
+    // A persisted or model-selected male SID must never silently override
+    // the English female voice preference in the Kokoro v0.19 provider.
+    if (!EmberCore::englishFemaleKokoroSid(index) || index == m_voiceId) return;
     if (m_busy || m_speaking || m_listening) {
         setStatus("Stop the current voice task before changing the speaker.");
         return;

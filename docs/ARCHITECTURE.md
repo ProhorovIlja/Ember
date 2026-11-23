@@ -1,19 +1,20 @@
 # Ember architecture and development sequence
 
-**Native shell:** Qt 6 Quick + C++20 using Qt Network, Multimedia and Widgets solely for native file dialogs. Qt DLLs are deployed dynamically while respecting relevant LGPL obligations. No WebView2/Chromium or Android layer. Input/output hardware is enumerated by `QMediaDevices` and preferences are saved as opaque device IDs; removed devices invalidate selection instead of silently accessing an unrelated device. The local Qt network manager explicitly bypasses system proxies, refuses redirects on health/chat/speech, and uses a brain-session generation counter to ignore stale health replies. Native capture is capped by a watchdog and by a 30-second per-recording timer with a session generation check.
+**Native shell:** Qt 6 Quick + C++20 using Qt Network, Multimedia and Widgets solely for native file dialogs. Qt DLLs are deployed dynamically while respecting relevant LGPL obligations. No WebView2/Chromium or Android layer. Input/output hardware is enumerated by `QMediaDevices` and preferences are saved as opaque device IDs; removed devices invalidate selection instead of silently accessing an unrelated device. The local Qt network manager explicitly bypasses system proxies, refuses redirects on health/chat/speech, and uses a brain-session generation counter to ignore stale health replies. Native capture is user-stopped rather than cut off at 30 seconds: a 1 GiB disk-safety quota, a failure watchdog and session-generation guards protect microphone recordings.
 
 **Logical layers:**
 ```text
 QML native workspace
-  ├─ Voice: explicit 16 kHz mono capture -> WAV -> whisper-cli
-  │                                     -> text in current session
-  ├─ Local LLM: llama-server process (127.0.0.1:43821)
-  │               JSON chat completion with fixed local model alias
-  └─ Voice output: native switchable providers
-       ├─ sherpa-onnx CLI + Kokoro -> WAV
-       └─ localhost only (127.0.0.1:43822) OpenAI speech API -> bounded PCM16 WAV
-       -> selected QAudioOutput / QMediaPlayer
-       -> queue natural sentence/word segments if the LLM answer exceeds the engine limit
+  ├─ Voice: native Qt mic -> bounded resampling -> 25s overlapping WAV chunks
+  │                    -> offline Whisper or native speech.cpp Qwen3-ASR
+  │                    -> text in the current session or editable dictation
+  ├─ Local LLM: resident llama-server on 127.0.0.1:43821
+  │               streamed SSE chat completions with generation cancellation
+  └─ English voice output: native switchable providers
+       ├─ sherpa-onnx CLI + Kokoro en-v0_19 -> bounded WAV/QMediaPlayer
+       └─ managed speech.cpp Qwen3-TTS on 127.0.0.1:43822
+            -> streamed PCM16 -> bounded Qt QAudioSink on selected device
+       -> queued sentences; early English speech may overlap LLM generation
          Shared C++ backend / bounded in-memory transcript / portable settings
 ```
 
@@ -27,7 +28,7 @@ A single 12 GB RTX 4070 should prioritize a quantized ~8B-class language model a
 
 ### Sequence and acceptance
 
-1. **Voice quality:** real mic capture, accurate transcription in EN and RU, candidate female voices, text-to-speech evaluation, playback/cancellation. Current v0.1 foundation is turn-based, English Kokoro only, and requires user-provided engines.
+1. **Voice quality:** real mic capture, accurate transcription in EN and RU, candidate female voices, text-to-speech evaluation, playback/cancellation. The local client has managed speech.cpp/Qwen3 and Kokoro paths, while real offline weights, naturalness and physical hardware acceptance remain open.
 2. **Text chat:** token streaming, stop generation, memory scope, conversation navigation, model selection, sampling parameters, structured reply rendering, session recovery, privacy-safe export.
 3. **Modules:** explicit file permissions, secure local tool execution, GitHub/Google Drive connectors, audio/video inspection, image viewing and live screen perception. Never grant arbitrary file, shell or network access implicitly via a prompt. Include per-tool approval, audit and revocation.
 4. **Optional future generation:** images, music, video, audio are not part of the current scope.
@@ -47,7 +48,7 @@ Provider-independent persona text is configurable locally. Ember applies no addi
 
 The chat request uses llama.cpp's OpenAI-compatible server-sent events with bounded incremental parsing, UTF-8-safe assembly and 40 ms batched QML updates. The last completed/partial answer is persisted to SQLite, but arbitrary intermediary token timing is not a benchmark. Writing presets separately cover general conversation, collaborative fiction, troubleshooting and code work. Only a few recent turns are returned to the model due the active context budget: an actual long-term retrieval/summary system remains future work.
 
-Dictation is intentionally independent of starting the LLM. QAudioSource writes to a temporary disk file rather than accumulating the whole recording in RAM. Stop/release transcribes consecutive bounded 25-second WAV windows using offline multilingual Whisper; the native UI inserts the final RU/EN text without submitting it. A 1 GiB raw capture safety limit bounds disk use. There is not yet VAD-aware segmentation, cross-window speaker diarization, or guaranteed transcription quality. A separate speech conversation path remains 30-second turn-based, with English-only TTS.
+Dictation is intentionally independent of starting the LLM. QAudioSource writes to a temporary disk file rather than accumulating the whole recording in RAM. Stop/release transcribes consecutive bounded 25-second WAV windows using offline multilingual Whisper; the native UI inserts the final RU/EN text without submitting it. A 1 GiB raw capture safety limit bounds disk use. There is not yet VAD-aware segmentation, cross-window speaker diarization, or guaranteed transcription quality. Speech conversation uses user-stop or optional pause-ending, without a fixed 30-second cutoff, and stays turn-based rather than falsely claiming full duplex. English-only TTS supports seven fixed Kokoro female SIDs (0–4, 7–8) or verified English female Qwen3 speakers. Spoken segments share the local model's 65,536-character visible-chat safety bound rather than silently dropping long story answers at 16,384.
 
 AMOLED visual system is rendered by Qt Quick (no WebView2), using pure black/dark navy surfaces and blue accents, a custom native SVG emblem and restrained conditional motion. Final visual review across Windows 10/11, scaling, real NVIDIA drivers and font availability is outstanding.
 
