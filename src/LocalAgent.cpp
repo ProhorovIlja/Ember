@@ -171,6 +171,25 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
                     {"path", QJsonObject{{"type", "string"}}},
                     {"content", QJsonObject{{"type", "string"}}}
                 }, QJsonArray{"path", "content"}));
+            tools.append(functionDef("propose_new_files",
+                "STAGE 2-3 new source files (for example a minimal "
+                "HTML/CSS/JS site) under existing user-approved directories. "
+                "Requires successful project_map FIRST. Max total 12000 "
+                "source characters or 20KB UTF-8. Never overwrites, "
+                "creates directories, runs code, or writes without "
+                "independent full-content human approval.",
+                QJsonObject{{"files", QJsonObject{
+                    {"type", "array"}, {"minItems", 2}, {"maxItems", 3},
+                    {"items", QJsonObject{
+                        {"type", "object"},
+                        {"properties", QJsonObject{
+                            {"path", QJsonObject{{"type", "string"}}},
+                            {"content", QJsonObject{{"type", "string"}}}
+                        }},
+                        {"required", QJsonArray{"path", "content"}},
+                        {"additionalProperties", false}
+                    }}
+                }}}, QJsonArray{"files"}));
             request.insert("tools", tools);
         }
         }
@@ -231,7 +250,8 @@ Decision parseModelResponse(const QByteArray &json,
                     tool != "read_source" &&
                     !(mayProposeEdit &&
                       (tool == "propose_patch" || tool == "propose_patch_batch" ||
-                       tool == "propose_new_file"))))) {
+                       tool == "propose_new_file" ||
+                       tool == "propose_new_files"))))) {
             answer.error = "Denied an unknown, privileged or invalid model tool call.";
             return answer;
         }
@@ -251,7 +271,51 @@ Decision parseModelResponse(const QByteArray &json,
             return answer;
         }
         const QJsonObject args = parsed.object();
-        if (tool == "propose_new_file") {
+        if (tool == "propose_new_files") {
+            const QJsonArray files = args.value("files").toArray();
+            if (args.size() != 1 || !args.value("files").isArray() ||
+                files.size() < 2 || files.size() > 3) {
+                answer.error = "New-file batch requires 2 or 3 source files.";
+                return answer;
+            }
+            qsizetype totalChars = 0;
+            qsizetype totalBytes = 0;
+            QSet<QString> seen;
+            for (const QJsonValue &entry : files) {
+                if (!entry.isObject()) {
+                    answer.error = "New source must be a structured object.";
+                    return answer;
+                }
+                const QJsonObject source = entry.toObject();
+                if (source.size() != 2 || !source.value("path").isString() ||
+                    !source.value("content").isString()) {
+                    answer.error = "New source requires path and content only.";
+                    return answer;
+                }
+                const QString path = source.value("path").toString();
+                const QString content = source.value("content").toString();
+                if (path.isEmpty() || path.size() > 240 ||
+                    path.contains(QChar::Null) || content.isEmpty() ||
+                    content.size() > 8000 || content.contains(QChar::Null)) {
+                    answer.error = "New source path or contents unsafe or oversized.";
+                    return answer;
+                }
+                const QString key = QDir::cleanPath(
+                    QDir::fromNativeSeparators(path)).toCaseFolded();
+                if (seen.contains(key)) {
+                    answer.error = "New-file batch contains duplicate source paths.";
+                    return answer;
+                }
+                seen.insert(key);
+                totalChars += content.size();
+                totalBytes += content.toUtf8().size();
+                if (totalChars > 12000 || totalBytes > 20000) {
+                    answer.error = "Combined new-file batch budget exceeded.";
+                    return answer;
+                }
+                answer.newFiles.append(NewSourceFile{path, content});
+            }
+        } else if (tool == "propose_new_file") {
             if (args.size() != 2 || !args.value("path").isString() ||
                 !args.value("content").isString()) {
                 answer.error = "propose_new_file needs exactly path and content.";
@@ -473,6 +537,10 @@ QJsonObject assistantToolMessage(const Decision &decision) {
         batchArgs.append(QJsonObject{{"path", edit.path},
                                      {"old_text", edit.oldText},
                                      {"new_text", edit.newText}});
+    QJsonArray newFiles;
+    for (const auto &file : decision.newFiles)
+        newFiles.append(QJsonObject{{"path", file.path},
+                                    {"content", file.content}});
     const QJsonObject args = decision.tool == "project_map"
         ? QJsonObject{} :
         decision.tool == "search_text"
@@ -498,6 +566,8 @@ QJsonObject assistantToolMessage(const Decision &decision) {
                     : decision.tool == "propose_new_file"
                         ? QJsonObject{{"path", decision.path},
                                       {"content", decision.newText}}
+                    : decision.tool == "propose_new_files"
+                        ? QJsonObject{{"files", newFiles}}
                         : QJsonObject{{"path", decision.path},
                               {"start_line", decision.startLine}};
     return QJsonObject{
