@@ -31,6 +31,17 @@ public:
     bool restoreCompactBackup(const QString &path);
     QVariantList messages(const QString &session, int limit = 300,
                           int offset = 0) const;
+    // Foreground-only stable SQLite ID windows; never materialize a whole
+    // multi-year conversation just to navigate to an archived search hit.
+    QVariantList messagesAround(const QString &session, qint64 messageId,
+                                int before = 40, int after = 40) const;
+    QVariantList messagesBefore(const QString &session, qint64 messageId,
+                                int limit = 100) const;
+    QVariantList messagesAfter(const QString &session, qint64 messageId,
+                               int limit = 100) const;
+    bool hasMessageBefore(const QString &session, qint64 messageId) const;
+    bool hasMessageAfter(const QString &session, qint64 messageId) const;
+    qint64 latestMessageId(const QString &session) const;
     bool append(const QString &session, const QString &role, const QString &body);
     bool remove(const QString &session);
     bool exists(const QString &session) const;
