@@ -305,9 +305,11 @@ def self_test():
         assert "adapter: qlora" in text and "sample_packing: false" in text
         # JSON double-quoted YAML escapes Windows backslashes; compare the
         # serialized value instead of its unescaped filesystem spelling.
-        assert yaml_string(str(base)) in text
-        assert yaml_string(str(data / "train.jsonl")) in text
-        assert yaml_string(str(data / "eval.jsonl")) not in text
+        # TemporaryDirectory on Windows can contain 8.3 or junction path
+        # aliases; the generator uses Path.resolve() for source paths.
+        assert yaml_string(str(base.resolve())) in text
+        assert yaml_string(str((data / "train.jsonl").resolve())) in text
+        assert yaml_string(str((data / "eval.jsonl").resolve())) not in text
         try:
             prepare(base, data, target, "a" * 40, 512, 1)
             raise AssertionError("Existing training config overwritten")
