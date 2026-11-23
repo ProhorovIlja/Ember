@@ -4,8 +4,9 @@
 An offline installer that tests text and TTS separately may still fail on a
 12-GiB RTX 4070 when both engines allocate VRAM. This foreground acceptance
 starts TWO approved native child processes, proves both listeners and sends
-one real text and one real PCM request *while both remain resident*, then
-terminates both in a finally block. No downloads, monitoring, schedules,
+English/Russian text and real PCM requests *while both remain resident*.
+When provided, real RU/EN Whisper dictation also runs without unloading either
+resident engine. Both child processes terminate in a finally block. No downloads, monitoring, schedules,
 conversation transcripts or audio files. Not a human voice-quality judgment.
 """
 from __future__ import annotations
@@ -21,7 +22,7 @@ from urllib.error import HTTPError, URLError
 
 from offline_bundle import verify, verify_windows_amd64_pe
 from offline_acceptance import (listener_owners, wait_for_server,
-                                verify_real_prompt_tokens)
+                                verify_real_prompt_tokens, smoke_whisper)
 from native_speech_acceptance import (model_path, speech_owners, wait_for_speech)
 from private_worker_env import private_worker_environment
 from brain_mode_acceptance import CASES as BRAIN_CASES, run_case as brain_case
@@ -47,6 +48,26 @@ def validated_args(context: int, gpu_layers: int, device: str, samples: int,
         raise ValueError("Unsupported native voice model alias")
 
 
+def validated_bilingual_inputs(en_wav, en_reference, ru_wav, ru_reference,
+                               max_wer):
+    """The live test must never call two missing recordings a passing ASR test.
+
+    The WAV and transcript files are local and never included in model reports.
+    The sibling Whisper function validates their *actual* PCM and UTF-8 content.
+    """
+    values = (en_wav, en_reference, ru_wav, ru_reference)
+    supplied = [x is not None for x in values]
+    if any(supplied) and not all(supplied):
+        raise ValueError("Supply both WAV and transcript for English AND Russian")
+    if type(max_wer) not in (int, float) or not 0.0 <= max_wer <= 1.0:
+        raise ValueError("ASR WER limit must be between 0.0 and 1.0")
+    if all(supplied):
+        for path in values:
+            if not isinstance(path, Path) or path.is_symlink() or not path.is_file():
+                raise ValueError("ASR acceptance inputs must be existing regular local files")
+    return all(supplied)
+
+
 def workers_alive(brain, speech) -> None:
     if brain.poll() is not None or speech.poll() is not None:
         raise RuntimeError("Ember LLM or TTS exited while both were required")
@@ -66,9 +87,14 @@ def stop_worker(proc) -> None:
 
 
 def probe(root: Path, *, context: int, gpu_layers: int, device: str,
-          samples: int, startup_seconds: int, voice: str, model: str) -> dict:
+          samples: int, startup_seconds: int, voice: str, model: str,
+          en_wav: Path | None = None, en_reference: Path | None = None,
+          ru_wav: Path | None = None, ru_reference: Path | None = None,
+          max_wer: float = 0.25) -> dict:
     validated_args(context, gpu_layers, device, samples,
                    startup_seconds, voice, model)
+    has_asr = validated_bilingual_inputs(en_wav, en_reference, ru_wav,
+                                        ru_reference, max_wer)
     if listener_owners() or speech_owners():
         raise RuntimeError("Ember ports are already occupied: stop local engines first")
     verify(root, root / "offline-assets.json", approved=True, require_voice=True)
@@ -119,8 +145,20 @@ def probe(root: Path, *, context: int, gpu_layers: int, device: str,
             metrics.append({"trial": i + 1, "audio_seconds": speech["audio_seconds"],
                             "first_pcm_byte_ms": speech["first_http_pcm_byte_ms"],
                             "total_synthesis_ms": speech["total_http_synthesis_ms"]})
-        # A second, Russian nonthinking exchange after TTS checks that
-        # the local model still obeys the official Qwen3.5 template under load.
+        # Real RU/EN dictation while BOTH language and voice models occupy
+        # memory. Reuse the same Whisper CLI, scored reference, and protected
+        # ephemeral output that the separate offline acceptance already uses.
+        asr_metrics = []
+        if has_asr:
+            for language, wav, reference in (
+                    ("en", en_wav, en_reference),
+                    ("ru", ru_wav, ru_reference)):
+                workers_alive(llm_proc, voice_proc)
+                score = smoke_whisper(root, wav, reference, language, max_wer)
+                workers_alive(llm_proc, voice_proc)
+                asr_metrics.append(score)
+        # A second Russian nonthinking exchange after TTS+ASR ensures both
+        # managed workers are still useful following the additional GPU load.
         second_text = brain_case(BRAIN_CASES[1], llm_proc.pid)
         workers_alive(llm_proc, voice_proc)
         if not second_text.get("passed"):
@@ -134,14 +172,17 @@ def probe(root: Path, *, context: int, gpu_layers: int, device: str,
             "first_english_visible_ms": first_text["first_visible_ms"],
             "second_russian_visible_ms": second_text["first_visible_ms"],
             "speech_metrics_only": metrics,
+            "simultaneous_llm_tts_asr": "PASS" if has_asr else "NOT_TESTED",
+            "bilingual_asr_scores": asr_metrics,
             "loaded_tts_alias": model,
             "requested_speech_device": device,
             "requested_gpu_layers": gpu_layers,
             "token_budget": tokenizer,
             "actual_peak_vram_bytes": None,
             "release_approved": False,
-            "caveat": "Co-residency and PCM responses do not prove natural voice, "
-                      "correct GPU offload, long dialogues or full-duplex barge-in.",
+            "caveat": "Short LLM/TTS and optional real RU/EN Whisper under dual "
+                      "model residency do not prove natural voice, GPU placement, "
+                      "long dialogues or full-duplex barge-in.",
         }
     finally:
         # Kill only our own explicitly spawned children; never interfere with
@@ -202,11 +243,53 @@ def self_test() -> None:
               mock.patch(__name__ + ".verify_real_prompt_tokens", return_value={"configured_context_tokens": 8192}),
               mock.patch(__name__ + ".brain_case", side_effect=fake_text),
               mock.patch(__name__ + ".speech_measure", side_effect=fake_speech),
+              mock.patch(__name__ + ".smoke_whisper", side_effect=lambda *a: {
+                  "language": a[3], "wer": 0.0, "cer": 0.0, "latency_ms": 14.0,
+                  "wav_bytes": 44}),
               mock.patch(__name__ + ".subprocess.Popen", side_effect=fake_popen)):
+            en = root / "english.wav"
+            en.write_bytes(b"synthetic sample; real PCM never used by mocks")
+            ru = root / "russian.wav"
+            ru.write_bytes(b"synthetic sample; real PCM never used by mocks")
+            en_txt = root / "english.txt"
+            en_txt.write_text("test", encoding="utf-8")
+            ru_txt = root / "russian.txt"
+            ru_txt.write_text("тест", encoding="utf-8")
+            assert not validated_bilingual_inputs(None, None, None, None, 0.25)
+            try:
+                validated_bilingual_inputs(en, en_txt, None, None, 0.25)
+                raise AssertionError("Missing Russian dictation reference accepted")
+            except ValueError:
+                pass
             result = probe(root, context=8192, gpu_layers=99, device="auto",
                            samples=2, startup_seconds=180, voice="vivian",
                            model="qwen3-tts-1.7b")
             assert result["simultaneous_llm_tts_residency"] == "PASS"
+            assert result["simultaneous_llm_tts_asr"] == "NOT_TESTED"
+            assert len(children) == 2 and all(c.stopped for c in children)
+            children.clear()
+            with mock.patch(__name__ + ".smoke_whisper", wraps=smoke_whisper) as not_used:
+                # Use the mocked runtime's deterministic Whisper results.
+                not_used.side_effect = lambda *a: {"language": a[3], "wer": 0.0,
+                    "cer": 0.0, "latency_ms": 14.0, "wav_bytes": 44}
+                triad = probe(root, context=8192, gpu_layers=99, device="auto",
+                              samples=1, startup_seconds=180, voice="vivian",
+                              model="qwen3-tts-1.7b", en_wav=en,
+                              en_reference=en_txt, ru_wav=ru, ru_reference=ru_txt)
+                assert triad["simultaneous_llm_tts_asr"] == "PASS"
+                assert len(triad["bilingual_asr_scores"]) == 2
+                assert not_used.call_count == 2
+            assert len(children) == 2 and all(c.stopped for c in children)
+            children.clear()
+            with mock.patch(__name__ + ".smoke_whisper", side_effect=RuntimeError("simulated ASR OOM")):
+                try:
+                    probe(root, context=8192, gpu_layers=99, device="auto",
+                          samples=1, startup_seconds=180, voice="vivian",
+                          model="qwen3-tts-1.7b", en_wav=en,
+                          en_reference=en_txt, ru_wav=ru, ru_reference=ru_txt)
+                    raise AssertionError("Simulated ASR OOM silently accepted")
+                except RuntimeError as error:
+                    assert "simulated ASR OOM" in str(error)
             assert len(children) == 2 and all(c.stopped for c in children)
             children.clear()
             with mock.patch(__name__ + ".wait_for_speech", side_effect=RuntimeError("simulated OOM")):
@@ -218,7 +301,7 @@ def self_test() -> None:
                 except RuntimeError as error:
                     assert "simulated OOM" in str(error)
             assert len(children) == 2 and all(c.stopped for c in children)
-    print("combined_runtime_acceptance: validation, dual residency and OOM rollback fixtures PASS")
+    print("combined_runtime_acceptance: simultaneous text/TTS/RU-EN ASR and OOM rollback fixtures PASS")
 
 
 def main() -> None:
@@ -234,6 +317,11 @@ def main() -> None:
     parser.add_argument("--gpu-layers", type=int, default=99)
     parser.add_argument("--samples", type=int, default=2)
     parser.add_argument("--startup-seconds", type=int, default=180)
+    parser.add_argument("--en-wav", type=Path)
+    parser.add_argument("--en-reference", type=Path)
+    parser.add_argument("--ru-wav", type=Path)
+    parser.add_argument("--ru-reference", type=Path)
+    parser.add_argument("--max-wer", type=float, default=0.25)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
     if args.self_test:
@@ -246,10 +334,15 @@ def main() -> None:
     if args.report is not None and args.report.exists():
         parser.error("Refusing to overwrite an existing metrics report")
     try:
+        validated_bilingual_inputs(args.en_wav, args.en_reference,
+                                  args.ru_wav, args.ru_reference, args.max_wer)
         result = probe(args.root.resolve(strict=True), context=args.context,
                        gpu_layers=args.gpu_layers, device=args.device,
                        samples=args.samples, startup_seconds=args.startup_seconds,
-                       voice=args.voice, model=args.model)
+                       voice=args.voice, model=args.model,
+                       en_wav=args.en_wav, en_reference=args.en_reference,
+                       ru_wav=args.ru_wav, ru_reference=args.ru_reference,
+                       max_wer=args.max_wer)
         encoded = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
         if args.report is not None:
             with args.report.open("x", encoding="utf-8") as out:
