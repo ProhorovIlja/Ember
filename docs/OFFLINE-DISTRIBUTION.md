@@ -143,8 +143,10 @@ installed source assets already present, invoke explicitly from the checkout:
 The chosen output directory must NOT exist and must be outside the source,
 application and model asset trees. A fresh local staging directory is used
 and removed on any failure; output appears only after checks and both files
-complete. The resulting folder contains the Windows installer, portable ZIP
-and SHA256SUMS.txt (the installer may also leave a separate checksum file).
+complete. The resulting folder contains two independent single-download
+ZIP64 packages (complete multi-slice installer and directly runnable portable
+edition) plus SHA256SUMS.txt. Raw Setup.exe/.bin files exist only in the
+temporary build staging directory and are verified before being archived.
 The script never contacts GitHub or Hugging Face, downloads dependencies,
 publishes a Release, registers monitoring or runs scheduled tasks.
 
