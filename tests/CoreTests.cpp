@@ -1169,6 +1169,45 @@ private slots:
             QCOMPARE(reopened.historicalExcerpts(story, "silver compass"), QString());
         }
     }
+    void optInCrossChatRecallUsesOnlyOtherSavedSessions() {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        SessionStore db(temp.filePath("cross-memory.sqlite"));
+        QVERIFY2(db.ready(), qPrintable(db.error()));
+        const QString project = db.createSession();
+        const QString unrelated = db.createSession();
+        const QString current = db.createSession();
+        QVERIFY(db.append(project, "you",
+            "Archivist Mara stored the silver compass beneath the western bell tower."));
+        QVERIFY(db.append(project, "ember",
+            "Mara promised Leon they would return after midnight."));
+        QVERIFY(db.append(unrelated, "you",
+            "Lantern is the owl at the quiet library."));
+        QVERIFY(db.append(current, "you",
+            "Current-session secret amber lighthouse code is alone here."));
+        const QString recalled = db.relatedSavedExcerpts(
+            current, "Where is Mara's silver compass?");
+        QVERIFY2(recalled.contains("silver compass"), qPrintable(recalled));
+        QVERIFY(recalled.contains("bell tower"));
+        QVERIFY(!recalled.contains("Lantern"));
+        QVERIFY(!recalled.contains("amber lighthouse"));
+        QCOMPARE(db.relatedSavedExcerpts(current, "amber lighthouse"),
+                 QString());
+        QCOMPARE(db.relatedSavedExcerpts(current, "and the what this"),
+                 QString());
+        QVERIFY(db.remove(project));
+        QCOMPARE(db.relatedSavedExcerpts(current, "silver compass"),
+                 QString());
+        QVERIFY(db.append(unrelated, "you", QString::fromUtf8(
+            "Анна спрятала серебряный ключ в старом саду.")));
+        const QString ru = db.relatedSavedExcerpts(
+            current, QString::fromUtf8("Где Анна спрятала серебряный ключ?"));
+        QVERIFY2(ru.contains(QString::fromUtf8("Анна")), qPrintable(ru));
+        // The user must have a real saved session; a private/unknown ID
+        // must never be able to retrieve other conversations by accident.
+        QCOMPARE(db.relatedSavedExcerpts("private-session", "Анна ключ"),
+                 QString());
+    }
     void configurableTextOutputBudgetRespectsContextAndVoiceLimits() {
         using namespace EmberCore;
         QCOMPARE(chatOutputBudget(2048, 8192, false), 2048);
