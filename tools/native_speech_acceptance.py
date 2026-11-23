@@ -86,7 +86,11 @@ def valid_health_reply(status, content_type, body):
 
 
 def valid_inventory_reply(status, content_type, body, alias, voice):
-    """Verify loaded model identity and selected English female voice."""
+    """Verify an English-capable TTS model and selected verified female speaker.
+
+    speech.voices[].language is the speaker's *native* language, not a
+    per-speaker English synthesis restriction (Vivian/Serena are native zh).
+    """
     if (status != 200 or not isinstance(body, bytes) or
             not 0 < len(body) <= 65536 or
             content_type.split(";", 1)[0].strip().lower() != "application/json" or
@@ -134,7 +138,9 @@ def valid_inventory_reply(status, content_type, body, alias, voice):
                         gender not in ("female", "male")):
                     return False
                 seen.add(name)
-                if name == voice and language == "en" and gender == "female":
+                # The model's languages include en, even when this
+                # female voice has a different native language.
+                if name == voice and gender == "female":
                     selected_female = True
             if not selected_female:
                 return False
@@ -277,8 +283,8 @@ def self_test():
     assert not valid_health_reply(200, "application/json", b'{')
     row = {"id": "local-qwen-gguf", "object": "model",
            "speech": {"task": "synthesis", "architecture": "qwen3-tts",
-                      "size_label": "0.6B", "languages": ["en", "ru"],
-                      "voices": [{"name": "vivian", "language": "en",
+                      "size_label": "0.6B", "languages": ["en", "ru", "zh"],
+                      "voices": [{"name": "vivian", "language": "zh",
                                   "gender": "female"},
                                  {"name": "ryan", "language": "en",
                                   "gender": "male"}]}}
