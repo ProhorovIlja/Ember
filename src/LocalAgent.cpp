@@ -159,6 +159,18 @@ QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
                         {"additionalProperties", false}
                     }}
                 }}}, QJsonArray{"edits"}));
+            tools.append(functionDef("propose_new_file",
+                "STAGE ONE new UTF-8 source file inside an existing "
+                "user-approved project directory. The file and parent "
+                "folders must NOT already conflict; all parent folders "
+                "must already exist. Call project_map FIRST. Maximum "
+                "8000 content characters; never shell commands. "
+                "NO file is written until a separate full-content "
+                "human review and approval. Cannot overwrite files.",
+                QJsonObject{
+                    {"path", QJsonObject{{"type", "string"}}},
+                    {"content", QJsonObject{{"type", "string"}}}
+                }, QJsonArray{"path", "content"}));
             request.insert("tools", tools);
         }
         }
@@ -218,7 +230,8 @@ Decision parseModelResponse(const QByteArray &json,
                  : (tool != "project_map" && tool != "search_text" &&
                     tool != "read_source" &&
                     !(mayProposeEdit &&
-                      (tool == "propose_patch" || tool == "propose_patch_batch"))))) {
+                      (tool == "propose_patch" || tool == "propose_patch_batch" ||
+                       tool == "propose_new_file"))))) {
             answer.error = "Denied an unknown, privileged or invalid model tool call.";
             return answer;
         }
@@ -238,7 +251,22 @@ Decision parseModelResponse(const QByteArray &json,
             return answer;
         }
         const QJsonObject args = parsed.object();
-        if (tool == "propose_patch_batch") {
+        if (tool == "propose_new_file") {
+            if (args.size() != 2 || !args.value("path").isString() ||
+                !args.value("content").isString()) {
+                answer.error = "propose_new_file needs exactly path and content.";
+                return answer;
+            }
+            answer.path = args.value("path").toString();
+            answer.newText = args.value("content").toString();
+            if (answer.path.isEmpty() || answer.path.size() > 240 ||
+                answer.newText.isEmpty() || answer.newText.size() > 8000 ||
+                answer.path.contains(QChar::Null) ||
+                answer.newText.contains(QChar::Null)) {
+                answer.error = "New source file path or content is unsafe or oversized.";
+                return answer;
+            }
+        } else if (tool == "propose_patch_batch") {
             const QJsonArray edits = args.value("edits").toArray();
             if (args.size() != 1 || !args.value("edits").isArray() ||
                 edits.isEmpty() || edits.size() > 3) {
@@ -467,6 +495,9 @@ QJsonObject assistantToolMessage(const Decision &decision) {
                         ? QJsonObject{{"path", decision.path},
                                       {"old_text", decision.oldText},
                                       {"new_text", decision.newText}}
+                    : decision.tool == "propose_new_file"
+                        ? QJsonObject{{"path", decision.path},
+                                      {"content", decision.newText}}
                         : QJsonObject{{"path", decision.path},
                               {"start_line", decision.startLine}};
     return QJsonObject{
