@@ -33,7 +33,9 @@ struct Decision {
 QJsonObject modelRequest(const QJsonArray &messages, int callsRemaining,
                          Scope scope = Scope::LocalProject,
                          bool mayProposeEdit = false,
-                         bool enableThinking = false);
+                         bool enableThinking = false,
+                         bool thinkingTemplateSupported = false,
+                         bool qwen35Sampling = false);
 Decision parseModelResponse(const QByteArray &json,
                             Scope scope = Scope::LocalProject,
                             bool mayProposeEdit = false);
