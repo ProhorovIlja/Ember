@@ -2482,7 +2482,7 @@ void EmberBackend::requestLocalAgentStep() {
                                    : kProjectInvestigationCalls);
     const auto payload = EmberAgent::modelRequest(
         m_agentMessages, std::max(0, maxCalls - m_agentCalls),
-        m_agentScope, m_agentMayProposeEdit);
+        m_agentScope, m_agentMayProposeEdit, m_deepReasoning);
     QNetworkRequest request{QUrl(url)};
     request.setTransferTimeout(60000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
