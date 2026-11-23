@@ -19,6 +19,23 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+# Fail before any expensive CMake build if a release script has a broken
+# PowerShell expression. This uses PowerShell's actual AST parser (not a
+# brace-count approximation) and executes no nested script yet.
+foreach ($releaseScript in @(
+        'release/build-complete-windows.ps1',
+        'release/build-complete-offline.ps1',
+        'release/build-dev-installer.ps1',
+        'release/stage-msvc-applocal.ps1')) {
+    $scriptPath = Join-Path $root $releaseScript
+    $parseTokens = $null
+    $parseErrors = $null
+    [void][System.Management.Automation.Language.Parser]::ParseFile(
+        $scriptPath, [ref]$parseTokens, [ref]$parseErrors)
+    if (@($parseErrors).Count -gt 0) {
+        throw "PowerShell syntax error in $releaseScript: $($parseErrors[0].Message)"
+    }
+}
 $qt = (Resolve-Path -LiteralPath $QtRoot -ErrorAction Stop).Path
 $deploy = Join-Path $qt 'bin\windeployqt.exe'
 if (-not (Test-Path -LiteralPath $deploy -PathType Leaf)) {
