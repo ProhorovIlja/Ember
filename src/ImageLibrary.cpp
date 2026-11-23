@@ -68,7 +68,11 @@ QString ImageLibrary::importImage(const QImage &image, QString *error) {
     // pixel is opaque. hasAlphaChannel() only describes the pixel *format*:
     // treating it as real transparency needlessly stores screenshots as
     // multi-megabyte PNG instead of compact JPEG.
-    QSize size = image.size().scaled(kMaxEdge, kMaxEdge, Qt::KeepAspectRatio);
+    // Never enlarge small images to 1536px: a 32px clipboard icon would
+    // otherwise become a 1536px image, wasting CPU, memory and disk space.
+    QSize size = image.size();
+    if (size.width() > kMaxEdge || size.height() > kMaxEdge)
+        size.scale(kMaxEdge, kMaxEdge, Qt::KeepAspectRatio);
     bool transparent = false;
     bool alphaInspected = false;
     QByteArray bytes;
