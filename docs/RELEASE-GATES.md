@@ -19,6 +19,29 @@ correct uninstall and privacy. A synthetic CI build, protocol fixture,
 developer installer or screenshot is **not** evidence of real voice prosody,
 model quality or completed Windows deployment. No public previews.
 
+## Concurrent local-model capacity and interactive readiness (23 November 2026)
+
+- [x] Source-level manual `tools/combined_runtime_acceptance.py` added
+  to the **complete Windows offline assembly**. It uses the exact
+  preinstalled/approved llama.cpp and speech.cpp executables, holds both
+  processes resident simultaneously, checks owned IPv4 localhost listeners,
+  sends an English Qwen3.5 nonthinking text request, synthesizes verified
+  non-silent English PCM, and checks a Russian nonthinking response with
+  both models still loaded. No user text/audio is stored; both child
+  processes are always stopped after the one-shot check. A simulated
+  model-startup/OOM failure also checks child-process rollback.
+- [ ] Run that test on the actual RTX 4070 12 GB with an approved GGUF
+  and English Qwen3-TTS checkpoint. Verify both models are genuinely
+  usable at the selected GPU offload/context, not just loaded
+  sequentially. `--device auto` may place TTS on CPU; record actual
+  GPU/CPU placements, peak VRAM, wall latency and Windows RAM usage
+  separately rather than inferring GPU use from a successful HTTP reply.
+- [ ] Run real microphone EN/RU ASR during LLM+TTS residency, verify
+  user-initiated interruptions and recovered draft integrity, and
+  human-rate multi-turn natural English female voice. The source
+  co-residency check alone does not establish full-duplex barge-in,
+  12 GB capacity margin or natural conversation quality.
+
 ## Native Image Library and multimodal release checks
 
 - [x] Source-level local image file/clipboard normalization, content-addressed
