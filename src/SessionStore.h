@@ -19,6 +19,11 @@ public:
     // Small, opt-in-to-this-chat lexical recollection; no embeddings or cloud.
     QString historicalExcerpts(const QString &session, const QString &question,
                                int maxResults = 3) const;
+    // Foreground lexical recall from OTHER saved chats. Caller MUST check
+    // an explicit opt-in and private-mode boundary; no index or background task.
+    QString relatedSavedExcerpts(const QString &currentSession,
+                                 const QString &question,
+                                 int maxResults = 2) const;
     bool exportMarkdown(const QString &session, const QString &path) const;
     // Explicit local-only compressed backup. Not encrypted or cloud synced.
     bool exportCompactBackup(const QString &path) const;
