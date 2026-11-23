@@ -556,7 +556,7 @@ ApplicationWindow {
                         delegate: Rectangle {
                             required property var modelData
                             width: historyList.width
-                            height: window.historyQuery.length > 0 ? 67 : 49
+                            height: window.historyQuery.length > 0 ? 91 : 49
                             radius: 10
                             color: modelData.id === ember.currentSessionId
                                    ? "#133352" : (historyHover.hovered ? "#0C1D31" : "transparent")
@@ -587,12 +587,20 @@ ApplicationWindow {
                                 anchors.top: parent.top
                                 anchors.leftMargin: 12
                                 anchors.rightMargin: 9
-                                anchors.topMargin: 36
+                                anchors.topMargin: 35
+                                height: 44
                                 text: modelData.snippet || "Title match"
+                                wrapMode: Text.WordWrap
                                 elide: Text.ElideRight
-                                color: "#7F9FBA"
-                                font.pixelSize: 10
-                                maximumLineCount: 1
+                                color: "#8FAFC9"
+                                font.pixelSize: 11
+                                maximumLineCount: 2
+                                clip: true
+                                ToolTip.visible: window.historyQuery.length > 0 &&
+                                                 historyHover.hovered &&
+                                                 (modelData.snippet || "").length > 0
+                                ToolTip.delay: 650
+                                ToolTip.text: modelData.snippet || ""
                             }
                             HoverHandler { id: historyHover }
                             MouseArea {
