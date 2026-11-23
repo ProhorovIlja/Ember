@@ -1291,6 +1291,34 @@ private slots:
         QCOMPARE(store.messages(story, 1).first().toMap()
             .value("body").toString(), QString("Story scene 469."));
     }
+    void nearTailSearchWindowIsStillNotTheFullCurrentConversation() {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        SessionStore store(temp.filePath("tail-window.sqlite"));
+        QVERIFY2(store.ready(), qPrintable(store.error()));
+        const QString session = store.createSession();
+        QVERIFY(!session.isEmpty());
+        for (int i = 0; i < 110; ++i) {
+            QVERIFY(store.append(session, i % 2 ? "ember" : "you",
+                i == 109 ? "Latest scene with crimson lantern."
+                         : QString("Previous scene %1.").arg(i)));
+        }
+        const auto matches = store.search("crimson lantern");
+        QCOMPARE(matches.size(), 1);
+        const qint64 match = matches.first().toMap()
+            .value("messageId").toString().toLongLong();
+        QCOMPARE(match, store.latestMessageId(session));
+        const QVariantList bounded = store.messagesAround(session, match, 40, 40);
+        QCOMPARE(bounded.size(), 41); // only 40 previous + latest
+        QCOMPARE(bounded.last().toMap().value("id").toLongLong(), match);
+        QVERIFY(!store.hasMessageAfter(session, match));
+        QVERIFY(store.hasMessageBefore(session,
+            bounded.first().toMap().value("id").toLongLong()));
+        QCOMPARE(store.messages(session).size(), 110);
+        // An archive UI must track an explicit historic-view flag: merely
+        // checking for newer IDs would incorrectly hide the Latest button.
+    }
+
     void windowedChatSearchNavigationRespectsEmptyOrDeletedSessions() {
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
