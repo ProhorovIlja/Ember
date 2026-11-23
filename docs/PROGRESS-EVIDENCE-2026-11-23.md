@@ -104,3 +104,35 @@ Reference: https://huggingface.co/Qwen/Qwen3.5-9B and
 https://github.com/ggml-org/llama.cpp/issues/20833
 Source: https://github.com/ProhorovIlja/Ember/tree/embermind-gguf-thinking-compat
 
+## Part 41 — correction of Qwen3.5 task-specific defaults (23 November)
+
+A review of the [official Qwen3.5-9B card](https://huggingface.co/Qwen/Qwen3.5-9B)
+exposed a **substantive error in Part 40**: the previous implementation set
+`temperature=0.6`, `presence_penalty=0.0` for ALL Deep tasks, but Qwen
+recommends those settings specifically for *precise coding* in thinking mode.
+General thinking should use `temperature=1.0`, `top_p=0.95`,
+`top_k=20`, `min_p=0`, `presence_penalty=1.5`. Nonthinking general
+conversation remains `0.7 / 0.8 / 20 / 0 / 1.5`. All use a repeat penalty
+of 1.0 in the published reference. These are upstream baselines, not proven
+optima for natural dialogue on the user's model/hardware.
+
+The correction is now implemented in `src/Core.cpp`,
+`src/EmberBackend.cpp` and `src/LocalAgent.cpp`:
+- Deep *general* conversation, fiction, and research use the general-thinking
+  reference rather than a low-diversity coding-specific profile;
+- Deep Development mode and Deep local-project code investigations use the
+  precise-coding reference;
+- Voice and normal chat use the nonthinking reference by default;
+- Explicit user-set text temperature/top-p still override the defaults;
+- Other model architectures never inherit these Qwen3.5 settings.
+
+When verified Qwen3.5 produces **no visible output** on a nonthinking request,
+the native status now warns about likely `llama.cpp`/chat-template
+incompatibility instead of a misleading generic silence error.
+This warning cannot by itself establish that hidden reasoning caused silence.
+No hidden reasoning is archived or spoken.
+
+Source changes and updated C++ regression assertions have been committed in
+`embermind-gguf-thinking-compat`. **They have NOT passed Qt/MSVC compilation
+or real GGUF runtime tests in this branch.** No event-triggered CI was
+started, no model weights trained, no public Release published.
