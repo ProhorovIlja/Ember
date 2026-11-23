@@ -207,6 +207,7 @@ EmberBackend::EmberBackend(QObject *parent)
     m_persona = m_settings.value("persona", kSystemPrompt).toString();
     m_chatMode = qBound(0, m_settings.value("chat/mode", 0).toInt(), 3);
     m_deepReasoning = m_settings.value("chat/deepReasoning", false).toBool();
+    m_crossChatRecall = m_settings.value("chat/crossChatRecall", false).toBool();
     m_recognitionLanguage = qBound(0,
         m_settings.value("asr/language", 0).toInt(), 2);
     m_recognitionEngine = qBound(0,
@@ -732,6 +733,24 @@ void EmberBackend::setDeepReasoning(bool enabled) {
         ? "Deep local reasoning enabled. Supports compatible Qwen3 chat templates; "
           "may take longer and use more GPU time."
         : "Standard local replies enabled. Deep model output budget disabled.");
+}
+void EmberBackend::setCrossChatRecall(bool enabled) {
+    if (m_crossChatRecall == enabled) return;
+    if (m_busy || m_chatGenerating || m_listening) {
+        setStatus("Finish the current reply before changing cross-chat memory.");
+        return;
+    }
+    // No query or indexing runs on this toggle. Retrieval happens only when
+    // the user explicitly sends a later chat turn and never in private mode.
+    m_crossChatRecall = enabled;
+    m_settings.setValue("chat/crossChatRecall", enabled);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(enabled
+        ? "Local cross-chat recall enabled. Other saved chats may supply "
+          "short, unverified reference snippets on your next question."
+        : "Cross-chat recall off. Other saved conversations stay private "
+          "from the current reply.");
 }
 void EmberBackend::setPersona(const QString &persona) {
     if (persona == m_persona || persona.trimmed().isEmpty() || persona.size() > 4096) return;
@@ -3006,8 +3025,19 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
             "Put the answer's helpful point in the first complete sentence. "
             "Use conversational prose, not Markdown, code fences, or raw URLs.";
     }
-    const QString recalled = m_store && m_store->ready() && !m_sessionId.isEmpty()
+    const bool savedChat = !m_privateMode && m_store && m_store->ready() &&
+                           !m_sessionId.isEmpty();
+    const QString sameChat = savedChat
         ? m_store->historicalExcerpts(m_sessionId, text) : QString();
+    // Only an explicit setting grants read access to OTHER saved chats.
+    // Short lexical matches are fetched synchronously for this foreground
+    // turn; no embeddings, observer, hidden task, or external service.
+    const QString relatedChats = savedChat && m_crossChatRecall
+        ? m_store->relatedSavedExcerpts(m_sessionId, text) : QString();
+    const QString recalled = sameChat.left(950) +
+        (relatedChats.isEmpty() ? QString() :
+         QString("\n[Other saved chats, unverified references]\n") +
+         relatedChats.left(520));
     const bool deep = !voice && m_deepReasoning;
     const auto generation = EmberCore::chatGenerationProfile(m_chatMode, voice, deep);
     const int requestedOutput = !voice && m_brainResponseTokens != 0
