@@ -420,6 +420,12 @@ EmberBackend::EmberBackend(QObject *parent)
             : "Native speech engine loading locally. Catalog downloads are disabled.");
     });
     connect(&m_speechServer, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+        // If the ONE-click launch loses speech before both workers are ready,
+        // stop the matching brain rather than leaving a half-started app.
+        if (m_combinedStartPending) {
+            m_combinedStartPending = false;
+            if (m_brain.state() != QProcess::NotRunning) m_brain.kill();
+        }
         m_speechHealthTimer.stop();
         setSpeechServerReady(false);
         m_speechInventoryPending = false;
@@ -449,6 +455,10 @@ EmberBackend::EmberBackend(QObject *parent)
                     : "Managed native speech engine stopped.");
     });
     connect(&m_speechServer, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        if (m_combinedStartPending) {
+            m_combinedStartPending = false;
+            if (m_brain.state() != QProcess::NotRunning) m_brain.kill();
+        }
         m_speechHealthTimer.stop();
         setSpeechServerReady(false);
         emit speechServerChanged();
@@ -458,6 +468,11 @@ EmberBackend::EmberBackend(QObject *parent)
             [this](QProcess::ProcessState) { emit brainReadyChanged(); });
     connect(&m_brain, &QProcess::finished, this,
             [this](int, QProcess::ExitStatus) {
+                if (m_combinedStartPending) {
+                    m_combinedStartPending = false;
+                    if (m_speechServer.state() != QProcess::NotRunning)
+                        m_speechServer.kill();
+                }
                 m_healthTimer.stop();
                 if (m_brainReady) setBrainReady(false);
                 // Microphone dictation and its local ASR do not depend on the
@@ -479,6 +494,11 @@ EmberBackend::EmberBackend(QObject *parent)
                 }
             });
     connect(&m_brain, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        if (m_combinedStartPending) {
+            m_combinedStartPending = false;
+            if (m_speechServer.state() != QProcess::NotRunning)
+                m_speechServer.kill();
+        }
         setBrainReady(false);
         setStatus("Could not start the local llama-server executable.");
     });
