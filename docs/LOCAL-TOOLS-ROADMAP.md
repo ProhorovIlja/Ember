@@ -397,3 +397,36 @@ The existing offline-only Python text benchmark now accepts manual `--tool-verif
 ### One-shot, separately approved native project test execution
 
 The native chat tools now offer **Run tests**. The user explicitly chooses ONE trusted local project folder, then one fixed preset: CTest in an existing real `build/` directory, Cargo `test --locked` with a real Cargo.toml, Python `-m unittest discover -v` with a real tests/ folder, Node.js native `node --test` with a real package.json, Go `go test ./...` with a real go.mod, or Python `-m pytest -q` with tests/ or a pytest configuration. The selected runner must be installed. The Node.js preset intentionally does not use `npm test` or run package.json scripts; all choices avoid invoking a shell, though executing tests can itself run arbitrary project code. The pure C++ planner verifies the paths, selected build/test marker and installed runner, and passes fixed arguments through QProcess **without a shell**. The native UI displays the exact program, arguments and root and requires a separate default-No confirmation; no local LLM can call this command or select arbitrary arguments. The live process has a 120-second timeout, bounded 24 KiB in-RAM stdout/stderr capture, interrupt/cancel and a user-reviewed result preview. Common credential environment variables are removed but this is NOT a security sandbox: arbitrary project tests may access files/network and launch child processes, which could outlive cancellation. Only run projects you trust. No schedules, periodic monitoring or automatic retry, writes, Git commits or PR publication are created. Windows CI exercises deterministic planner tests, not the real execution of arbitrary user projects. Next integration: explicit opt-in for model-guided error triage and multi-file/CI workflows with per-action approval.
+
+### 23 Nov 2026 — foreground contextual memory pairs
+
+The original local SQLite history already offered lexical extraction of an old
+matching **single message**, but a one-sided fragment can obscure corrections,
+roleplay choices, troubleshooting context and who said what. The experimental
+`embermind-contextual-recall` branch now retrieves the immediately preceding
+user message when a **saved Ember response** matches a question, or the next
+Ember response when the matched item is a **saved user message**. Retrieval
+uses the existing indexed `(session_id,id)` lookup, parameterized SQL and a
+single nearest turn, **after** the original bounded lexical ranking; it does
+not scan adjacent messages for every candidate and does not add FTS indexes,
+embeddings, extra model weights, network calls or a background job. The
+retrieved pair is explicitly labeled as unverified **excerpts** and always
+shown chronologically (user first, assistant second).
+
+The implementation keeps same-chat history and explicitly enabled cross-chat
+recall separate. A neighbor lookup is confined to the selected hit's original
+`session_id`; unrelated chats cannot supply a nearby answer just because
+SQLite assigned consecutive global message IDs. The first few ranked matches
+still fit into small chat-context excerpts; the full archived messages remain
+unchanged. The existing UTF-8/Russian tests now cover both pairing directions,
+cross-session separation and excerpt order.
+
+**Limits:** this does not make the active LLM context infinite. Source scanning
+still examines up to 2,048 older messages in the selected chat and 1,600 global
+messages for cross-chat recall, and a 1,800-character prefix per message.
+A paired response can be misleading if older messages themselves are wrong,
+if only the excerpt's first characters were retained, or if the historical
+conversation never contained a matching adjacent turn. Later search improvements
+should be measured against these gaps. This source branch has not had native
+MSVC/Windows CI or real GGUF end-to-end tests.
+
