@@ -96,3 +96,29 @@ managed-process crash/restart during inference, plus check that no
 content is delivered to an unrelated listener. Separate origin-bound
 auth tokens or OS-level process-handle/socket pinning remain a possible
 additional hardening gate.
+
+
+### Modular model upgrades and safe per-turn sampling — 23 November 2026
+
+The resident text runtime remains a user-selected local GGUF served by
+`llama-server`. While this process is running, the file chooser now refuses
+to change its executable, model path or vision projector in QSettings; this
+prevents the UI from claiming a different model than the one actually loaded.
+To replace the weights, stop the local brain, select a valid file and start
+the local service explicitly. No model is silently updated or downloaded.
+
+Text and spoken-answer generation have independent user-selected temperature
+presets (0 = automatic per-mode default; explicit 0.20 to 1.20). Text also
+supports optional nucleus `top_p` presets (0 = keep runtime/model default;
+explicit 0.80, 0.90, 0.95 or 1.00). These are compatible, bounded
+`llama.cpp` OpenAI-compatible per-request parameters, never commands or
+weights. They do not change acoustic TTS timbre/prosody and do not grant
+file or network access. Regenerate a response after changing the setting;
+a running reply is never modified midstream.
+
+A future local model catalog/updater must be **explicitly user-invoked**,
+verify publisher/provenance, model license, signed release or SHA-256 pinned
+manifest, expected architecture/runtime, disk/VRAM needs and rollback before
+installation. No scheduled/background update or availability checks.
+Use separate best-fit runtime/model/ASR/TTS components rather than pretending
+that incompatible neural architectures can be merged by concatenating weights.

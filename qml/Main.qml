@@ -1718,6 +1718,77 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 184
+                                    radius: 13
+                                    color: window.cardColor
+                                    border.color: window.borderColor
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 8
+                                        Text {
+                                            text: "RESPONSE SAMPLING · LOCAL"
+                                            color: "#CDE7FF"
+                                            font.pixelSize: 12
+                                            font.weight: Font.DemiBold
+                                            font.letterSpacing: 0.6
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text { text: "Text creativity"; Layout.fillWidth: true; color: "#D2E6F8"; font.pixelSize: 13 }
+                                            ComboBox {
+                                                id: textTemperaturePicker
+                                                Layout.preferredWidth: 205
+                                                implicitHeight: 35
+                                                model: ["Auto · mode profile", "0.20 · precise", "0.40 · focused", "0.60 · balanced", "0.80 · expressive", "1.00 · creative", "1.20 · experimental"]
+                                                currentIndex: [0,20,40,60,80,100,120].indexOf(ember.textTemperaturePercent)
+                                                enabled: !ember.busy && !ember.listening
+                                                onActivated: ember.textTemperaturePercent = [0,20,40,60,80,100,120][currentIndex]
+                                                contentItem: Text { text: textTemperaturePicker.displayText; leftPadding: 11; color: "#E6F4FF"; verticalAlignment: Text.AlignVCenter; font.pixelSize: 12; elide: Text.ElideRight }
+                                                background: Rectangle { radius: 10; color: "#0A1B31"; border.color: "#2B648D" }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text { text: "Text top-p"; Layout.fillWidth: true; color: "#D2E6F8"; font.pixelSize: 13 }
+                                            ComboBox {
+                                                id: textTopPPicker
+                                                Layout.preferredWidth: 205
+                                                implicitHeight: 35
+                                                model: ["Auto · model default", "0.80 · constrained", "0.90 · focused", "0.95 · diverse", "1.00 · unrestricted"]
+                                                currentIndex: [0,80,90,95,100].indexOf(ember.textTopPPercent)
+                                                enabled: !ember.busy && !ember.listening
+                                                onActivated: ember.textTopPPercent = [0,80,90,95,100][currentIndex]
+                                                contentItem: Text { text: textTopPPicker.displayText; leftPadding: 11; color: "#E6F4FF"; verticalAlignment: Text.AlignVCenter; font.pixelSize: 12; elide: Text.ElideRight }
+                                                background: Rectangle { radius: 10; color: "#0A1B31"; border.color: "#2B648D" }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text { text: "Voice reply creativity"; Layout.fillWidth: true; color: "#D2E6F8"; font.pixelSize: 13 }
+                                            ComboBox {
+                                                id: voiceTemperaturePicker
+                                                Layout.preferredWidth: 205
+                                                implicitHeight: 35
+                                                model: ["Auto · natural 0.65", "0.20 · precise", "0.40 · focused", "0.60 · balanced", "0.80 · expressive", "1.00 · creative", "1.20 · experimental"]
+                                                currentIndex: [0,20,40,60,80,100,120].indexOf(ember.voiceTemperaturePercent)
+                                                enabled: !ember.busy && !ember.listening
+                                                onActivated: ember.voiceTemperaturePercent = [0,20,40,60,80,100,120][currentIndex]
+                                                contentItem: Text { text: voiceTemperaturePicker.displayText; leftPadding: 11; color: "#E6F4FF"; verticalAlignment: Text.AlignVCenter; font.pixelSize: 12; elide: Text.ElideRight }
+                                                background: Rectangle { radius: 10; color: "#0A1B31"; border.color: "#2B648D" }
+                                            }
+                                        }
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Sampling changes apply to the next reply without restarting the model. Auto keeps defaults; these control words, not the synthesized voice timbre."
+                                    font.pixelSize: 11
+                                    color: "#91AACA"
+                                    wrapMode: Text.WordWrap
+                                }
                                 Text {
                                     Layout.fillWidth: true
                                     text: "Change while the brain is stopped. More context may exceed 12 GB VRAM; CPU mode is slower. Stored chats remain separate from the finite inference window."
@@ -1767,7 +1838,9 @@ ApplicationWindow {
                                                 implicitWidth: 93
                                                 implicitHeight: 36
                                                 enabled: !ember.busy && !ember.listening &&
-                                                         !ember.dictationTranscribing
+                                                         !ember.dictationTranscribing &&
+                                                         (["brainExe", "brainModel", "visionProj"].indexOf(modelData.key) < 0 ||
+                                                          (!ember.brainReady && !ember.brainLaunching))
                                                 onClicked: ember.choosePath(modelData.key)
                                             }
                                         }

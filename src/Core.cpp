@@ -805,6 +805,28 @@ int chatOutputBudget(int requestedTokens, int contextTokens, bool voice) {
     return std::clamp(requestedTokens, 64, std::min(8192, validContext / 2));
 }
 
+bool validSamplingTemperaturePercent(int percent) {
+    return percent == 0 || percent == 20 || percent == 40 ||
+           percent == 60 || percent == 80 || percent == 100 ||
+           percent == 120;
+}
+bool validSamplingTopPPercent(int percent) {
+    return percent == 0 || percent == 80 || percent == 90 ||
+           percent == 95 || percent == 100;
+}
+bool applySamplingOverrides(QJsonObject &request, int temperaturePercent,
+                            int topPPercent) {
+    // Validate atomically: never half-apply a malformed configuration.
+    if (!validSamplingTemperaturePercent(temperaturePercent) ||
+        !validSamplingTopPPercent(topPPercent) || request.isEmpty())
+        return false;
+    if (temperaturePercent > 0)
+        request.insert("temperature", double(temperaturePercent) / 100.0);
+    // Omit top_p on Auto: the local model/runtime can retain its defaults.
+    if (topPPercent > 0)
+        request.insert("top_p", double(topPPercent) / 100.0);
+    return true;
+}
 ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep) {
     if (voice) return {512, 0.65};
     // Deep mode is a user-controlled local compute/latency trade-off. Models

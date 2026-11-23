@@ -56,6 +56,9 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(int brainContextTokens READ brainContextTokens WRITE setBrainContextTokens NOTIFY configurationChanged)
     Q_PROPERTY(int brainGpuLayers READ brainGpuLayers WRITE setBrainGpuLayers NOTIFY configurationChanged)
     Q_PROPERTY(int brainResponseTokens READ brainResponseTokens WRITE setBrainResponseTokens NOTIFY configurationChanged)
+    Q_PROPERTY(int textTemperaturePercent READ textTemperaturePercent WRITE setTextTemperaturePercent NOTIFY configurationChanged)
+    Q_PROPERTY(int voiceTemperaturePercent READ voiceTemperaturePercent WRITE setVoiceTemperaturePercent NOTIFY configurationChanged)
+    Q_PROPERTY(int textTopPPercent READ textTopPPercent WRITE setTextTopPPercent NOTIFY configurationChanged)
     Q_PROPERTY(bool visionReady READ visionReady NOTIFY brainReadyChanged)
     Q_PROPERTY(QString pendingImageUrl READ pendingImageUrl NOTIFY imageSelectionChanged)
     Q_PROPERTY(QVariantList imageLibraryItems READ imageLibraryItems NOTIFY imageLibraryChanged)
@@ -120,6 +123,9 @@ public:
     int brainContextTokens() const { return m_brainContextTokens; }
     int brainGpuLayers() const { return m_brainGpuLayers; }
     int brainResponseTokens() const { return m_brainResponseTokens; }
+    int textTemperaturePercent() const { return m_textTemperaturePercent; }
+    int voiceTemperaturePercent() const { return m_voiceTemperaturePercent; }
+    int textTopPPercent() const { return m_textTopPPercent; }
     bool visionReady() const { return m_brainReady && m_brainVisionMode; }
     QString pendingImageUrl() const {
         return m_images ? m_images->fileUrl(m_pendingImageId) : QString();
@@ -179,6 +185,9 @@ public:
     void setBrainContextTokens(int tokens);
     void setBrainGpuLayers(int layers);
     void setBrainResponseTokens(int tokens);
+    void setTextTemperaturePercent(int percent);
+    void setVoiceTemperaturePercent(int percent);
+    void setTextTopPPercent(int percent);
     Q_INVOKABLE QString inspectOfflineSetup() const;
     Q_INVOKABLE void startBrain();
     Q_INVOKABLE void stopBrain();
@@ -340,6 +349,8 @@ private:
     int m_recognitionLanguage = 0, m_recognitionEngine = 0, m_speechDevice = 0;
     int m_brainContextTokens = 8192, m_brainGpuLayers = 99;
     int m_brainResponseTokens = 0; // 0 = profile defaults, otherwise fixed user budget
+    int m_textTemperaturePercent = 0, m_voiceTemperaturePercent = 0;
+    int m_textTopPPercent = 0; // 0 keeps the local inference server's default
     int m_deliveryStyle = 0, m_outputVolume = 85;
     int m_microphoneLevel = 0;
     bool m_autoEndOnSilence = false;

@@ -1230,6 +1230,41 @@ private slots:
         QCOMPARE(chatRequest("You are Ember.", {}, "Hi", 2048, 0.73, {},
                              false, 8192, 0).value("max_tokens").toInt(), 2048);
     }
+    void samplingOverridesAreBoundedAndNeverPartiallyApplied() {
+        using EmberCore::applySamplingOverrides;
+        QJsonObject defaultText = EmberCore::chatRequest(
+            "Talk naturally.", {}, "Hello", 512, 0.73);
+        const QJsonObject original = defaultText;
+        QVERIFY(applySamplingOverrides(defaultText, 0, 0));
+        QCOMPARE(defaultText, original);
+        QVERIFY(!defaultText.contains("top_p"));
+
+        QJsonObject tuned = original;
+        QVERIFY(applySamplingOverrides(tuned, 120, 95));
+        QCOMPARE(tuned.value("temperature").toDouble(), 1.2);
+        QCOMPARE(tuned.value("top_p").toDouble(), 0.95);
+        QCOMPARE(tuned.value("model"), original.value("model"));
+        QCOMPARE(tuned.value("messages"), original.value("messages"));
+        QCOMPARE(tuned.value("max_tokens"), original.value("max_tokens"));
+        // Invalid settings must not mutate a prompt on their way to JSON.
+        const QJsonObject snapshot = tuned;
+        for (const int bad : {-1, 1, 19, 21, 119, 121, 10000}) {
+            QVERIFY(!applySamplingOverrides(tuned, bad, 95));
+            QCOMPARE(tuned, snapshot);
+        }
+        for (const int bad : {-1, 1, 79, 91, 96, 101}) {
+            QVERIFY(!applySamplingOverrides(tuned, 60, bad));
+            QCOMPARE(tuned, snapshot);
+        }
+        QJsonObject voice = EmberCore::chatRequest(
+            "Answer conversationally.", {}, "Hello", 512, 0.65);
+        QVERIFY(applySamplingOverrides(voice, 40, 0));
+        QCOMPARE(voice.value("temperature").toDouble(), 0.4);
+        QVERIFY(!voice.contains("top_p"));
+        QVERIFY(!applySamplingOverrides(QJsonObject(), 0, 0));
+        // No cloud model IDs, arbitrary hosts, file paths, or inference
+        // binaries can be changed by these per-turn numeric overrides.
+    }
     void textFirstProfilesAllowUsefulCodeAndDiagnosticResponses() {
         const auto everyday = EmberCore::chatGenerationProfile(0, false);
         const auto story = EmberCore::chatGenerationProfile(1, false);

@@ -230,6 +230,15 @@ EmberBackend::EmberBackend(QObject *parent)
     if (m_brainResponseTokens != 0 && m_brainResponseTokens != 2048 &&
         m_brainResponseTokens != 4096 && m_brainResponseTokens != 8192)
         m_brainResponseTokens = 0;
+    m_textTemperaturePercent = m_settings.value("llm/textTemperaturePercent", 0).toInt();
+    m_voiceTemperaturePercent = m_settings.value("llm/voiceTemperaturePercent", 0).toInt();
+    m_textTopPPercent = m_settings.value("llm/textTopPPercent", 0).toInt();
+    if (!EmberCore::validSamplingTemperaturePercent(m_textTemperaturePercent))
+        m_textTemperaturePercent = 0;
+    if (!EmberCore::validSamplingTemperaturePercent(m_voiceTemperaturePercent))
+        m_voiceTemperaturePercent = 0;
+    if (!EmberCore::validSamplingTopPPercent(m_textTopPPercent))
+        m_textTopPPercent = 0;
     if (!EmberCore::validBrainLaunchProfile(m_brainContextTokens, m_brainGpuLayers)) {
         m_brainContextTokens = 8192;
         m_brainGpuLayers = 99;
@@ -570,6 +579,15 @@ void EmberBackend::choosePath(const QString &key) {
     // currently recording/transcribing user's single dictation turn.
     if (m_busy || m_listening || m_transcribingDictation) {
         setStatus("Finish the current recording or local model task before changing paths.");
+        return;
+    }
+    // A live llama-server has already loaded its GGUF and vision projector.
+    // Prevent the settings UI from displaying a different model to the one
+    // that actually owns the next chat response. No implicit model reload.
+    if ((key == "brainModel" || key == "brainExe" || key == "visionProj") &&
+        m_brain.state() != QProcess::NotRunning) {
+        setStatus("Stop the local brain before selecting another text model, "
+                  "vision projector or llama-server executable.");
         return;
     }
     QString chosen;
@@ -1067,6 +1085,48 @@ void EmberBackend::setBrainResponseTokens(int tokens) {
     emit configurationChanged();
     setStatus("Response limit updated. Actual maximum is bounded by half "
               "the configured context and local model capacity.");
+}
+void EmberBackend::setTextTemperaturePercent(int percent) {
+    if (!EmberCore::validSamplingTemperaturePercent(percent) ||
+        percent == m_textTemperaturePercent) return;
+    if (m_busy || m_listening || m_chatGenerating) {
+        setStatus("Finish the active turn before changing text sampling.");
+        return;
+    }
+    m_textTemperaturePercent = percent;
+    m_settings.setValue("llm/textTemperaturePercent", percent);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(percent ? "Custom text sampling temperature saved for the next request."
+                      : "Text sampling temperature follows the selected activity profile.");
+}
+void EmberBackend::setVoiceTemperaturePercent(int percent) {
+    if (!EmberCore::validSamplingTemperaturePercent(percent) ||
+        percent == m_voiceTemperaturePercent) return;
+    if (m_busy || m_listening || m_chatGenerating) {
+        setStatus("Finish the active turn before changing voice reply sampling.");
+        return;
+    }
+    m_voiceTemperaturePercent = percent;
+    m_settings.setValue("llm/voiceTemperaturePercent", percent);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(percent ? "Custom voice-reply creativity saved for the next request."
+                      : "Voice-reply creativity follows the conversational default.");
+}
+void EmberBackend::setTextTopPPercent(int percent) {
+    if (!EmberCore::validSamplingTopPPercent(percent) ||
+        percent == m_textTopPPercent) return;
+    if (m_busy || m_listening || m_chatGenerating) {
+        setStatus("Finish the active turn before changing nucleus sampling.");
+        return;
+    }
+    m_textTopPPercent = percent;
+    m_settings.setValue("llm/textTopPPercent", percent);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(percent ? "Text nucleus sampling saved for the next request."
+                      : "Nucleus sampling follows the local model/runtime default.");
 }
 void EmberBackend::setBrainGpuLayers(int layers) {
     if (layers == m_brainGpuLayers ||
@@ -2937,6 +2997,15 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
     QJsonObject payload = EmberCore::chatRequest(
         effectivePersona, m_history, text, boundedOutput,
         generation.temperature, recalled, deep, 8192, m_brainContextTokens);
+    // Per-request overrides never restart, modify, or merge model weights.
+    // Keep Auto profile/native defaults for compatibility with new GGUFs.
+    if (!payload.isEmpty() &&
+        !EmberCore::applySamplingOverrides(
+            payload, voice ? m_voiceTemperaturePercent : m_textTemperaturePercent,
+            voice ? 0 : m_textTopPPercent)) {
+        setStatus("Invalid local sampling parameters. No prompt was sent.");
+        return false;
+    }
     if (payload.isEmpty()) {
         // Keep the draft in the composer and do NOT commit a ghost prompt.
         // A smaller context may be insufficient even with no old turns.

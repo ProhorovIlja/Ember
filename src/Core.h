@@ -51,6 +51,13 @@ int chatVisibleCharacterLimit(int outputTokens, bool voice);
 // Text-first: long and precise technical replies, creative fiction separately.
 struct ChatGenerationProfile { int maxTokens; double temperature; };
 ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep = false);
+// 0 means keep the activity/voice profile's default temperature or the
+// inference server's native top_p. Nonzero values are explicit user choices.
+// These are per-request controls: model weights and resident runtimes stay put.
+bool validSamplingTemperaturePercent(int percent);
+bool validSamplingTopPPercent(int percent);
+bool applySamplingOverrides(QJsonObject &request, int temperaturePercent,
+                            int topPPercent);
 // Windows: prove the IPv4 127.0.0.1 listener belongs to the exact managed
 // QProcess PID. HTTP 200 on /health alone is not authentication. Returns
 // false when the listener is absent, wildcard-bound or cannot be inspected.
