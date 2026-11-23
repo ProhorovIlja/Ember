@@ -3398,6 +3398,8 @@ void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
     const bool tokenLimit = verifiedTokenLimit;
     const bool shouldSpeak = EmberCore::canSpeakStreamedReply(
         m_voicePending, interrupted, verifiedTokenLimit);
+    const bool qwenNonthinking = m_brainQwen35 &&
+        (m_voicePending || !m_deepReasoning);
     m_voicePending = false;
     bool replyArchived = false;
     if (!response.isEmpty()) {
@@ -3432,7 +3434,15 @@ void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
         stopSpeechOnError("Streamed response was interrupted; stopped partial voice output.");
     }
     if (response.isEmpty()) {
-        setStatus("The local model returned no streamed text. Check its server logs.");
+        if (qwenNonthinking && !interrupted) {
+            setStatus("Qwen3.5 returned no visible reply in non-thinking mode. "
+                      "This llama.cpp build may be ignoring enable_thinking=false; "
+                      "check model/server compatibility before retrying. "
+                      "No hidden reasoning was spoken or saved.");
+        } else {
+            setStatus("The local model returned no visible streamed text. "
+                      "Check its server logs and chat-template compatibility.");
+        }
     } else if (shouldSpeak) {
         if (m_voiceEarlyActive) {
             if (!m_voiceEarlyFailed) enqueueLiveSpeech(true, spokenDraft);
