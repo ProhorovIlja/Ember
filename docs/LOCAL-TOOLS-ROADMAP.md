@@ -9,6 +9,36 @@ cloud services cannot be accessed without a network connection and permission.**
 The app must continue answering from locally available knowledge without cloud
 accounts, subscription, VPN, scheduled checks or automatic model downloads.
 
+## 23 November 2026 — review a complete small website scaffold in one action
+
+A separate `propose_new_files(files)` tool can now stage **two or three**
+new source/text files in the same manually selected project (for example
+`web/index.html`, `web/style.css`, `web/app.js`). It is available only
+inside an explicitly approved foreground **Propose Fix** investigation
+after a successful `project_map` call. The strict parser refuses
+unknown arguments, duplicate or case-colliding paths and combined
+proposals over 12,000 characters / 20,000 UTF-8 bytes. Individual
+files continue to use the strict 8,000-character limit.
+
+All targets must be entirely new inside *existing* project directories.
+The full text of **every** file, target path and SHA-256 are shown
+in a single native approval dialog. The app prevalidates the entire
+batch again immediately before writing any file and uses exclusive
+`NewOnly` creation. An already-present target blocks the full batch.
+If a later write fails, the program attempts to roll back earlier
+files **only when their bytes still match** its own proposal; any
+residual paths are reported for manual inspection. This is not
+multi-file crash atomicity; process/power failures may leave a partial
+scaffold. The workflow does not create folders, run installers,
+download assets, install dependencies, run code or publish anything.
+
+The tests include an offline, entirely synthetic three-file HTML/CSS/JS
+site, no-write-before-approval checks, duplicate and traversal
+rejections, a stale-target/another-user-wrote-file scenario, combined
+size enforcement, and tool permission isolation from read-only local,
+GitHub and Wikipedia modes. Physical Windows UI, symlink races,
+actual source quality and runtime performance remain unverified.
+
 ## 23 November 2026 — create a genuinely new source file, with review
 
 Propose Fix mode now exposes `propose_new_file(path, content)` in addition
