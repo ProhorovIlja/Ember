@@ -4906,12 +4906,7 @@ void EmberBackend::loadEarlierMessages() {
     }
     // Both lists arrive in ascending database ID order. A bounded
     // foreground page does not drag years of chat into the UI or GPU.
-    for (int i = older.size() - 1; i >= 0; --i)
-        m_messages.prepend(older.at(i));
-    // Scrolling through years of history must never accumulate unbounded
-    // rich-text/image delegates in the live Qt UI. Drop newest records
-    // while paging backward; SQLite still keeps the complete archive.
-    while (m_messages.size() > 300) m_messages.removeLast();
+    EmberCore::mergeVisibleHistoryPage(m_messages, older, true);
     m_historicalWindowActive = true;
     emit messagesChanged();
     setStatus(QString("Loaded %1 earlier local messages.").arg(older.size()));
@@ -4931,8 +4926,7 @@ void EmberBackend::loadNewerMessages() {
         setStatus("No newer archived messages found.");
         return;
     }
-    m_messages.append(newer);
-    while (m_messages.size() > 300) m_messages.removeFirst();
+    EmberCore::mergeVisibleHistoryPage(m_messages, newer, false);
     m_historicalWindowActive = true;
     emit messagesChanged();
     setStatus(QString("Loaded %1 newer local messages.").arg(newer.size()));
