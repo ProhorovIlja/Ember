@@ -4,7 +4,8 @@ param(
     [string]$Version = '0.1.0-dev',
     [switch]$VerifyInstall,
     [switch]$RequireOfflineBundle,
-    [switch]$RequireVoiceBundle
+    [switch]$RequireVoiceBundle,
+    [switch]$DiskSpanning
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -87,11 +88,23 @@ if (!$compiler) {
     throw 'Inno Setup 6 ISCC.exe not found. Install a trusted compiler manually before offline packaging; no automatic dependency downloads.'
 }
 $iss = Join-Path $PSScriptRoot 'ember.iss'
-& $compiler "/DAppPayload=$payload" "/DAppOutput=$output" "/DBuildVersion=$Version" "/DBuildNumericVersion=$numericVersion" $iss
+$defines = @("/DAppPayload=$payload", "/DAppOutput=$output",
+             "/DBuildVersion=$Version", "/DBuildNumericVersion=$numericVersion")
+if ($DiskSpanning) { $defines += '/DAppDiskSpanning=1' }
+& $compiler @defines $iss
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
 $installerName = "Ember-$Version-Windows-x64.exe"
 $installer = Join-Path $output $installerName
 if (!(Test-Path $installer)) { throw "Installer missing: $installer" }
+if ($DiskSpanning) {
+    $slices = @(Get-ChildItem -LiteralPath $output -File |
+        Where-Object { $_.Name -match ('^' + [regex]::Escape(
+            "Ember-$Version-Windows-x64") + '-[1-9][0-9]*[.]bin$') })
+    if ($slices.Count -eq 0) {
+        throw 'Inno disk spanning produced no model data slices; incomplete installer.'
+    }
+    Write-Host ("Disk-spanned installer: {0} required local data slices." -f $slices.Count)
+}
 $hash = (Get-FileHash -Algorithm SHA256 -Path $installer).Hash.ToLowerInvariant()
 $checksumName = if ($Version.EndsWith('-dev')) { 'Ember-dev-installer-SHA256.txt' } else { "Ember-$Version-SHA256.txt" }
 Set-Content -Path (Join-Path $output $checksumName) -Value ($hash + '  ' + $installerName) -Encoding ascii
