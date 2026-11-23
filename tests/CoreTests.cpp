@@ -3232,7 +3232,11 @@ private slots:
         QVERIFY(!spoken.contains("**"));
         QVERIFY(!spoken.contains("[2]"));
         QVERIFY(response.contains("int main()"));
-        QVERIFY(EmberCore::speechFriendlyText(QString(16385, 'x')).isEmpty());
+        // The old 16,384-character speech-only limit is deliberately gone:
+        // long stories can be spoken within the existing visible chat quota.
+        QVERIFY(!EmberCore::speechFriendlyText(QString(16385, 'x')).isEmpty());
+        QVERIFY(EmberCore::speechFriendlyText(
+            QString(EmberCore::kMaxVisibleChatCharacters + 1, 'x')).isEmpty());
     }
     void streamsOnlyCommittedSentencesWithoutRepeatingOrReadingCode() {
         qsizetype cursor = 0;
