@@ -1705,7 +1705,7 @@ private slots:
         const auto accepted = parseModelResponse(
             call, Scope::LocalProject, true);
         QVERIFY2(accepted.ok(), qPrintable(accepted.error));
-        QCOMPARE(accepted.kind, Decision::Kind::Call);
+        QVERIFY(accepted.kind == Decision::Kind::Call);
         QCOMPARE(accepted.tool, QString("propose_patch_batch"));
         QCOMPARE(accepted.patches.size(), 3);
         // Long proposals remain permission-scoped; they never write files
@@ -1725,7 +1725,7 @@ private slots:
             "<think>Private chain of thought must not be shown.</think>"
             "The fault is a dangling reference. Use a weak pointer."));
         QVERIFY2(hidden.ok(), qPrintable(hidden.error));
-        QCOMPARE(hidden.kind, Decision::Kind::Final);
+        QVERIFY(hidden.kind == Decision::Kind::Final);
         QCOMPARE(hidden.text, QString(
             "The fault is a dangling reference. Use a weak pointer."));
         QVERIFY(!parseModelResponse(text(
@@ -1741,7 +1741,7 @@ private slots:
         QVERIFY(!badLine.ok());
         const auto badPath = parseModelResponse(tool(
             "read_source", QJsonObject{{"path",
-                QStringLiteral("src/") + QChar::Null + "private.cpp"}}));
+                QStringLiteral("src/") + QChar(QChar::Null) + "private.cpp"}}));
         QVERIFY(!badPath.ok());
     }
 
