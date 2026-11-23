@@ -69,6 +69,11 @@ jobs:
         run: |
           python tools/blind_text_ab.py self-test
           if ($LASTEXITCODE -ne 0) { throw 'Local blind A/B quality lab self-test failed.' }
+      - name: Validate custom EmberMind SFT dataset boundaries
+        shell: pwsh
+        run: |
+          python tools/ember_mind_studio.py self-test
+          if ($LASTEXITCODE -ne 0) { throw 'EmberMind local SFT dataset self-test failed.' }
       - name: Validate actual Qwen3 speech GGUF identity metadata (synthetic only)
         shell: pwsh
         run: |
