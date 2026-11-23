@@ -9,6 +9,11 @@ param(
     [Parameter(Mandatory=$true)][string]$ApprovedManifest,
     [Parameter(Mandatory=$true)][string]$DistributionDirectory,
     [Parameter(Mandatory=$true)][string]$Version,
+    [string]$EnglishWav = '',
+    [string]$EnglishReference = '',
+    [string]$RussianWav = '',
+    [string]$RussianReference = '',
+    [ValidateRange(0.0,1.0)][double]$MaxAsrWer = 0.25,
     [switch]$SkipLiveEngineChecks
 )
 Set-StrictMode -Version Latest
@@ -80,6 +85,32 @@ if ((Under-Directory $target $app) -or (Under-Directory $target $assets) -or
     ($target -ieq $app) -or ($target -ieq $assets) -or ($target -ieq $root)) {
     throw 'Distribution must be outside the repository, app and asset folders.'
 }
+# Verify the complete pair of bilingual dictation references before copying
+# multi-gigabyte assets. These are private local test inputs, not part of the
+# published installer or ZIP. A missing sample must not mean ASR "passed".
+$asrInputs = @($EnglishWav, $EnglishReference, $RussianWav, $RussianReference)
+$asrProvided = @($asrInputs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+if ($asrProvided -ne 0 -and $asrProvided -ne 4) {
+    throw 'Pass all four English/Russian WAV + reference inputs, or none.'
+}
+$hasAsrSamples = ($asrProvided -eq 4)
+if ($hasAsrSamples) {
+    foreach ($sample in $asrInputs) {
+        if (-not (Test-Path -LiteralPath $sample -PathType Leaf)) {
+            throw "Real local ASR sample/reference missing: $sample"
+        }
+        $item = Get-Item -LiteralPath $sample -Force
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'ASR acceptance inputs must not be junctions or symlinks.'
+        }
+    }
+}
+# A stable edition must prove RU/EN dictation using real samples. The
+# acceptance.json quality evidence is checked separately; this invocation
+# adds a repeatable sample-level gate without inventing sample content.
+if (-not $Version.EndsWith('-dev') -and -not $hasAsrSamples) {
+    throw 'Stable release requires English and Russian WAV + reference text for actual ASR.'
+}
 # Guard the release path before copies of multi-gigabyte GGUF files are made.
 # A production SemVer build requires the EXISTING independently approved
 # release record. A development candidate is not silently promoted to stable.
@@ -116,8 +147,20 @@ try {
     # once, verify the generated text/PCM and stop them before packaging.
     # Development candidates may opt out explicitly, but stable may not.
     if (-not $SkipLiveEngineChecks) {
-        Run-CheckedPython -Arguments @((Join-Path $root 'tools/offline_acceptance.py'),
-            '--root', $payload, '--run', '--gpu-layers', '99', '--context', '8192')
+        $textArgs = @((Join-Path $root 'tools/offline_acceptance.py'),
+            '--root', $payload, '--run', '--gpu-layers', '99',
+            '--context', '8192')
+        if ($hasAsrSamples) {
+            $textArgs += @('--en-wav', $EnglishWav,
+                '--en-reference', $EnglishReference,
+                '--ru-wav', $RussianWav,
+                '--ru-reference', $RussianReference,
+                '--max-wer', $MaxAsrWer.ToString(
+                    [System.Globalization.CultureInfo]::InvariantCulture))
+        } else {
+            Write-Warning 'DEV ONLY: real RU/EN transcription has NOT been tested.'
+        }
+        Run-CheckedPython -Arguments $textArgs
         $voiceModel = if (Test-Path -LiteralPath
             (Join-Path $payload 'models/speech/qwen3-tts-1.7b.gguf')) {
             'qwen3-tts-1.7b'
@@ -128,7 +171,7 @@ try {
             '--root', $payload, '--run', '--model', $voiceModel,
             '--device', 'auto', '--samples', '2')
     } else {
-        Write-Warning 'DEV ONLY: real LLM/TTS inference was skipped. Candidate is NOT acceptance-tested.'
+        Write-Warning 'DEV ONLY: real LLM/TTS and RU/EN ASR inference was skipped. Candidate is NOT acceptance-tested.'
     }
     $zipName = "Ember-$Version-Windows-x64-portable.zip"
     $zipPath = Join-Path $publish $zipName
