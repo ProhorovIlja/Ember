@@ -1127,6 +1127,51 @@ private slots:
         QVERIFY(!store.exportMarkdown("nonexistent", temp.filePath("absent.md")));
     }
 
+    void localArchiveSearchPreviewsActualDeepMatchInsteadOfMessageStart() {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        SessionStore archive(temp.filePath("archive.sqlite"));
+        QVERIFY2(archive.ready(), qPrintable(archive.error()));
+        const QString story = archive.createSession();
+        const QString other = archive.createSession();
+        QVERIFY(!story.isEmpty() && !other.isEmpty());
+        QVERIFY(archive.append(story, "you", "A long-running local story."));
+        QVERIFY(archive.append(other, "you", "An unrelated private log."));
+        const QString deepEnglish = QString(500, 'x')
+            + " The gearbox bearing failed near the western doorway. "
+            + QString(300, 'z');
+        QVERIFY(archive.append(story, "ember", deepEnglish));
+        const auto english = archive.search("BEARING");
+        QCOMPARE(english.size(), 1);
+        QCOMPARE(english.first().toMap().value("id").toString(), story);
+        const QString snippet = english.first().toMap().value("snippet").toString();
+        QVERIFY2(snippet.contains("bearing", Qt::CaseInsensitive),
+                 qPrintable(snippet));
+        QVERIFY(snippet.startsWith(QChar(0x2026)));
+        QVERIFY(snippet.endsWith(QChar(0x2026)));
+        QVERIFY(snippet.size() < 270);
+        QVERIFY(!snippet.contains("unrelated"));
+
+        const QString deepRussian = QString(410, 'p')
+            + QString::fromUtf8(" Анна спрятала медный ключ под лестницей. ")
+            + QString(200, 'q');
+        QVERIFY(archive.append(story, "you", deepRussian));
+        const auto russian = archive.search(QString::fromUtf8("Анна"));
+        QCOMPARE(russian.size(), 1);
+        QVERIFY(russian.first().toMap().value("snippet").toString()
+            .contains(QString::fromUtf8("Анна")));
+        QVERIFY(archive.append(story, "ember",
+            QString(420, 'a') + " Exactly 100% complete, not 1000. "
+                + QString(230, 'b')));
+        const auto percent = archive.search("100%");
+        QCOMPARE(percent.size(), 1);
+        QVERIFY(percent.first().toMap().value("snippet").toString()
+            .contains("100% complete"));
+        QVERIFY(archive.search("100_").isEmpty());
+        QVERIFY(archive.search("unrelated").size() == 1);
+        QVERIFY(archive.search("nonexistent-phrase").isEmpty());
+    }
+
     void compressedBackupRestoresMultilingualChatsAndRejectsDamageAtomically() {
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
