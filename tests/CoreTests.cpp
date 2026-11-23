@@ -1787,12 +1787,20 @@ private slots:
         };
         for (const auto scope : {Scope::LocalProject, Scope::GitHubRepository,
                                  Scope::WikipediaResearch}) {
-            const auto fast = modelRequest(messages, 2, scope, false, false);
-            const auto deep = modelRequest(messages, 2, scope, false, true);
+            const auto fast = modelRequest(messages, 2, scope, false, false,
+                                           true, true);
+            const auto deep = modelRequest(messages, 2, scope, false, true,
+                                           true, true);
             QCOMPARE(fast.value("chat_template_kwargs").toObject()
                          .value("enable_thinking").toBool(), false);
             QCOMPARE(deep.value("chat_template_kwargs").toObject()
                          .value("enable_thinking").toBool(), true);
+            QCOMPARE(fast.value("top_k").toInt(), 20);
+            QCOMPARE(fast.value("presence_penalty").toDouble(), 1.5);
+            QCOMPARE(deep.value("presence_penalty").toDouble(), 0.0);
+            const auto otherModel = modelRequest(messages, 2, scope, false, false);
+            QVERIFY(!otherModel.contains("chat_template_kwargs"));
+            QVERIFY(!otherModel.contains("top_k"));
             QCOMPARE(fast.value("max_tokens").toInt(), 900);
             QCOMPARE(deep.value("max_tokens").toInt(), 2400);
             QCOMPARE(fast.value("parallel_tool_calls").toBool(), false);
@@ -1805,7 +1813,8 @@ private slots:
             QCOMPARE(fastFinal.value("max_tokens").toInt(), 1500);
             QCOMPARE(deepFinal.value("max_tokens").toInt(), 3000);
         }
-        const auto edit = modelRequest(messages, 1, Scope::LocalProject, true, false);
+        const auto edit = modelRequest(messages, 1, Scope::LocalProject, true,
+                                       false, true, true);
         QCOMPARE(edit.value("max_tokens").toInt(), 2400);
         QCOMPARE(edit.value("chat_template_kwargs").toObject()
                      .value("enable_thinking").toBool(), false);
