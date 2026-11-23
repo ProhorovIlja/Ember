@@ -24,7 +24,7 @@ from offline_acceptance import (listener_owners, wait_for_server,
                                 verify_real_prompt_tokens)
 from native_speech_acceptance import (model_path, speech_owners, wait_for_speech)
 from private_worker_env import private_worker_environment
-from text_benchmark import ENDPOINT as TEXT_ENDPOINT, measure as text_measure
+from brain_mode_acceptance import CASES as BRAIN_CASES, run_case as brain_case
 from voice_benchmark import (ENDPOINT as SPEECH_ENDPOINT, PROMPTS,
                              measure as speech_measure)
 
@@ -103,10 +103,9 @@ def probe(root: Path, *, context: int, gpu_layers: int, device: str,
         wait_for_speech(voice_proc, startup_seconds, model, voice)
         workers_alive(llm_proc, voice_proc)
         metrics = []
-        first_text = text_measure(TEXT_ENDPOINT, "instruction",
-                                  "Reply with exactly the word READY.")
+        first_text = brain_case(BRAIN_CASES[0], llm_proc.pid)
         workers_alive(llm_proc, voice_proc)
-        if not first_text.get("instruction_exact_match"):
+        if not first_text.get("passed"):
             raise RuntimeError("Ember text response failed with both engines resident")
         for i in range(samples):
             speech = speech_measure(
@@ -120,10 +119,11 @@ def probe(root: Path, *, context: int, gpu_layers: int, device: str,
             metrics.append({"trial": i + 1, "audio_seconds": speech["audio_seconds"],
                             "first_pcm_byte_ms": speech["first_http_pcm_byte_ms"],
                             "total_synthesis_ms": speech["total_http_synthesis_ms"]})
-        second_text = text_measure(TEXT_ENDPOINT, "instruction",
-                                   "Reply with exactly the word READY.")
+        # A second, Russian nonthinking exchange after TTS checks that
+        # the local model still obeys the official Qwen3.5 template under load.
+        second_text = brain_case(BRAIN_CASES[1], llm_proc.pid)
         workers_alive(llm_proc, voice_proc)
-        if not second_text.get("instruction_exact_match"):
+        if not second_text.get("passed"):
             raise RuntimeError("Text model failed after local voice synthesis")
         tokenizer = verify_real_prompt_tokens(llm_proc.pid, context)
         workers_alive(llm_proc, voice_proc)
@@ -131,8 +131,8 @@ def probe(root: Path, *, context: int, gpu_layers: int, device: str,
             "simultaneous_llm_tts_residency": "PASS",
             "text_round_trips": 2,
             "speech_samples": len(metrics),
-            "first_text_ttft_ms": first_text["ttft_ms"],
-            "second_text_ttft_ms": second_text["ttft_ms"],
+            "first_english_visible_ms": first_text["first_visible_ms"],
+            "second_russian_visible_ms": second_text["first_visible_ms"],
             "speech_metrics_only": metrics,
             "loaded_tts_alias": model,
             "requested_speech_device": device,
@@ -180,7 +180,7 @@ def self_test() -> None:
             return 0
 
     def fake_text(*args):
-        return {"instruction_exact_match": True, "ttft_ms": 12.0}
+        return {"passed": True, "first_visible_ms": 12.0}
     def fake_speech(*args, **kwargs):
         return {"digital_voice_detected": True, "audio_seconds": 0.4,
                 "first_http_pcm_byte_ms": 14.0, "total_http_synthesis_ms": 80.0}
@@ -200,7 +200,7 @@ def self_test() -> None:
               mock.patch(__name__ + ".wait_for_server"),
               mock.patch(__name__ + ".wait_for_speech"),
               mock.patch(__name__ + ".verify_real_prompt_tokens", return_value={"configured_context_tokens": 8192}),
-              mock.patch(__name__ + ".text_measure", side_effect=fake_text),
+              mock.patch(__name__ + ".brain_case", side_effect=fake_text),
               mock.patch(__name__ + ".speech_measure", side_effect=fake_speech),
               mock.patch(__name__ + ".subprocess.Popen", side_effect=fake_popen)):
             result = probe(root, context=8192, gpu_layers=99, device="auto",
