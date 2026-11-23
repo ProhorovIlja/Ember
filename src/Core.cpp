@@ -25,6 +25,83 @@
 #include <windows.h>
 #endif
 namespace EmberCore {
+namespace {
+// Parse only the bounded GGUF metadata prefix, never multi-gigabyte tensors.
+// Reject malformed, oversized or unfamiliar metadata rather than guessing a
+// model family from a filename, alias, display name or user-supplied prompt.
+constexpr qint64 kGgufMetadataScanLimit = 1024 * 1024;
+bool readGgufSmallString(QFile &file, QDataStream &input, QByteArray *value) {
+    quint64 length = 0;
+    input >> length;
+    if (input.status() != QDataStream::Ok || length > 4096 ||
+        file.pos() > kGgufMetadataScanLimit - qint64(length)) return false;
+    const QByteArray bytes = file.read(qint64(length));
+    if (bytes.size() != qint64(length)) return false;
+    if (value) *value = bytes;
+    return true;
+}
+bool skipGgufMetadataValue(QFile &file, QDataStream &input,
+                           quint32 type, bool inArray = false) {
+    constexpr qint64 widths[] = {1, 1, 2, 2, 4, 4, 4, 1, 0, 0, 8, 8, 8};
+    if (type > 12) return false;
+    if (type == 8) return readGgufSmallString(file, input, nullptr);
+    if (type == 9) {
+        if (inArray) return false; // nested GGUF arrays are not supported
+        quint32 elementType = 0;
+        quint64 count = 0;
+        input >> elementType >> count;
+        if (input.status() != QDataStream::Ok || count > 4096 ||
+            elementType > 12 || elementType == 9) return false;
+        if (elementType != 8) {
+            const qint64 elementWidth = widths[elementType];
+            if (elementWidth <= 0 ||
+                count > quint64(kGgufMetadataScanLimit / elementWidth)) return false;
+            const qint64 bytes = qint64(count) * elementWidth;
+            return bytes <= kGgufMetadataScanLimit - file.pos() &&
+                   file.seek(file.pos() + bytes);
+        }
+        for (quint64 i = 0; i < count; ++i) {
+            if (!readGgufSmallString(file, input, nullptr)) return false;
+        }
+        return true;
+    }
+    const qint64 width = widths[type];
+    return width > 0 && file.pos() <= kGgufMetadataScanLimit - width &&
+           file.seek(file.pos() + width);
+}
+} // namespace
+
+bool ggufSupportsThinkingFlag(const QString &modelPath) {
+    QFile file(modelPath);
+    if (modelPath.isEmpty() || !file.open(QIODevice::ReadOnly) ||
+        file.read(4) != QByteArrayLiteral("GGUF")) return false;
+    QDataStream input(&file);
+    input.setByteOrder(QDataStream::LittleEndian);
+    quint32 version = 0;
+    quint64 tensorCount = 0, metadataCount = 0;
+    input >> version >> tensorCount >> metadataCount;
+    if (input.status() != QDataStream::Ok || (version != 2 && version != 3) ||
+        tensorCount > 10000000 || metadataCount == 0 || metadataCount > 1024)
+        return false;
+    for (quint64 i = 0; i < metadataCount; ++i) {
+        QByteArray key;
+        if (!readGgufSmallString(file, input, &key)) return false;
+        quint32 type = 0;
+        input >> type;
+        if (input.status() != QDataStream::Ok) return false;
+        if (key == QByteArrayLiteral("general.architecture")) {
+            QByteArray architecture;
+            if (type != 8 || !readGgufSmallString(file, input, &architecture))
+                return false;
+            return architecture == QByteArrayLiteral("qwen35") ||
+                   architecture == QByteArrayLiteral("qwen35moe") ||
+                   architecture == QByteArrayLiteral("qwen3") ||
+                   architecture == QByteArrayLiteral("qwen3moe");
+        }
+        if (!skipGgufMetadataValue(file, input, type)) return false;
+    }
+    return false;
+}
 bool validBrainLaunchProfile(int contextTokens, int gpuLayers) {
     const bool contextOk = contextTokens == 4096 || contextTokens == 8192 ||
                            contextTokens == 16384 || contextTokens == 32768;
@@ -843,7 +920,7 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                         const QString &user, int maxTokens, double temperature,
                         const QString &historicalExcerpts,
                         bool enableThinking, int maxOutputCap,
-                        int finiteContextTokens) {
+                        int finiteContextTokens, bool thinkingTemplateSupported) {
     QJsonArray messages;
     const QString retrieved = historicalExcerpts.left(1550).trimmed();
     // Historical dialogue is quoted as user-level data, never promoted to
@@ -928,13 +1005,13 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                         {"max_tokens", outputTokens},
                         {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
                         {"stream", false}};
-    // Qwen3.5 defaults to generating hidden reasoning. Explicitly request
-    // non-thinking for ordinary/voice replies instead of silently inheriting
-    // the template's default; Deep Mode explicitly opts in. llama.cpp accepts
-    // chat_template_kwargs even when another model ignores this flag.
-    // The actual GGUF/template must still be tested on target hardware.
-    request.insert("chat_template_kwargs",
-                   QJsonObject{{"enable_thinking", enableThinking}});
+    // Only pass Qwen-specific template kwargs when trusted GGUF metadata
+    // identifies a compatible Qwen3/3.5 architecture. Unknown templates may
+    // reject or reinterpret this field; never infer support from filename.
+    // Some llama.cpp builds ignore the false value: runtime QA is required.
+    if (thinkingTemplateSupported)
+        request.insert("chat_template_kwargs",
+                       QJsonObject{{"enable_thinking", enableThinking}});
     return request;
 }
 // A shared offline speech adapter deliberately has no configurable remote
