@@ -2552,7 +2552,7 @@ ApplicationWindow {
                                                 font.pixelSize: 13
                                                 onEditingFinished: {
                                                     ember.localVoice = text
-                                                    // A running native model rejects unverified or non-female English voices.
+                                                    // A running model accepts only verified female speakers in an English-capable TTS model.
                                                     text = ember.localVoice
                                                 }
                                                 background: Rectangle {
@@ -2566,7 +2566,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: 9
                                             Text {
-                                                text: "English female presets"
+                                                text: "Female voices · English synthesis"
                                                 color: "#9AB8CF"
                                                 font.pixelSize: 11
                                                 Layout.fillWidth: true
@@ -2596,11 +2596,21 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: "Qwen3-TTS Vivian and Serena are native Chinese speakers. " +
+                                                  "The model can synthesize English, but English accent and " +
+                                                  "naturalness must be checked with Test voice. A voice's " +
+                                                  "native language is not its synthesis-language limit."
+                                            wrapMode: Text.WordWrap
+                                            color: "#7D95AF"
+                                            font.pixelSize: 11
+                                        }
                                         RowLayout {
                                             Layout.fillWidth: true
                                             spacing: 9
                                             Text {
-                                                text: "Verified English female voices"
+                                                text: "Verified female speakers (English-capable model)"
                                                 color: "#9AB8CF"
                                                 font.pixelSize: 11
                                                 Layout.fillWidth: true
