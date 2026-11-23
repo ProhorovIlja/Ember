@@ -173,10 +173,23 @@ try {
         # Testing the two models SEPARATELY is insufficient on a 12-GiB GPU.
         # Keep both actual subprocesses resident simultaneously and require
         # text -> PCM -> text success before creating a complete installer.
-        Run-CheckedPython -Arguments @((Join-Path $root 'tools/combined_runtime_acceptance.py'),
+        $coResidentArgs = @((Join-Path $root 'tools/combined_runtime_acceptance.py'),
             '--root', $payload, '--run', '--model', $voiceModel,
             '--device', 'auto', '--samples', '2',
             '--gpu-layers', '99', '--context', '8192')
+        if ($hasAsrSamples) {
+            # Real multilingual Whisper runs while llama.cpp and speech.cpp
+            # remain loaded. This is the missing three-engine GPU/RAM check.
+            $coResidentArgs += @('--en-wav', $EnglishWav,
+                '--en-reference', $EnglishReference,
+                '--ru-wav', $RussianWav,
+                '--ru-reference', $RussianReference,
+                '--max-wer', $MaxAsrWer.ToString(
+                    [System.Globalization.CultureInfo]::InvariantCulture))
+        } else {
+            Write-Warning 'DEV ONLY: concurrent LLM+TTS+RU/EN ASR was NOT tested.'
+        }
+        Run-CheckedPython -Arguments $coResidentArgs
     } else {
         Write-Warning 'DEV ONLY: real LLM/TTS and RU/EN ASR inference was skipped. Candidate is NOT acceptance-tested.'
     }
