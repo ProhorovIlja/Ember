@@ -1134,8 +1134,15 @@ void EmberBackend::appendMessage(const QString &role, const QString &text) {
     while (m_messages.size() > 300) m_messages.removeFirst();
     if (m_store && m_store->ready() &&
         EmberCore::shouldPersistConversation(m_privateMode, m_sessionId)) {
-        if (!m_store->append(m_sessionId, role, text))
+        if (!m_store->append(m_sessionId, role, text)) {
             setStatus("Chat archive write failed; this turn is held only in memory.");
+        } else {
+            // Keep live UI rows addressable by the same stable ID as SQLite.
+            // Unarchived private/failed writes retain no invented row ID.
+            QVariantMap saved = m_messages.last().toMap();
+            saved.insert("id", m_store->latestMessageId(m_sessionId));
+            m_messages.last() = saved;
+        }
         refreshSessions();
     }
     emit messagesChanged();
@@ -3552,7 +3559,21 @@ void EmberBackend::finishChatStream(bool interrupted, bool verifiedTokenLimit) {
             EmberCore::shouldPersistConversation(m_privateMode, m_sessionId) &&
             m_chatStreamSession == m_sessionId) {
             replyArchived = m_store->append(m_sessionId, "ember", m_chatStreamText);
-            if (replyArchived) refreshSessions();
+            if (replyArchived) {
+                // The streaming preview initially has no persisted row ID.
+                // Attach it after the successful transaction, otherwise a
+                // latest-view message looks like an ancient history window.
+                if (!m_messages.isEmpty()) {
+                    QVariantMap latest = m_messages.last().toMap();
+                    if (latest.value("role").toString() == "ember" &&
+                        latest.value("body").toString() == m_chatStreamText) {
+                        latest.insert("id", m_store->latestMessageId(m_sessionId));
+                        m_messages.last() = latest;
+                        emit messagesChanged();
+                    }
+                }
+                refreshSessions();
+            }
         }
         rebuildConversationHistory();
     }
