@@ -26,6 +26,50 @@ One assistant is a **product identity**, not a claim that all audio, vision, ret
 8. **Tune concurrency and packaging.** A single RTX 4070 12 GB does not guarantee 9B LLM + 1.7B TTS simultaneous GPU residency. Prefer CPU/ONNX voice fallback or managed handoff if audio quality/performance is acceptable; measure actual p95 first audible sound, token/s, WER/CER, memory and CPU/GPU power. Package *only* licensed model files with source, hashes and offline test evidence.
 9. **Promotion is gated.** Every customization must beat or match the original model on English/Russian natural conversation, code and actual compiler/tests, troubleshooting, long-story character consistency, trustworthy citations, tool-call correctness, refusal behavior appropriate to the user's desired writing style, prompt-injection resistance for tools, retention/privacy, and speed. The native application and human voice must pass the existing 17 stable-release gates.
 
+## 23 November 2026 — strengthened EmberMind training/evaluation integrity
+
+The independent model-evaluation set can produce **falsely high scores**
+when the same user question is repeated in another `group_id` with a
+different assistant answer. Merely hashing whole conversation objects
+does not prevent that leakage. EmberMind Studio now fingerprints only
+the *user turns* of each fully validated sample, using Unicode NFKC,
+case-folding and whitespace collapse **for comparison only**. If those
+user-turn sequences appear in two distinct source conversation groups,
+the preparer rejects the dataset before creating train/eval files.
+The actual written training messages are **never normalized or edited**.
+
+The separate `ember_mind_qlora.py` preflight now independently validates
+the finished OpenAI-style `messages` array (object fields, required
+string content, user/assistant alternation with optional initial system
+message, assistant ending, length bounds and forbidden NUL).
+It rejects duplicate JSON keys, duplicate full training dialogues,
+and normalized **train-versus-eval** user-prompt overlaps even when an
+operator has modified both JSONL files *and updated their report hashes*.
+Malformed trailing messages are rejected as ordinary validation errors
+instead of triggering a Python attribute exception.
+
+Both tools have explicit **synthetic-only regression tests**: duplicate
+prompts under different IDs/groups, changed assistant completion,
+different capitalization/whitespace, non-object messages, wrong role
+order, extra fields and duplicate JSON keys. Neither tool requires GPU
+or downloads models. This is a stricter hygiene gate, **not a semantic
+duplicate detector**: paraphrases of the same prompt, shared benchmark
+sources, contaminated teacher answers and mistakes in source-rights
+declarations still require manual audit. No custom model training or
+quality comparison has yet taken place. An explicit user-initiated
+one-shot training command and genuinely obtained licensed weights/data
+are still prerequisites.
+
+Official compatibility reference:
+[Axolotl Qwen3.5](https://docs.axolotl.ai/docs/models/qwen3.5.html)
+documents hybrid DeltaNet/Transformer support, not proven QLoRA
+peak memory on Ember's RTX 4070 12 GB.
+[Qwen3.5-4B-Base](https://huggingface.co/Qwen/Qwen3.5-4B-Base)
+is the publicly available trainable checkpoint (Apache 2.0);
+cloud-only Qwen4-Max cannot substitute for local open weights.
+Dolphin post-trained checkpoints are behavior/quality comparators,
+not tensor-compatible components one can blindly paste into Qwen3.5.
+
 ## Dataset schema (original user-authored example; do not copy private chats)
 
 Each line is one JSON object:
