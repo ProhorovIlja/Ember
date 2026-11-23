@@ -86,8 +86,16 @@ It requires existing, independently reviewed LLM/ASR/TTS weights and Windows
 runtimes, license evidence, a deployed native Qt application and local
 Python/Inno Setup 6 on the **build computer**. One foreground invocation
 assembles a complete payload, runs real local LLM + native English TTS
-smoke probes, produces Inno Setup and ZIP64 distributions with SHA-256 and
-per-user install/uninstall verification. Stable SemVer additionally requires
+smoke probes, produces two independent **single-download ZIP64 choices**:
+a portable offline Ember folder and a complete installer bundle containing
+Inno Setup.exe plus ALL disk-spanned model-data slices. This is necessary
+because a complete Qwen3.5-class model + native speech weights can exceed
+Windows' ~4 GB single-EXE ceiling. Run Setup.exe only after extracting its
+entire installer ZIP; missing .bin slices make installation incomplete.
+The bundler is [tools/installer_bundle.py](tools/installer_bundle.py)
+(`--self-test` passed locally on synthetic slices), and the installer
+rechecks installed model/engine hashes after a per-user install/uninstall
+smoke. Stable SemVer additionally requires
 the separate reviewed 17-check release acceptance record. No models,
 runtimes or release binaries are currently attached to the development
 branch. The new pipeline has not yet been executed on a Windows PC.
