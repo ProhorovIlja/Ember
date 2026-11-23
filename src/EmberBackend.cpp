@@ -1227,6 +1227,37 @@ QString EmberBackend::inspectOfflineSetup() const {
                  "language quality, GPU compatibility or license.");
     return lines.join('\n');
 }
+void EmberBackend::startLocalEngines() {
+    // Foreground user action only; never auto-launch on app startup. The
+    // selected LLM and optional speech.cpp are both children of Ember.
+    if (m_busy || m_listening || m_speaking) {
+        setStatus("Finish the active recording or reply before starting Ember engines.");
+        return;
+    }
+    const bool needsNativeSpeech = m_voiceEngine == 1 ||
+                                    m_recognitionEngine > 0;
+    if (needsNativeSpeech && !isRegularFile(configPath("speechExe"))) {
+        setStatus("Ember cannot start the complete selected voice setup: "
+                  "bundled native speech.exe is missing. "
+                  "Open Settings and check offline installation.");
+        return;
+    }
+    if (m_brain.state() == QProcess::NotRunning)
+        startBrain();
+    // A missing/malformed local GGUF or llama-server must not trigger a
+    // partially running native TTS service from the combined Start action.
+    if (m_brain.state() == QProcess::NotRunning) return;
+    if (needsNativeSpeech && m_speechServer.state() == QProcess::NotRunning)
+        startSpeechServer();
+}
+void EmberBackend::stopLocalEngines() {
+    // Stop native ASR/TTS first, so no late PCM or transcription callback
+    // survives the user's explicit Stop Ember action.
+    if (m_speechServer.state() != QProcess::NotRunning)
+        stopSpeechServer();
+    if (m_brain.state() != QProcess::NotRunning)
+        stopBrain();
+}
 void EmberBackend::startBrain() {
     if (m_brain.state() != QProcess::NotRunning) {
         setStatus(m_brainReady ? "Local brain is already running." : "The model is still loading.");
