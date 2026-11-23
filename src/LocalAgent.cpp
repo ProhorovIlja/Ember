@@ -223,7 +223,10 @@ Decision parseModelResponse(const QByteArray &json,
             return answer;
         }
         const QString rawArgs = fn.value("arguments").toString();
-        if (rawArgs.isEmpty() || rawArgs.toUtf8().size() > 4096) {
+        // Multi-file staged source proposals can exceed 4 KiB in JSON even
+        // though each individual replacement and the final response remain
+        // tightly bounded. Previous 4 KiB cap made 3-file proposals unusable.
+        if (rawArgs.isEmpty() || rawArgs.toUtf8().size() > 24 * 1024) {
             answer.error = "Model tool arguments missing or oversized.";
             return answer;
         }
@@ -383,6 +386,8 @@ Decision parseModelResponse(const QByteArray &json,
             answer.path = args.value("path").toString();
             const double line = args.value("start_line").toDouble(1);
             if (answer.path.isEmpty() || answer.path.size() > 240 ||
+                answer.path.contains(QChar::Null) ||
+                !std::isfinite(line) ||
                 line < 1 || line > 100000 || std::floor(line) != line) {
                 answer.error = "Invalid read_source path or line number.";
                 return answer;
@@ -398,7 +403,17 @@ Decision parseModelResponse(const QByteArray &json,
         answer.error = "Local model emitted no final answer or supported tool call.";
         return answer;
     }
-    const QString text = message.value("content").toString().trimmed();
+    // Some Qwen GGUF chat templates embed private reasoning in content
+    // instead of using the separate reasoning_content field. Do not show,
+    // archive, or attribute these tokens to Ember's final answer.
+    QString text = message.value("content").toString().trimmed();
+    static const QRegularExpression completeThinking(
+        R"(<think>[\s\S]*?</think>)",
+        QRegularExpression::CaseInsensitiveOption);
+    text.remove(completeThinking);
+    const qsizetype unfinished = text.indexOf("<think>", 0, Qt::CaseInsensitive);
+    if (unfinished >= 0) text.truncate(unfinished);
+    text = text.trimmed();
     if (text.isEmpty() || text.size() > kMaxFinalText ||
         text.contains(QChar::Null)) {
         answer.error = "Local model final answer is empty or oversized.";
