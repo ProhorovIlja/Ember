@@ -674,6 +674,21 @@ private slots:
         QVERIFY(gallery.dataUri(alphaId).startsWith("data:image/png;base64,"));
         QCOMPARE(gallery.imageCount(), 2);
     }
+    void nativeImageLibraryDoesNotUpscaleSmallImages() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        ImageLibrary gallery(dir.filePath("library"));
+        QImage small(27, 19, QImage::Format_ARGB32);
+        small.fill(qRgba(30, 80, 110, 255));
+        small.setPixel(9, 7, qRgba(210, 120, 70, 80));
+        const QString id = gallery.importImage(small);
+        QVERIFY(!id.isEmpty());
+        const QImage stored(gallery.filePath(id));
+        QCOMPARE(stored.size(), small.size());
+        QVERIFY(stored.hasAlphaChannel());
+        QCOMPARE(qAlpha(stored.pixel(9, 7)), 80);
+        QCOMPARE(gallery.imageCount(), 1);
+    }
     void nativeImageLibraryResizesHighEntropyPngWithoutLosingTransparency() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
