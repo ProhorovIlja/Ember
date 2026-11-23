@@ -71,6 +71,27 @@ check its synthetic fixtures, or follow
 with an already running, user-started local model. The source self-test
 has passed but **real GGUF/RTX 4070 acceptance has not been performed**.
 
+## One-click native startup and offline complete-package assembly
+
+The main native Qt header now exposes an explicit **Start Ember / Stop Ember**
+control. It starts the locally installed LLM and, if Qwen3-TTS or Qwen3-ASR
+was selected, its managed native speech engine from preinstalled GGUF files.
+It does not schedule anything, automatically download a catalog model or
+launch workers on Windows login. Independent expert controls remain under
+Settings. Kokoro and Whisper run only when speech/recording is explicitly used.
+
+The full offline Windows **assembly pipeline** lives at
+[`release/build-complete-offline.ps1`](release/build-complete-offline.ps1).
+It requires existing, independently reviewed LLM/ASR/TTS weights and Windows
+runtimes, license evidence, a deployed native Qt application and local
+Python/Inno Setup 6 on the **build computer**. One foreground invocation
+assembles a complete payload, runs real local LLM + native English TTS
+smoke probes, produces Inno Setup and ZIP64 distributions with SHA-256 and
+per-user install/uninstall verification. Stable SemVer additionally requires
+the separate reviewed 17-check release acceptance record. No models,
+runtimes or release binaries are currently attached to the development
+branch. The new pipeline has not yet been executed on a Windows PC.
+
 ## Development state and downloads
 
 GitHub Actions compiles the native Qt app and **tests** a versioned Inno Setup installer with silent installation, real QML startup and uninstall. Developer build files stay inside CI and are **not uploaded as previews**, by request. The public [Releases](https://github.com/ProhorovIlja/Ember/releases) page is reserved for accepted final installers with checksums, detailed notes, tested model inventory and GitHub source archives. The separate `.github/workflows/stable-release.yml` enforces reviewed hardware/quality/security gates, matching SemVer and clean installer acceptance before publication.
