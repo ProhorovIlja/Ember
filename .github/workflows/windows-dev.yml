@@ -69,6 +69,11 @@ jobs:
         run: |
           python tools/blind_text_ab.py self-test
           if ($LASTEXITCODE -ne 0) { throw 'Local blind A/B quality lab self-test failed.' }
+      - name: Validate private blinded human voice listening protocol
+        shell: pwsh
+        run: |
+          python tools/voice_listening_ab.py self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Human TTS blind A/B comparison self-test failed.' }
       - name: Validate custom EmberMind SFT dataset boundaries
         shell: pwsh
         run: |
