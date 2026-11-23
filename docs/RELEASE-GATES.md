@@ -356,3 +356,17 @@ no-VPN first-run tests remain separately mandatory release evidence.
 - [x] A separate native Python sqlite3 reproduction confirmed SQL syntax, parameter order and matching for lowercase/titlecase/uppercase Russian and literal 100%/100_ in a synthetic database.
 - [ ] Run new QtTest on genuine Windows/Qt6 and verify long-history search navigation, rendering, responsiveness and resource use on a large local archive.
 - [ ] True jump-to-original-message navigation and full Unicode-insensitive search for arbitrary mixed-case words remain future work. No index, daemon or cloud history scan was added.
+
+## 23 November 2026 — direct archive search navigation (Part 51)
+
+- [x] Source: each saved-chat search result now carries the SQLite ID of the same message whose matching excerpt is shown. Title-only hits use 0 and open the latest conversation view.
+- [x] Source: local SQLite queries expose an ID-keyed window around one verified message (up to 40 earlier + selected + 40 later), plus explicit older/newer pages of at most 100 messages. Other sessions cannot be mixed into the window.
+- [x] Source: native QML clicks focus and highlight that historical message and offer Load newer / Latest controls. No need to load a multi-year archive into the ListView simply to locate a search result.
+- [x] Source: the LLM's working conversation context is rebuilt from the latest turns BEFORE a historic reading window is displayed; sending a new prompt returns the visible chat to recent messages, so an old search hit is never accidentally treated as the latest assistant turn.
+- [x] Source: immediately persisted user turns and streamed assistant replies receive their committed SQLite IDs in the UI after successful storage, avoiding false "newer messages" indicators.
+- [x] New C++ QtTest source cases cover interleaved global SQLite IDs, bounded 81-row windows, more recent/older pages, cross-session isolation, missing/deleted hits and stable search locator ID.
+- [x] Independent Python sqlite3 synthetic reproduction checked the exact two-pattern search query and ordered cursor SQL, including title-only matches and Russian casing; this is NOT an MSVC/Qt runtime build.
+- [ ] Perform an actual Windows Qt6 build and run all C++ tests against QSQLITE and QML; manually check the selected message stays highlighted at 100–200% DPI after asynchronous ListView layout.
+- [ ] Manually test new prompt from a deep history window, preserving composer text and pending image, title-only selection, deleted matches, private mode, interrupted inference, 50k+ archived messages and return to latest without memory spikes.
+
+No automatic task, scheduled search, GitHub Actions, public preview release or cloud text indexing was started.
