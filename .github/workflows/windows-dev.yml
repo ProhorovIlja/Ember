@@ -74,6 +74,11 @@ jobs:
         run: |
           python tools/ember_mind_studio.py self-test
           if ($LASTEXITCODE -ne 0) { throw 'EmberMind local SFT dataset self-test failed.' }
+      - name: Verify pinned LoRA adapter merge preflight (synthetic only)
+        shell: pwsh
+        run: |
+          python tools/adapter_merge_preflight.py self-test
+          if ($LASTEXITCODE -ne 0) { throw 'EmberMind adapter compatibility preflight failed.' }
       - name: Validate actual Qwen3 speech GGUF identity metadata (synthetic only)
         shell: pwsh
         run: |
