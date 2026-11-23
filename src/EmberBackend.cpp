@@ -1240,6 +1240,9 @@ void EmberBackend::startBrain() {
         setStatus("Local engine or GGUF preflight failed. See Settings → Check offline setup.");
         return;
     }
+    // Trust the selected GGUF's architecture metadata, not its user-visible
+    // filename or the mutable model alias advertised over the local API.
+    m_brainSupportsThinking = EmberCore::ggufSupportsThinkingFlag(model);
     ++m_brainSession; // invalidate late HTTP health checks from earlier runs
     m_brain.setWorkingDirectory(QFileInfo(binary).absolutePath());
     m_brain.setProgram(binary);
@@ -1546,6 +1549,7 @@ void EmberBackend::pollSpeechServer() {
 void EmberBackend::stopBrain() {
     m_brainStartupTimedOut = false;
     m_brainVisionMode = false;
+    m_brainSupportsThinking = false;
     ++m_brainSession;
     // ASR is independent of llama-server. Stop the LLM without discarding
     // a long dictation, and make any pending "Transcribe & send" draft-only.
@@ -3198,7 +3202,8 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
         requestedOutput, m_brainContextTokens, voice);
     QJsonObject payload = EmberCore::chatRequest(
         effectivePersona, m_history, text, boundedOutput,
-        generation.temperature, recalled, deep, 8192, m_brainContextTokens);
+        generation.temperature, recalled, deep, 8192, m_brainContextTokens,
+        m_brainSupportsThinking);
     // Per-request overrides never restart, modify, or merge model weights.
     // Keep Auto profile/native defaults for compatibility with new GGUFs.
     if (!payload.isEmpty() &&
