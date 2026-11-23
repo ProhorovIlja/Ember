@@ -9,6 +9,28 @@ cloud services cannot be accessed without a network connection and permission.**
 The app must continue answering from locally available knowledge without cloud
 accounts, subscription, VPN, scheduled checks or automatic model downloads.
 
+## 23 November 2026 — larger staged agent proposals and hidden-thinking hygiene
+
+The native local coding agent accepts **at most three existing source files**
+in one `propose_patch_batch` after inspecting each current file. The tool
+argument parser previously rejected JSON larger than 4 KiB, which made a
+three-file proposal with ordinary code snippets fail before approval. It now
+accepts up to **24 KiB of UTF-8 JSON**, while retaining the individual
+old/new text caps, the complete-response 64 KiB bound, the required
+read-before-propose evidence, selected project-root restrictions, independent
+human diff approval, exact source snapshots, private backups and rollback.
+The change **does not grant write access** to ordinary research mode or
+GitHub/Wikipedia scopes, create new project files or bypass approval.
+
+The parser also checks `read_source.start_line` is finite and within range,
+refuses embedded NUL paths, and removes fully delimited Qwen `<think>`
+reasoning from the final user-visible agent answer. An unterminated hidden
+thought leaves no exposed reasoning; if no visible answer remains the result
+is an error, not a displayed private monologue. C++ regression tests cover
+all of these boundaries, using synthetic model responses. Only a real
+local GGUF deployment can establish actual source-edit usefulness and
+performance on the target RTX 4070.
+
 ## Implemented first step: explicit local text file import
 
 The Chat toolbar now has **Add text file**. The native Windows file picker
