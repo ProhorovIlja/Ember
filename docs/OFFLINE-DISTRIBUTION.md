@@ -1,3 +1,64 @@
+## Complete-release integrity correction — 23 November, Part 44
+
+A complete Ember must include **working RU/EN speech recognition**, not
+merely an LLM and synthesized English audio. Source-level build integration
+now enforces both languages before any stable installer can be accepted:
+
+- `release/build-complete-windows.ps1` and
+  `release/build-complete-offline.ps1` accept
+  `-EnglishWav`, `-EnglishReference`, `-RussianWav`,
+  `-RussianReference` and a bounded `-MaxAsrWer` (default 0.25).
+  All four files must be genuine local test inputs; incomplete pairs fail
+  before any assets are copied. Stable, non-`-dev` versions **refuse** to
+  build without all four samples, and the existing foreground
+  `tools/offline_acceptance.py --run` actually transcribes the WAVs with
+  bundled multilingual Whisper and calculates WER/CER against the references.
+  No WAV/reference sample is included in the installer or ZIP.
+- Real on-target acceptance should use more than two examples, various
+  speaking styles, quiet/noisy microphones, complete dictation
+  cancel/draft/send and interrupted speech, as captured by the separately
+  reviewed release-gate record. A two-sample ASR pass is not a claim of
+  universal Russian or English accuracy.
+- `release/build-dev-installer.ps1 -VerifyInstall -RequireOfflineBundle
+  -RequireVoiceBundle` now **rehashes the installed runtime, LLM, ASR, TTS
+  and license files** after Inno's actual installation, before accepting
+  QML smoke and uninstall. A working `Ember.exe` alone can no longer
+  hide missing GGUF weights or missing native speech DLLs.
+- Direct `tools/portable_zip.py` execution requires full approved voice
+  by default. To allow the old strictly internal text-only development
+  ZIP, one must explicitly pass `--allow-text-only-development`.
+- `Start Ember` now rolls back both managed services if either exits
+  during a combined session, including after startup. The native UI
+  distinguishes `Brain ready · voice still loading` from
+  `Ember ready locally`. This prevents presenting half-started voice as
+  a ready completed product and avoids orphaned model-memory consumers.
+
+Example explicit Windows packaging invocation **only after** actual
+reviewed models, native binaries, local sample data and licenses exist:
+
+```powershell
+& .\release\build-complete-windows.ps1 `
+  -QtRoot "C:\Qt\6.8.3\msvc2022_64" `
+  -BuildDirectory "D:\EmberBuild\new-clean" `
+  -AssetsDirectory "D:\EmberInputs\ReviewedAssets" `
+  -ApprovedManifest "D:\EmberInputs\approved-assets.json" `
+  -DistributionDirectory "D:\EmberDistributions\full-candidate" `
+  -Version "0.1.0-dev" `
+  -EnglishWav "D:\EmberQA\english.wav" `
+  -EnglishReference "D:\EmberQA\english.txt" `
+  -RussianWav "D:\EmberQA\russian.wav" `
+  -RussianReference "D:\EmberQA\russian.txt"
+```
+
+This is a **source-level change only**: no Windows executable/model bundle
+or real bilingual audio was available in the current engineering runtime.
+The new branch has not been compiled under MSVC/Qt, and all seventeen
+real-world stable-release checks remain subject to independent evidence.
+The user specifically wants one finished product; a code script that can
+eventually build one is not the finished product.
+
+---
+
 ## Single foreground build of a complete offline Windows candidate
 
 The new `release/build-complete-offline.ps1` connects the previously separate
