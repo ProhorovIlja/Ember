@@ -168,3 +168,64 @@ mandatory real stable-release acceptance gates.
 
 No scheduled/automated check, public Release, CI workflow or GitHub
 Actions event was triggered in this development branch.
+
+## Part 43 — end-to-end Windows delivery integration (23 November)
+
+The user explicitly requires a **finished, installable Ember**, not another
+collection of standalone test tools. The technical priority moved to product
+packaging and unified operation, without inventing a stable Release.
+
+**New user-facing functionality in source (NOT yet native-built on this
+branch):**
+- Main Qt header's **Start Ember / Stop Ember** invokes new
+  `EmberBackend::startLocalEngines/stopLocalEngines`. One user click manages
+  the selected on-device LLM and optionally selected Qwen3-TTS/Qwen3-ASR;
+  no Windows/login auto-start, cloud fallback, catalog download or schedule.
+  The main Start checks for preinstalled speech GGUFs before starting any
+  worker; expert per-engine controls remain in Settings.
+- A FIRST run with bundled `engines/speech/speech.exe` and supported
+  `models/speech/qwen3-tts-{0.6b,1.7b}.gguf` now selects native English
+  voice by default (prefer installed 1.7B). An existing user's stored
+  choice of Kokoro/voice is respected; an empty development app still
+  defaults to Kokoro rather than guessing that Qwen weights exist.
+
+**New complete local build path:**
+- `release/build-complete-offline.ps1` consumes a **clean deployed Qt app**,
+  **already locally obtained, reviewed** model/engine/license files, and an
+  asset manifest with actual SHA-256, sizes, source URLs and redistribution
+  approvals. It requires real native LLM + Qwen3 TTS + Whisper RU/EN ASR,
+  verifies hashes, GGUF headers/family, Windows executable dependencies,
+  runs on-demand real LLM and English TTS inference (unless explicitly
+  opted out for `-dev` only), builds voice-required ZIP64 + full Inno
+  installer, runs local install/uninstall smoke, generates SHA256SUMS.txt,
+  and exposes final files only after a successful temporary staging rename.
+  It does NOT download, publish or schedule any process.
+- `release/build-complete-windows.ps1` additionally takes Qt 6/MSVC 2022
+  installation, compiles actual Qt application + unit tests with CMake,
+  deploys Qt DLLs, stages Microsoft-signed CRT and then invokes above
+  full-package builder. This is a single foreground user/maintainer action,
+  with no GitHub Actions or remote downloads.
+- `tools/portable_zip.py --require-voice` now enforces the same TTS family
+  metadata as approved Inno packages. It has synthetic fail/pass source
+  assertions against fake and valid-schema Qwen3 GGUF metadata.
+- `tools/offline_bundle.py` refuses debug binaries/symbols from the
+  user-facing payload; `release/stage-msvc-applocal.ps1` prunes them
+  from freshly deployed output. This avoids shipping test executables and
+  unnecessary compiler data in multi-gigabyte packages.
+- Stable SemVer is blocked until the existing 17 reviewed release gates
+  and matching `release/acceptance.json` are actually present. Development
+  candidates with skipped real inference cannot be represented as stable.
+
+**Evidence boundary:** All changes above are verified in the connected
+GitHub source repository. The branch has NOT been compiled/run under
+Windows/Qt/MSVC here; no actual approved assets, trained EmberMind/Voice,
+12 GB GPU/ASR/voice listening tests or clean offline release binary were
+created. The new unified assembly is a *missing product integration now
+implemented in source*, not the final product itself. Never report a
+completed stable release or subjective percentages as though they were
+measured.
+
+The final obstacles are substantial: legal and accessible model/runtime
+weights, user-owned speaker/training data, real Qwen3.5 training/voice
+conditioning, deep multi-turn/code/tool QA, actual Windows build, VRAM/audio
+measurements, end-to-end offline installation, and accepted release evidence.
