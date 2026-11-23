@@ -752,6 +752,11 @@ private slots:
         bytes.write("tamper");
         bytes.close();
         QVERIFY(gallery.dataUri(id).isEmpty()); // integrity fails closed
+        // Reimport must NOT silently reuse this corrupt file merely because
+        // its filename matches the expected content-addressed SHA-256 id.
+        QString conflict;
+        QVERIFY(gallery.importImage(alpha, &conflict).isEmpty());
+        QVERIFY(conflict.contains("SHA-256"));
     }
     void speechDeviceSelectionIsBoundedAndExplicit() {
         QCOMPARE(EmberCore::nativeSpeechDeviceArg(0), QString("auto"));
