@@ -37,7 +37,20 @@ pwsh release/build-dev-installer.ps1 -PayloadDirectory D:\EmberComplete -OutputD
 
 The assembler refuses to mix user `data/` chats or `cache/` audio into the installer. It also refuses untracked engine/model files in the Qt payload. ZIP64 supports multi-gigabyte GGUF files; already-compressed weights are stored without costly recompression, and each source asset is verified with SHA-256. This is a working packaging pathway using **locally supplied assets only**, not an official prepopulated Release. The staged folder contains only allowlisted `engines/`, `models/`, `licenses/` plus `offline-assets.json`; SHA-256 is checked before and after copying. It refuses to overwrite a destination, links/symlinks, traversal paths, Windows case-insensitive collisions, unlisted files and changed bytes. No Python packages, cloud service, curl or runtime download are used. Never include `data/`, chats, private audio, saved device IDs or tokens in a distributable asset folder.
 
-The stable tagged workflow now **fails closed** if `build/Release/offline-assets.json` is absent or verification fails, and passes `-RequireOfflineBundle` to the Inno installer builder. A future licensed artifact staging step is still needed before this workflow can publish a complete release. The Inno Setup wrapper accepts `-RequireOfflineBundle` when building a release installer. It will refuse any payload folder without a fully approved and verifiable `offline-assets.json`. Ordinary internal development builds remain partial and intentionally publish no preview downloads. The complete, signed-off release needs an additional step to insert vetted staged files into the native deployed Qt output **before** packaging; this has not been implemented or claimed complete yet.
+The stable tagged workflow now **fails closed** if `build/Release/offline-assets.json` is absent or verification fails, and passes `-RequireOfflineBundle` to the Inno installer builder. A future licensed artifact staging step is still needed before this workflow can publish a complete release. The Inno Setup wrapper accepts `-RequireOfflineBundle` when building a release installer. It will refuse any payload folder without a fully approved and verifiable `offline-assets.json`. Ordinary internal development builds remain partial and intentionally publish no preview downloads. The development branch now also includes a manually invoked, all-in-one
+`release/build-complete-offline.ps1` path that first uses
+`offline_bundle.py assemble --require-voice` to combine an already deployed
+clean native Qt app with reviewed LLM/ASR/TTS assets, verifies Windows PE
+dependencies, explicitly launches real local LLM/TTS acceptance once, builds
+the voice-required ZIP64 archive and Inno Setup EXE, performs a native
+installation/uninstallation smoke, computes checksums and publishes the
+result only by renaming a successful private staging folder.
+This is an **uncompiled / unexecuted on Windows source implementation** at
+the time of writing. It does not produce a release unless real weights,
+runtimes, licenses and compatible local Windows resources are supplied;
+stable SemVer is further blocked by the accepted 17-gate release record.
+No automatic GitHub workflow, release publication, notification or timed
+job is added. Existing release workflow integration remains separately gated.
 
 ## Explicit on-demand real-model acceptance (not a preview)
 
@@ -62,7 +75,7 @@ For components that cannot be redistributed, provide exact expected folder names
 
 ## Still missing before final release
 
-Real Windows 10 / RTX 4070 test with network disconnected, clean installer, complete LLM and RU/EN dictation, cancellation/draft/send fidelity, local coding tools and long-session stability; RU/EN WER, VRAM and latency, legal model/engine inventories, complete offline weights, local import UI, suitable distribution channels and installer size review. English TTS naturalness, spoken latency and full-duplex barge-in belong to a **later voice milestone**, not a text-first release blocker. Optional Internet tools and Drive backups must stay independent from the offline core.
+Real Windows 10 / RTX 4070 test with network disconnected, clean installer, complete LLM and RU/EN dictation, cancellation/draft/send fidelity, local coding tools and long-session stability; RU/EN WER, VRAM and latency, legal model/engine inventories, complete offline weights, local import UI, suitable distribution channels and installer size review. English TTS naturalness, spoken latency and cancellation/interrupt recovery are **mandatory for the first public complete edition**. Full-duplex barge-in remains a separate unresolved feature and cannot be claimed from turn-based input, although this is a serious gap against the ultimate goal. Optional Internet tools and Drive backups must stay independent from the offline core.
 
 The installer builder accepts either repository-relative CI paths or absolute
 `-PayloadDirectory` / `-OutputDirectory` paths, so a large offline payload can
