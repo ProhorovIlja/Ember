@@ -656,3 +656,74 @@ LLM/TTS/ASR validation on the RTX4070 12GB machine, natural EN female
 voice, RU/EN long ASR, tool and cloud-consent end-to-end QA, UI polish,
 performance and complete release acceptance. Do not claim an end-user
 installer, trained EmberMind/Ember Voice or stable public Release exists.
+
+## Part 52 — fix end-of-chat history jumps and cap live archive paging
+
+Audit of Part 51 found two concrete correctness failures:
+1) The UI inferred whether it was showing a historical window only
+   from whether the last visible row had newer SQLite messages. If the
+   selected search result was itself the latest row, a 41–81-row historic
+   window had no newer rows; the **Latest messages** control disappeared.
+   A new user turn could therefore trigger `finishChatStream` to rebuild
+   dialog context from the truncated historic window instead of the
+   latest 300 messages.
+2) Repeated `loadEarlierMessages`/`loadNewerMessages` calls appended
+   pages indefinitely. They were bounded per query (100 records), but
+   NOT bounded in aggregate in the Qt `m_messages` model. That violates
+   the lightweight app requirement and risks high memory/painting cost.
+
+Confirmed GitHub source changes:
+- `src/EmberBackend.h`: separate read-only `historicalView` Q_PROPERTY,
+  backed by `m_historicalWindowActive`. Unlike `hasNewerMessages`,
+  it records when the live UI is browsing a historic subset regardless
+  of whether the selected record is the newest persisted one.
+- `src/EmberBackend.cpp`: set historic-view state on jump or manual
+  older/newer paging; clear it on explicit Latest, ordinary session
+  opening, new chat or an accepted foreground send. For any accepted
+  new text request, reset the visible buffer to the latest persisted
+  SQLite messages after all local privacy/model/request preflight gates.
+  Rejecting a request preserves the current UI view/draft. Model history
+  remains the latest valid turn context while browsing.
+- `src/Core.h/.cpp`: shared `EmberCore::mergeVisibleHistoryPage`
+  direction-sensitive helper keeping at most 300 QVariantList records
+  in the UI after each user-invoked page, never modifying SQLite.
+- `qml/Main.qml`: the Latest control remains visible in historic mode
+  even with `hasNewerMessages==false`; Newer remains visible only when
+  there actually are newer records. Newer paging anchors its scroll
+  at the first new row rather than jumping over up to 99 entries.
+  The matched snippet is displayed as `Text.PlainText` in the
+  highlighted bubble; jump aligns top of message, not the middle
+  of a huge item.
+- `tests/CoreTests.cpp`: one helper test covers a 300-row UI window,
+  multiple 100-row older/newer pages, strict ID ordering, empty page
+  behavior, exact return to latest 701..1000, and a near-tail search
+  hit with no newer rows but fewer than the full 110-message chat.
+
+Independent verification: Python 3 stdlib sqlite3 synthetic data with 470
+interleaved story/other-session messages; checked search row ID, 40-before
++ matching + 40-after SQLite paging (81 total), and bidirectional 100-row
+navigation where visible records never exceeded 300 and the final exact
+window was 701..1000. PASS. This is a SQL/algorithm reproduction, NOT a
+compiled/executed QtTest, Windows build, graphical acceptance or large
+benchmark. No Qt6 SDK, Windows MSVC or user's RTX 4070 is available here.
+
+Commits (sequential source writes):
+dfab48338c4b0b102569083a03634ce6b3a1c50d
+23ba93e49894323d80adba284ad55d3f8d508d77
+02afe98f3c3d5043b0e7c868603e67173de03a71
+9db5fb82161118c33d402416ce05aa8cf5e478a3
+a148d1a9499df73c8ddec9654cf528c5cb432d06
+d37f464d1644ed5ac7ee76d3ffeb819909f00ee9
+19bae9e6211b182f96b2421f9a269080fc9fe96e
+e01a014d9d644096c43bed579789ed78559f8a47
+1f2665124b3b010634a04802c16b6181fdb89100
+e70a16d78702d524889fed1bd63ffd6556b519b9
+76f812a6bfa6e23d18869a41d9184df3d93e9ecb
+
+Still unresolved: real Qt6 compilation and user-device UI, microphone,
+TTS/ASR inference, model quality, model weight selection/license, and
+full tested Windows installer. These source improvements do not deliver
+a trained EmberMind model, a natural female-English Ember Voice or a
+finished downloadable native application. No GitHub Actions, scheduled
+or recurring tasks, background monitoring or public release was started.
+
