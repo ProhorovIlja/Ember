@@ -1628,6 +1628,37 @@ private slots:
             reply(QJsonObject{{"kind", "issue"}, {"number", 17}}),
             Scope::LocalProject).ok());
     }
+    void localAgentThinkingRespectsDeepModeInEveryToolScope() {
+        using namespace EmberAgent;
+        const QJsonArray messages{
+            QJsonObject{{"role", "system"}, {"content", "Use tools cautiously"}},
+            QJsonObject{{"role", "user"}, {"content", "Investigate this source"}}
+        };
+        for (const auto scope : {Scope::LocalProject, Scope::GitHubRepository,
+                                 Scope::WikipediaResearch}) {
+            const auto fast = modelRequest(messages, 2, scope, false, false);
+            const auto deep = modelRequest(messages, 2, scope, false, true);
+            QCOMPARE(fast.value("chat_template_kwargs").toObject()
+                         .value("enable_thinking").toBool(), false);
+            QCOMPARE(deep.value("chat_template_kwargs").toObject()
+                         .value("enable_thinking").toBool(), true);
+            QCOMPARE(fast.value("max_tokens").toInt(), 900);
+            QCOMPARE(deep.value("max_tokens").toInt(), 2400);
+            QCOMPARE(fast.value("parallel_tool_calls").toBool(), false);
+            QCOMPARE(deep.value("parallel_tool_calls").toBool(), false);
+            QCOMPARE(deep.value("tool_choice").toString(), QString("auto"));
+            const auto fastFinal = modelRequest(messages, 0, scope);
+            const auto deepFinal = modelRequest(messages, 0, scope, false, true);
+            QCOMPARE(fastFinal.value("tool_choice").toString(), QString("none"));
+            QCOMPARE(deepFinal.value("tool_choice").toString(), QString("none"));
+            QCOMPARE(fastFinal.value("max_tokens").toInt(), 1500);
+            QCOMPARE(deepFinal.value("max_tokens").toInt(), 3000);
+        }
+        const auto edit = modelRequest(messages, 1, Scope::LocalProject, true, false);
+        QCOMPARE(edit.value("max_tokens").toInt(), 2400);
+        QCOMPARE(edit.value("chat_template_kwargs").toObject()
+                     .value("enable_thinking").toBool(), false);
+    }
     void localAgentGitHubScopeNeverGrantsWritesOrHostControl() {
         using namespace EmberAgent;
         const QJsonArray messages{
