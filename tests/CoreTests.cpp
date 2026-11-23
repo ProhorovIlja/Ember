@@ -1181,6 +1181,95 @@ private slots:
         QVERIFY(archive.search("nonexistent-phrase").isEmpty());
     }
 
+    void opensExactArchivedSearchHitWithBoundedBidirectionalPages() {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        SessionStore store(temp.filePath("deep-navigation.sqlite"));
+        QVERIFY2(store.ready(), qPrintable(store.error()));
+        const QString story = store.createSession();
+        const QString unrelated = store.createSession();
+        QVERIFY(!story.isEmpty() && !unrelated.isEmpty());
+        // Interleave IDs across sessions to prove they are NOT contiguous
+        // and cursor windows must never borrow neighboring chat records.
+        for (int i = 0; i < 470; ++i) {
+            const QString text = i == 120
+                ? "Mara's silver compass: old, outdated scene."
+                : i == 340
+                    ? "Mara's silver compass: latest verified scene."
+                    : QString("Story scene %1.").arg(i);
+            QVERIFY(store.append(story, i % 2 ? "ember" : "you", text));
+            if (i % 7 == 0)
+                QVERIFY(store.append(unrelated, "you",
+                    QString("Different private scene %1.").arg(i)));
+        }
+        const auto search = store.search("SILVER COMPASS");
+        QCOMPARE(search.size(), 1);
+        QCOMPARE(search.first().toMap().value("id").toString(), story);
+        const QString hitIdText = search.first().toMap()
+            .value("messageId").toString();
+        bool valid = false;
+        const qint64 hitId = hitIdText.toLongLong(&valid);
+        QVERIFY(valid && hitId > 0);
+        QCOMPARE(search.first().toMap().value("snippet").toString(),
+                 QString("Mara's silver compass: latest verified scene."));
+
+        const QVariantList around = store.messagesAround(story, hitId, 40, 40);
+        QCOMPARE(around.size(), 81);
+        QCOMPARE(around.at(40).toMap().value("id").toLongLong(), hitId);
+        QCOMPARE(around.at(40).toMap().value("body").toString(),
+                 QString("Mara's silver compass: latest verified scene."));
+        QVERIFY(store.hasMessageBefore(story,
+            around.first().toMap().value("id").toLongLong()));
+        QVERIFY(store.hasMessageAfter(story,
+            around.last().toMap().value("id").toLongLong()));
+        QVERIFY(store.messagesAround(unrelated, hitId).isEmpty());
+        QVERIFY(store.messagesAround(story, -1).isEmpty());
+        QVERIFY(store.messagesAround(story, 999999999).isEmpty());
+        const auto before = store.messagesBefore(
+            story, around.first().toMap().value("id").toLongLong(), 100);
+        QCOMPARE(before.size(), 100);
+        QVERIFY(before.last().toMap().value("id").toLongLong() <
+                around.first().toMap().value("id").toLongLong());
+        const auto after = store.messagesAfter(
+            story, around.last().toMap().value("id").toLongLong(), 100);
+        QVERIFY(!after.isEmpty());
+        QVERIFY(after.first().toMap().value("id").toLongLong() >
+                around.last().toMap().value("id").toLongLong());
+        const qint64 latest = store.latestMessageId(story);
+        QCOMPARE(latest, store.messages(story, 1).first().toMap()
+            .value("id").toLongLong());
+        QVERIFY(!store.hasMessageAfter(story, latest));
+        QVERIFY(store.hasMessageBefore(story, latest));
+        QVERIFY(store.messagesAfter(story, latest).isEmpty());
+        QCOMPARE(store.messages(story, 1).first().toMap()
+            .value("body").toString(), QString("Story scene 469."));
+    }
+    void windowedChatSearchNavigationRespectsEmptyOrDeletedSessions() {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        SessionStore store(temp.filePath("deleted-navigation.sqlite"));
+        QVERIFY(store.ready());
+        const QString session = store.createSession();
+        const QString other = store.createSession();
+        QCOMPARE(store.latestMessageId(session), qint64(0));
+        QVERIFY(store.messagesAround(session, 1).isEmpty());
+        QVERIFY(store.messagesBefore(session, 1).isEmpty());
+        QVERIFY(store.messagesAfter(session, 1).isEmpty());
+        QVERIFY(store.append(session, "you", "Exact target only."));
+        const qint64 target = store.latestMessageId(session);
+        QVERIFY(target > 0);
+        const auto window = store.messagesAround(session, target);
+        QCOMPARE(window.size(), 1);
+        QVERIFY(!store.hasMessageBefore(session, target));
+        QVERIFY(!store.hasMessageAfter(session, target));
+        QVERIFY(store.messagesAround(other, target).isEmpty());
+        QVERIFY(store.remove(session));
+        QVERIFY(store.messagesAround(session, target).isEmpty());
+        QVERIFY(store.messagesBefore(session, target).isEmpty());
+        QVERIFY(store.messagesAfter(session, target).isEmpty());
+        QCOMPARE(store.latestMessageId(session), qint64(0));
+    }
+
     void compressedBackupRestoresMultilingualChatsAndRejectsDamageAtomically() {
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
