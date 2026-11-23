@@ -12,3 +12,16 @@
 *.bin
 *.zip
 .DS_Store
+
+# Private training artifacts: never commit transcripts, voice datasets or weights.
+/private/
+/training-data/
+/training-runs/
+/voice-corpus/
+*.jsonl
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+**/ember_training_lock.json
+**/ember_adapter_lock.json
