@@ -136,8 +136,10 @@ QString ImageLibrary::importImage(const QImage &image, QString *error) {
     const QString target = QDir(m_root).filePath(
         digest + (transparent ? ".png" : ".jpg"));
     if (QFileInfo::exists(target)) {
-        if (filePath(digest).isEmpty()) {
-            setError(error, "A conflicting stored image failed integrity checks.");
+        // A matching filename is NOT integrity proof. Reject altered files
+        // rather than returning an unusable image id on re-import.
+        if (verifiedBytes(digest) != bytes) {
+            setError(error, "A conflicting stored image failed SHA-256 integrity checks.");
             return {};
         }
         return digest; // identical bytes consume no extra disk
