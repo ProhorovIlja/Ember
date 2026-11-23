@@ -20,6 +20,32 @@
 namespace {
 qint64 nowUtc() { return QDateTime::currentSecsSinceEpoch(); }
 
+
+// Center the visible archive preview around the actual lexical match.
+// Old chats frequently contain long stories/logs: showing the first 160
+// characters when the match is thousands of characters later is misleading.
+// This operates only on the already bounded current search result, without
+// an index, background task, cloud call or extra retained transcript.
+QString matchingSearchSnippet(const QString &body, const QString &needle) {
+    if (body.isEmpty()) return {};
+    const qsizetype hit = body.indexOf(needle, 0, Qt::CaseInsensitive);
+    qsizetype begin = hit < 0 ? 0 : std::max<qsizetype>(0, hit - 64);
+    qsizetype end = hit < 0
+        ? std::min<qsizetype>(body.size(), 180)
+        : std::min<qsizetype>(body.size(),
+            std::max<qsizetype>(begin + 180, hit + needle.size() + 64));
+    // QString positions count UTF-16 code units. Do not cut an emoji or
+    // another supplementary Unicode character in half at excerpt edges.
+    if (begin > 0 && body[begin].isLowSurrogate() &&
+        body[begin - 1].isHighSurrogate()) --begin;
+    if (end < body.size() && end > 0 && body[end - 1].isHighSurrogate() &&
+        body[end].isLowSurrogate()) ++end;
+    QString preview = body.mid(begin, end - begin).simplified();
+    if (begin > 0) preview.prepend(QChar(0x2026));
+    if (end < body.size()) preview.append(QChar(0x2026));
+    return preview;
+}
+
 // A lexical hit without the surrounding turn can invert the meaning of an
 // older correction, instruction or story exchange. Recover at most ONE
 // neighboring turn from the same persisted session. The indexed (session_id,id)
@@ -183,7 +209,7 @@ QVariantList SessionStore::search(const QString &text, int limit) const {
     QSqlQuery query(m_db);
     query.prepare(
         "SELECT s.id, s.title, s.updated_at,"
-        "COALESCE((SELECT substr(m.body,1,160) FROM messages m "
+        "COALESCE((SELECT substr(m.body,1,65664) FROM messages m "
         "WHERE m.session_id=s.id AND m.body LIKE ? ESCAPE '\\' "
         "ORDER BY m.id DESC LIMIT 1),'') "
         "FROM sessions s WHERE s.title LIKE ? ESCAPE '\\' "
@@ -200,7 +226,7 @@ QVariantList SessionStore::search(const QString &text, int limit) const {
             {"id", query.value(0).toString()},
             {"title", query.value(1).toString()},
             {"updated", query.value(2).toLongLong()},
-            {"snippet", query.value(3).toString().simplified()}
+            {"snippet", matchingSearchSnippet(query.value(3).toString(), term)}
         });
     }
     return result;
