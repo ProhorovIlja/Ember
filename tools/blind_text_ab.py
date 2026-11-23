@@ -8,6 +8,8 @@ No scheduled work, cloud calls, private prompts, or automatic model downloads.
 import argparse
 import hashlib
 import json
+import math
+import os
 import random
 import time
 from pathlib import Path
@@ -77,9 +79,37 @@ def one_response(system, prompt, temperature, top_p, seed):
     return answer, round((time.perf_counter() - start) * 1000, 1)
 
 
+def validate_configuration(config):
+    expected = {"temperature", "top_p", "seed", "max_tokens", "hardware_label"}
+    if not isinstance(config, dict) or set(config) != expected:
+        raise ValueError("Capture has missing or unexpected sampling/hardware fields")
+    for name, low, high in (("temperature", 0.1, 1.5), ("top_p", 0.1, 1.0)):
+        value = config[name]
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or not low <= value <= high):
+            raise ValueError("Invalid capture sampling: " + name)
+    if (isinstance(config["seed"], bool) or not isinstance(config["seed"], int)
+            or not 0 <= config["seed"] < 2147483600
+            or isinstance(config["max_tokens"], bool)
+            or config["max_tokens"] != 384
+            or not isinstance(config["hardware_label"], str)
+            or not 1 <= len(config["hardware_label"]) <= 80
+            or any(ord(c) < 32 for c in config["hardware_label"])):
+        raise ValueError("Invalid capture seed, max tokens or hardware label")
+
+
+def selected_winner(choice, reversed_):
+    """Convert blinded left/right preference to baseline/candidate."""
+    if choice == "=":
+        return "tie"
+    if choice not in ("1", "2") or not isinstance(reversed_, bool):
+        raise ValueError("Invalid blind preference")
+    return "candidate" if (choice == "1") == reversed_ else "baseline"
+
+
 def read_capture(path):
     file = Path(path)
-    if not file.is_file() or file.stat().st_size > MAX_REPORT_BYTES:
+    if not file.is_file() or file.is_symlink() or file.stat().st_size > MAX_REPORT_BYTES:
         raise ValueError("Capture is missing or exceeds local size limit")
     report = json.loads(file.read_text(encoding="utf-8"))
     if (not isinstance(report, dict) or report.get("schema") != "ember-text-blind-ab-v1"
@@ -90,6 +120,7 @@ def read_capture(path):
             or not isinstance(report.get("cases"), list)
             or len(report["cases"]) != len(CASES)):
         raise ValueError("Invalid or incompatible capture")
+    validate_configuration(report["configuration"])
     for actual, expected in zip(report["cases"], CASES):
         if (not isinstance(actual, dict) or actual.get("id") != expected[0]
                 or not isinstance(actual.get("answer"), str)
@@ -109,10 +140,16 @@ def check_pair(first, second):
 
 
 def save_new_json(path, payload):
+    # Exclusive create also rejects pre-existing dangling symlinks and closes a
+    # check-then-write race that could overwrite another private capture.
     file = Path(path)
-    if file.exists():
-        raise ValueError("Output already exists: refusing to overwrite")
-    file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    with os.fdopen(os.open(file, flags, 0o600), "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def capture(args):
@@ -159,8 +196,7 @@ def score(args):
                 choice = input(criterion + " (1/2/= for tie): ").strip()
                 if choice in ("1", "2", "="):
                     break
-            row[criterion] = "tie" if choice == "=" else (
-                "candidate" if (choice == "1") == reversed_ else "baseline")
+            row[criterion] = selected_winner(choice, reversed_)
         rows.append(row)
     counts = {criterion: {k: sum(r[criterion] == k for r in rows)
                          for k in ("baseline", "candidate", "tie")}
@@ -178,6 +214,12 @@ def score(args):
 
 def self_test():
     validate_endpoint(ENDPOINT)
+    assert selected_winner("1", False) == "baseline"
+    assert selected_winner("2", False) == "candidate"
+    assert selected_winner("1", True) == "candidate"
+    assert selected_winner("2", True) == "baseline"
+    assert selected_winner("=", False) == "tie"
+    assert selected_winner("=", True) == "tie"
     for endpoint in ("https://example.com/v1/chat/completions",
                      "http://127.0.0.1:1/v1/chat/completions?private=1",
                      "http://localhost:43821/v1/chat/completions"):
@@ -199,6 +241,16 @@ def self_test():
                            "latency_ms": 20} for id_, _, _ in CASES]}
         save_new_json(path, base)
         assert read_capture(path)["label"] == "model-a"
+        try:
+            validate_configuration(dict(base["configuration"], hardware_label=[]))
+            raise AssertionError("Invalid hardware label accepted")
+        except ValueError:
+            pass
+        try:
+            validate_configuration(dict(base["configuration"], temperature=float("nan")))
+            raise AssertionError("NaN sampling accepted")
+        except ValueError:
+            pass
         other = dict(base, label="model-b")
         check_pair(base, other)
         try:
