@@ -126,15 +126,27 @@ if ($VerifyInstall) {
         }
         Write-Host 'Installed model and native engine inventory verified against approved hashes.'
     }
-    $env:QT_QPA_PLATFORM = 'offscreen'
-    $env:QT_QUICK_BACKEND = 'software'
-    $env:QT_OPENGL = 'software'
+    # The smoke test forces Qt's headless backend. Restore the builder's
+    # ORIGINAL process environment even on launch failure, otherwise every
+    # later GUI app in this same PowerShell session inherits "offscreen".
+    $savedQtEnvironment = @{}
+    foreach ($variable in @('QT_QPA_PLATFORM', 'QT_QUICK_BACKEND',
+                            'QT_OPENGL', 'EMBER_SMOKE_REPORT_PATH')) {
+        $savedQtEnvironment[$variable] =
+            [Environment]::GetEnvironmentVariable($variable, 'Process')
+    }
     $diagnostic = Join-Path $scratch ('Ember-Install-Smoke-' + [guid]::NewGuid().ToString('N') + '.txt')
-    $env:EMBER_SMOKE_REPORT_PATH = $diagnostic
     try {
+        [Environment]::SetEnvironmentVariable('QT_QPA_PLATFORM', 'offscreen', 'Process')
+        [Environment]::SetEnvironmentVariable('QT_QUICK_BACKEND', 'software', 'Process')
+        [Environment]::SetEnvironmentVariable('QT_OPENGL', 'software', 'Process')
+        [Environment]::SetEnvironmentVariable('EMBER_SMOKE_REPORT_PATH', $diagnostic, 'Process')
         $smoke = Start-Process -FilePath $installedExe -ArgumentList '--smoke-test' -PassThru -Wait
     } finally {
-        Remove-Item Env:\EMBER_SMOKE_REPORT_PATH -ErrorAction SilentlyContinue
+        foreach ($variable in $savedQtEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable(
+                $variable, $savedQtEnvironment[$variable], 'Process')
+        }
     }
     if (Test-Path $diagnostic) {
         Get-Content -LiteralPath $diagnostic
