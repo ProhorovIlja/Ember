@@ -36,11 +36,15 @@ qint64 speechAwareAsrFreshBytes(const QByteArray &candidate,
                                 qint64 prefixBytes, qint64 freshBytes);
 // Offline 16 kHz mono conversion for common Windows capture devices.
 QByteArray whisperWav(const QByteArray &raw, const QAudioFormat &source);
+// Examine the bounded, local GGUF metadata prefix for a supported Qwen3/3.5
+// architecture. Unknown/malformed files return false; never guess from a name.
+bool ggufSupportsThinkingFlag(const QString &modelPath);
 QJsonObject chatRequest(const QString &persona, const QList<Turn> &history, const QString &user, int maxTokens = 1024, double temperature = 0.8,
                         const QString &historicalExcerpts = {},
                         bool enableThinking = false,
                         int maxOutputCap = 0,
-                        int finiteContextTokens = 0);
+                        int finiteContextTokens = 0,
+                        bool thinkingTemplateSupported = false);
 // Bounded per-request output tokens; keeps half the active finite context
 // available for the prompt/history, even with a larger user-selected budget.
 int chatOutputBudget(int requestedTokens, int contextTokens, bool voice);
