@@ -2139,6 +2139,141 @@ private slots:
         QCOMPARE(competing.readAll(), QByteArray("owned by the user"));
         competing.close();
     }
+    void humanApprovedThreeFileSiteScaffoldIsBoundedAndNoOverwrite() {
+        using namespace EmberLocalEdit;
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const QString root = temp.path();
+        QVERIFY(QDir().mkpath(root + "/web"));
+        const QVector<NewFileSource> website{
+            {"web/index.html", "<!doctype html>\n<html lang=\"en\">"
+                               "<link rel=\"stylesheet\" href=\"style.css\">"
+                               "<h1>Ember</h1><script src=\"app.js\"></script></html>\n"},
+            {"web/style.css", "body { background: #03060a; color: #e5f1ff; }\n"},
+            {"web/app.js", "document.title = 'Ember';\n"}
+        };
+        const auto plan = planNewFilesWithinProject(root, website);
+        QVERIFY2(plan.ok(), qPrintable(plan.error));
+        QCOMPARE(plan.files.size(), 3);
+        QVERIFY(plan.displayPreview.startsWith("NEW FILE BATCH"));
+        for (const auto &file : plan.files) {
+            QVERIFY(plan.displayPreview.contains(file.relativePath));
+            QVERIFY(plan.displayPreview.contains(QString::fromUtf8(
+                file.proposedBytes)));
+            QVERIFY(!QFileInfo::exists(file.path)); // No implicit write.
+        }
+        const auto written = applyApprovedNewFiles(plan);
+        QVERIFY2(written.ok(), qPrintable(written.error));
+        QCOMPARE(written.createdPaths.size(), 3);
+        for (int i = 0; i < website.size(); ++i) {
+            QFile check(root + "/" + website[i].relativePath);
+            QVERIFY(check.open(QIODevice::ReadOnly));
+            QCOMPARE(check.readAll(), website[i].content.toUtf8());
+        }
+        // Reapproval cannot overwrite any of these files.
+        QVERIFY(!applyApprovedNewFiles(plan).ok());
+        const auto duplicate = planNewFilesWithinProject(root, {
+            {"web/fresh.cpp", "int x = 1;\n"},
+            {"web/FRESH.cpp", "int x = 2;\n"}
+        });
+        QVERIFY(!duplicate.ok());
+        QVERIFY(!QFileInfo::exists(root + "/web/fresh.cpp"));
+        QVERIFY(!QFileInfo::exists(root + "/web/FRESH.cpp"));
+        const auto outside = planNewFilesWithinProject(root, {
+            {"web/valid.cpp", "int x = 0;\n"},
+            {"../escape.cpp", "int danger = 1;\n"}
+        });
+        QVERIFY(!outside.ok());
+        QVERIFY(!QFileInfo::exists(root + "/web/valid.cpp"));
+        // Verify every target BEFORE the first write, even if a later file
+        // in the approved batch was created by another process.
+        const auto stale = planNewFilesWithinProject(root, {
+            {"web/new-a.cpp", "int a = 1;\n"},
+            {"web/new-b.cpp", "int b = 2;\n"}
+        });
+        QVERIFY2(stale.ok(), qPrintable(stale.error));
+        QFile competing(root + "/web/new-b.cpp");
+        QVERIFY(competing.open(QIODevice::WriteOnly | QIODevice::NewOnly));
+        QCOMPARE(competing.write("user owned"), qint64(10));
+        competing.close();
+        const auto denied = applyApprovedNewFiles(stale);
+        QVERIFY(!denied.ok());
+        QVERIFY(!QFileInfo::exists(root + "/web/new-a.cpp"));
+        QVERIFY(competing.open(QIODevice::ReadOnly));
+        QCOMPARE(competing.readAll(), QByteArray("user owned"));
+        competing.close();
+        QVERIFY(!planNewFilesWithinProject(root, {}).ok());
+        QVERIFY(!planNewFilesWithinProject(root, {
+            {"web/0.cpp", "x"}, {"web/1.cpp", "x"},
+            {"web/2.cpp", "x"}, {"web/3.cpp", "x"}
+        }).ok());
+        QVERIFY(!planNewFilesWithinProject(root, {
+            {"web/chars.cpp", QString(7500, 'x')},
+            {"web/more.cpp", QString(7500, 'y')}
+        }).ok());
+    }
+    void multipleNewSourceFilesToolRequiresExplicitProjectScope() {
+        using namespace EmberAgent;
+        const auto toolCall = [](const QJsonObject &args) {
+            const QJsonObject call{
+                {"id", "new_batch_1"}, {"type", "function"},
+                {"function", QJsonObject{
+                    {"name", "propose_new_files"},
+                    {"arguments", QString::fromUtf8(
+                        QJsonDocument(args).toJson(QJsonDocument::Compact))}
+                }}
+            };
+            return QJsonDocument(QJsonObject{
+                {"choices", QJsonArray{QJsonObject{
+                    {"finish_reason", "tool_calls"},
+                    {"message", QJsonObject{{"role", "assistant"},
+                        {"tool_calls", QJsonArray{call}}}}
+                }}}
+            }).toJson();
+        };
+        const QJsonArray files{
+            QJsonObject{{"path", "web/index.html"}, {"content", "<h1>Hi</h1>"}},
+            QJsonObject{{"path", "web/style.css"}, {"content", "body{}"}},
+            QJsonObject{{"path", "web/app.js"}, {"content", "alert(1);"}}
+        };
+        const QJsonObject arguments{{"files", files}};
+        const auto accepted = parseModelResponse(
+            toolCall(arguments), Scope::LocalProject, true);
+        QVERIFY2(accepted.ok(), qPrintable(accepted.error));
+        QCOMPARE(accepted.tool, QString("propose_new_files"));
+        QCOMPARE(accepted.newFiles.size(), 3);
+        QCOMPARE(accepted.newFiles[2].path, QString("web/app.js"));
+        const auto serialized = assistantToolMessage(accepted);
+        const auto obj = serialized.value("tool_calls").toArray()
+            .first().toObject().value("function").toObject();
+        QCOMPARE(obj.value("name").toString(), QString("propose_new_files"));
+        const QJsonDocument parsed = QJsonDocument::fromJson(
+            obj.value("arguments").toString().toUtf8());
+        QVERIFY(parsed.isObject());
+        QCOMPARE(parsed.object(), arguments);
+        QVERIFY(!parseModelResponse(
+            toolCall(arguments), Scope::LocalProject, false).ok());
+        QVERIFY(!parseModelResponse(
+            toolCall(arguments), Scope::GitHubRepository, true).ok());
+        QVERIFY(!parseModelResponse(
+            toolCall(arguments), Scope::WikipediaResearch, true).ok());
+        QVERIFY(!parseModelResponse(toolCall(QJsonObject{
+            {"files", files}, {"command", "powershell"}
+        }), Scope::LocalProject, true).ok());
+        const QJsonArray duplicate{
+            QJsonObject{{"path", "web/a.cpp"}, {"content", "int a;"}},
+            QJsonObject{{"path", "WEB/A.cpp"}, {"content", "int b;"}}
+        };
+        QVERIFY(!parseModelResponse(toolCall(QJsonObject{
+            {"files", duplicate}}), Scope::LocalProject, true).ok());
+        const QJsonArray tooBig{
+            QJsonObject{{"path", "web/a.cpp"}, {"content", QString(7000, 'x')}},
+            QJsonObject{{"path", "web/b.cpp"}, {"content", QString(7000, 'y')}}
+        };
+        QVERIFY(!parseModelResponse(toolCall(QJsonObject{
+            {"files", tooBig}}), Scope::LocalProject, true).ok());
+    }
+
     void localAgentNewSourceProposalToolIsPermissionScoped() {
         using namespace EmberAgent;
         const QJsonArray messages{
