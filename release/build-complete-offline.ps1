@@ -239,6 +239,16 @@ if (-not $committed) { throw 'Offline distribution was not completed.' }
     if (Test-Path -LiteralPath $oldChecksumPath -PathType Leaf) {
         Remove-Item -LiteralPath $oldChecksumPath -Force
     }
+    # The published folder must contain ONLY the two one-download choices
+    # plus their checksum manifest. An unexpected file/folder might be
+    # unverified native data, a duplicate multi-GB slice, or a private trace.
+    $expectedPublished = @($bundleName, $zipName, 'SHA256SUMS.txt')
+    $actualPublished = @(Get-ChildItem -LiteralPath $publish -Force |
+        Select-Object -ExpandProperty Name)
+    if (($actualPublished.Count -ne $expectedPublished.Count) -or
+        @($expectedPublished | Where-Object { $_ -cnotin $actualPublished }).Count -ne 0) {
+        throw 'Distribution staging includes unverified or duplicate outputs.'
+    }
     # Keep two complete, independently downloadable distributions (installer
     # bundle ZIP and portable ZIP) plus checksums; no extra model copy.
     Remove-Item -LiteralPath $payload -Recurse -Force
