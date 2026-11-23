@@ -136,3 +136,35 @@ Source changes and updated C++ regression assertions have been committed in
 `embermind-gguf-thinking-compat`. **They have NOT passed Qt/MSVC compilation
 or real GGUF runtime tests in this branch.** No event-triggered CI was
 started, no model weights trained, no public Release published.
+
+
+## Part 42 — local model reasoning-mode acceptance (23 November)
+
+**Verified runnable component:** `tools/brain_mode_acceptance.py` is a
+manual, standard-library-only Python tool. It was syntax-checked under
+Python 3.13 and executed via `--self-test` in the current container:
+`4 payload and 9 stream-fixture checks passed`. Exact source bytes were
+uploaded to the user's Drive research folder and then committed to GitHub;
+the final Python source **Git blob**
+`177a02e80192cb798b87e3075b0ff804b5412d96` matches the
+locally tested file (`git hash-object`).
+
+Unlike the preexisting generic `text_benchmark.py`, this protocol probe
+supplies Qwen3.5's official **nonthinking / general thinking / precise
+coding** sampler values and explicit `enable_thinking` choices. It checks
+four synthetic prompts including Russian/English exact instructions,
+stream truncation, reasoning-content leaks, visible thought markers,
+completion, timing and Windows localhost listener PID. It does **not**
+store model replies or personal conversations, download weights or launch
+the inference server. The no-network `--self-test` mock cases verified
+both acceptance and rejection behavior; actual inference has not run.
+
+The source is indexed in README and
+`docs/LOCAL-MODEL-ACCEPTANCE.md`, including exact manual Windows commands.
+**Remaining blockers:** the script has not been executed live on Windows
+with a real RTX 4070/Qwen3.5 GGUF, and no human listening, text-quality
+or custom training result exists. No source test can close the 17
+mandatory real stable-release acceptance gates.
+
+No scheduled/automated check, public Release, CI workflow or GitHub
+Actions event was triggered in this development branch.
