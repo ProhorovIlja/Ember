@@ -1160,6 +1160,15 @@ private slots:
         QCOMPARE(russian.size(), 1);
         QVERIFY(russian.first().toMap().value("snippet").toString()
             .contains(QString::fromUtf8("Анна")));
+        // Stock SQLite LIKE is only ASCII case-insensitive; the native
+        // search explicitly includes bounded Cyrillic casing alternatives.
+        const auto russianLower = archive.search(QString::fromUtf8("анна"));
+        QCOMPARE(russianLower.size(), 1);
+        QVERIFY(russianLower.first().toMap().value("snippet").toString()
+            .contains(QString::fromUtf8("Анна")));
+        const auto russianUpper = archive.search(QString::fromUtf8("АННА"));
+        QCOMPARE(russianUpper.size(), 1);
+
         QVERIFY(archive.append(story, "ember",
             QString(420, 'a') + " Exactly 100% complete, not 1000. "
                 + QString(230, 'b')));
