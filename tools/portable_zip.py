@@ -214,16 +214,21 @@ def main():
     parser.add_argument("--root", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--require-voice", action="store_true",
-                        help="Required for complete product: check Qwen3-TTS metadata as well as LLM and ASR")
+                        help="Explicitly enforce the default: complete Ember must contain licensed TTS")
+    parser.add_argument("--allow-text-only-development", action="store_true",
+                        help="Internal development only; cannot represent a complete Ember release")
     args = parser.parse_args()
+    if args.require_voice and args.allow_text_only_development:
+        parser.error("Complete voice and text-only development flags conflict")
     try:
         if args.self_test:
             self_test()
         else:
             if args.root is None or args.output is None:
                 parser.error("--root and --output are required")
-            files, sha = archive(args.root, args.output,
-                                 require_voice=args.require_voice)
+            files, sha = archive(
+                args.root, args.output,
+                require_voice=not args.allow_text_only_development)
             print(f"ZIP64 portable archived {files} files. SHA256: {sha}")
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         parser.error(f"{type(exc).__name__}: {exc}")
