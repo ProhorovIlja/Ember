@@ -38,6 +38,18 @@ user-turn sequences appear in two distinct source conversation groups,
 the preparer rejects the dataset before creating train/eval files.
 The actual written training messages are **never normalized or edited**.
 
+The generated Axolotl QLoRA recipe now also targets Qwen3.5's
+`linear_attn.in_proj_qkv`, `linear_attn.in_proj_z` and
+`linear_attn.out_proj` Gated DeltaNet modules, in addition to standard
+attention/MLP LoRA targets. This follows the official Axolotl
+[Qwen3.5 guidance](https://docs.axolotl.ai/docs/models/qwen3.5.html)
+rather than assuming that the hybrid model consists only of ordinary
+Transformer attention. **Whether all modules are present, train correctly,
+and fit alongside optimizer/activation state in 12 GB VRAM is not yet
+verified on the real base checkpoint/hardware**; an official architecture
+reference and synthetic YAML assertion do not constitute a completed
+training run.
+
 The separate `ember_mind_qlora.py` preflight now independently validates
 the finished OpenAI-style `messages` array (object fields, required
 string content, user/assistant alternation with optional initial system
