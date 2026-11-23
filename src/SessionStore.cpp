@@ -24,12 +24,15 @@ qint64 nowUtc() { return QDateTime::currentSecsSinceEpoch(); }
 // older correction, instruction or story exchange. Recover at most ONE
 // neighboring turn from the same persisted session. The indexed (session_id,id)
 // lookup runs only for selected hits, not for every scanned archive message.
-QString adjacentRecallTurn(const QSqlDatabase &db, const QString &session,
-                           qint64 messageId, const QString &role) {
-    if (messageId <= 0 || (role != QLatin1String("you") &&
-                           role != QLatin1String("ember"))) return {};
-    QSqlQuery query(db);
+QString pairedRecallExcerpt(const QSqlDatabase &db, const QString &session,
+                            qint64 messageId, const QString &role,
+                            const QString &matchedText) {
     const bool userHit = role == QLatin1String("you");
+    const QString own = QString(userHit ? "[User excerpt] " : "[Ember excerpt] ")
+        + matchedText;
+    if (messageId <= 0 || (role != QLatin1String("you") &&
+                           role != QLatin1String("ember"))) return own;
+    QSqlQuery query(db);
     query.prepare(userHit
         ? "SELECT role,substr(body,1,900) FROM messages "
           "WHERE session_id=? AND id>? ORDER BY id ASC LIMIT 1"
@@ -39,13 +42,15 @@ QString adjacentRecallTurn(const QSqlDatabase &db, const QString &session,
     query.addBindValue(messageId);
     if (!query.exec() || !query.next() ||
         query.value(0).toString() != (userHit ? QLatin1String("ember")
-                                             : QLatin1String("you"))) return {};
+                                             : QLatin1String("you"))) return own;
     const QString excerpt = query.value(1).toString().simplified().left(190);
-    if (excerpt.isEmpty()) return {};
-    // Always label these as excerpts. Never represent an incomplete prior
-    // assistant response as established fact or a live user instruction.
-    return userHit ? QString("\n[Following Ember reply excerpt] ") + excerpt
-                   : QString("\n[Preceding user request excerpt] ") + excerpt;
+    if (excerpt.isEmpty()) return own;
+    // Always show chronological user -> assistant context, even when the
+    // lexical match came from Ember's reply. These are unverified excerpts,
+    // never a new request or a claim that the complete turn was retained.
+    return userHit
+        ? own + "\n[Following Ember reply excerpt] " + excerpt
+        : QString("[Preceding user request excerpt] ") + excerpt + "\n" + own;
 }
 }
 
@@ -268,11 +273,9 @@ QString SessionStore::relatedSavedExcerpts(const QString &currentSession,
         if (excerpts.size() >= std::clamp(maxResults, 1, 3)) break;
         if (seen.contains(hit.text)) continue;
         seen.insert(hit.text);
-        const QString label = hit.role == "you" ? "user" : "Ember";
-        excerpts.append(QString("[Saved chat: %1, %2 excerpt] %3%4")
-                            .arg(hit.title, label, hit.text,
-                                 adjacentRecallTurn(m_db, hit.session,
-                                                    hit.id, hit.role)));
+        excerpts.append(QString("[Saved chat: %1]\n%2")
+                            .arg(hit.title, pairedRecallExcerpt(
+                                m_db, hit.session, hit.id, hit.role, hit.text)));
     }
     return excerpts.join('\n');
 }
@@ -354,9 +357,9 @@ QString SessionStore::historicalExcerpts(const QString &session,
         if (excerpts.size() >= std::clamp(maxResults, 1, 4)) break;
         if (duplicates.contains(hit.text)) continue;
         duplicates.insert(hit.text);
-        excerpts.append(QString("[%1, earlier excerpt] %2%3")
-            .arg(hit.role == "you" ? "User" : "Ember", hit.text,
-                 adjacentRecallTurn(m_db, session, hit.id, hit.role)));
+        excerpts.append(QString("[Earlier saved conversation]\n%1")
+            .arg(pairedRecallExcerpt(m_db, session, hit.id,
+                                     hit.role, hit.text)));
     }
     return excerpts.join('\n').left(1550);
 }
