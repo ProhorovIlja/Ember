@@ -93,11 +93,11 @@ private slots:
                               const QString &size) {
             const QJsonObject info{
                 {"task", task}, {"architecture", family}, {"size_label", size},
-                {"languages", QJsonArray{"en", "ru"}},
+                {"languages", QJsonArray{"en", "ru", "zh"}},
                 {"voices", QJsonArray{
-                    QJsonObject{{"name", "vivian"}, {"language", "en"},
+                    QJsonObject{{"name", "vivian"}, {"language", "zh"},
                                 {"gender", "female"}},
-                    QJsonObject{{"name", "serena"}, {"language", "en"},
+                    QJsonObject{{"name", "serena"}, {"language", "zh"},
                                 {"gender", "female"}},
                     QJsonObject{{"name", "ryan"}, {"language", "en"},
                                 {"gender", "male"}}
@@ -127,6 +127,10 @@ private slots:
             both, "application/json", "qwen3-tts-0.6b",
             "qwen3-asr-1.7b", "vivian", &advertised));
         QCOMPARE(advertised, QStringList({"vivian", "serena"}));
+        // Upstream CustomVoice Vivian and Serena are CHINESE-NATIVE female
+        // speakers, but Qwen3-TTS supports English synthesis globally.
+        // Native-language metadata must not make the real default unusable.
+        QVERIFY(valid(ttsOnly, "qwen3-tts-0.6b", "", "serena"));
         // An English male voice may be present in the actual upstream model,
         // but is never an English female preset or a valid selected persona.
         QVERIFY(!valid(ttsOnly, "qwen3-tts-0.6b", "", "ryan"));
