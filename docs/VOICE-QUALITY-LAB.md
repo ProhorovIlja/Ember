@@ -1036,8 +1036,10 @@ score those properties.
 ### Verified English speaker selection in the native Windows UI
 
 After `speech.cpp` passes the PID-verified `/v1/models` check,
-the QML Settings panel exposes the names from the loaded TTS model's
-`voices` metadata whose language is explicitly `en`. The voice list
+the QML Settings panel exposes verified female names from the loaded
+TTS model's `voices` metadata when the model globally supports `en`.
+The per-speaker `language` is that speaker's native language, not
+a complete list of permissible output languages. The voice list
 is **not** guessed from another model or an online catalog. A compatible
 speaker can be selected while idle without unloading the resident model;
 an unsupported typed speaker is rejected and the editor reverts to the
@@ -1059,8 +1061,8 @@ version disagree with the selected Qwen3 alias. English synthesized
 voice selection must match paired `speech.voices` /
 `speech.voice_languages` metadata in the GGUF, rather than merely
 matching a filename. Stable bundled Qwen3 voice also requires
-female-gender metadata for at least one English speaker, with matching
-voice descriptions per the upstream v0.11.2 reader. Optional Qwen3 ASR weight inclusion requires
+female-gender metadata for at least one speaker in an English-capable
+model, with matching voice descriptions per the upstream v0.11.2 reader. Optional Qwen3 ASR weight inclusion requires
 both `en` and `ru` in its language list. The same selected-speaker
 preflight runs before manual native PCM trials and before launching
 the voice model. These are consistency and safety checks, **not**
@@ -1075,17 +1077,18 @@ the non-contiguous model SIDs. Saved male/invalid SIDs fall back to
 the female default, and backend setters reject those IDs even when
 called outside the UI. Source: https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html .
 
-The native Qwen3 GGUF offline preflight already checks for an English
-female voice, but that property must also be enforced **after model
-startup**. The v0.11.2 `speech.cpp` `/v1/models` inventory provides
+The native Qwen3 GGUF offline preflight checks an English-capable
+model and a verified female speaker, and that combination must also
+be enforced **after model startup**. The v0.11.2 `speech.cpp` `/v1/models` inventory provides
 each speaker's `name`, `language`, `gender` and `description`. Ember
-now marks the native TTS model Ready only if its *selected* voice is
-both English and `gender=female`. The native voice dropdown exposes
-female English names only, even if the same Qwen3 checkpoint advertises
-male speakers in English. The editable voice ID and native acceptance
+now marks the native TTS model Ready only if its *selected* voice
+has `gender=female` and the TTS model globally supports English.
+The native voice dropdown exposes verified female voice IDs, even
+when their native language is Chinese; male English speakers are excluded. The editable voice ID and native acceptance
 script reject an English male, unknown-gender or unlisted speaker
-rather than silently substituting another voice. English female voice
-identity is a metadata property, **not a blind naturalness score**;
+rather than silently substituting another voice. Female speaker identity
+and model English capability are metadata properties, **not a native
+English accent or a blind naturalness score**;
 listening acceptance remains required.
 
 
@@ -1133,3 +1136,24 @@ and generic WAV TTS adapters never receive unsupported fields. A custom
 instruction can influence prosody but does not train weights or modify
 LLM response sampling. Verify speaker identity, audible emotion/pauses,
 no-clipping output, latency and VRAM before claiming Maya-like quality.
+
+### Native-language metadata mismatch fixed — 23 November 2026
+
+Official Qwen3-TTS CustomVoice has no English-*native* female speaker:
+Vivian and Serena are Chinese-native, Ono Anna is Japanese-native and
+Sohee Korean-native; the English-native Ryan and Aiden are male.
+However, the upstream model explicitly supports English output for
+every supported speaker when the speech request selects `language=en`.
+The previous Ember GGUF and `/v1/models` readiness validation
+incorrectly demanded `speaker.language=en` *and* `gender=female`,
+therefore it would reject real Vivian and Serena on the first use.
+Those checks have been corrected to require model-level English support,
+one unambiguous selected female speaker and internally consistent
+native-language metadata. The Qt GUI now describes that distinction.
+The change makes legitimate upstream checkpoints eligible; it does NOT
+prove that a Chinese-native timbre sounds native-English, or that
+Ember Voice already matches the desired conversational realism.
+Compare them with English-native female Kokoro or future trained
+custom options in actual blinded hardware listening. Source:
+https://github.com/QwenLM/Qwen3-TTS#custom-voice-generate .
+
