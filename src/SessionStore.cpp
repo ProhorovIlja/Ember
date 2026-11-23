@@ -26,7 +26,8 @@ qint64 nowUtc() { return QDateTime::currentSecsSinceEpoch(); }
 // lookup runs only for selected hits, not for every scanned archive message.
 QString pairedRecallExcerpt(const QSqlDatabase &db, const QString &session,
                             qint64 messageId, const QString &role,
-                            const QString &matchedText) {
+                            const QString &matchedText, qint64 *neighborId) {
+    if (neighborId) *neighborId = 0;
     const bool userHit = role == QLatin1String("you");
     const QString own = QString(userHit ? "[User excerpt] " : "[Ember excerpt] ")
         + matchedText;
@@ -34,17 +35,18 @@ QString pairedRecallExcerpt(const QSqlDatabase &db, const QString &session,
                            role != QLatin1String("ember"))) return own;
     QSqlQuery query(db);
     query.prepare(userHit
-        ? "SELECT role,substr(body,1,900) FROM messages "
+        ? "SELECT id,role,substr(body,1,900) FROM messages "
           "WHERE session_id=? AND id>? ORDER BY id ASC LIMIT 1"
-        : "SELECT role,substr(body,1,900) FROM messages "
+        : "SELECT id,role,substr(body,1,900) FROM messages "
           "WHERE session_id=? AND id<? ORDER BY id DESC LIMIT 1");
     query.addBindValue(session);
     query.addBindValue(messageId);
     if (!query.exec() || !query.next() ||
-        query.value(0).toString() != (userHit ? QLatin1String("ember")
+        query.value(1).toString() != (userHit ? QLatin1String("ember")
                                              : QLatin1String("you"))) return own;
-    const QString excerpt = query.value(1).toString().simplified().left(190);
+    const QString excerpt = query.value(2).toString().simplified().left(190);
     if (excerpt.isEmpty()) return own;
+    if (neighborId) *neighborId = query.value(0).toLongLong();
     // Always show chronological user -> assistant context, even when the
     // lexical match came from Ember's reply. These are unverified excerpts,
     // never a new request or a claim that the complete turn was retained.
@@ -268,14 +270,22 @@ QString SessionStore::relatedSavedExcerpts(const QString &currentSession,
         return a.score != b.score ? a.score > b.score : a.ordinal < b.ordinal;
     });
     QSet<QString> seen;
+    QSet<QString> seenPairs;
     QStringList excerpts;
     for (const Hit &hit : hits) {
         if (excerpts.size() >= std::clamp(maxResults, 1, 3)) break;
         if (seen.contains(hit.text)) continue;
+        qint64 neighborId = 0;
+        const QString paired = pairedRecallExcerpt(
+            m_db, hit.session, hit.id, hit.role, hit.text, &neighborId);
+        const QString pairKey = hit.session + QLatin1Char(':') +
+            QString::number(neighborId > 0
+                ? std::min(hit.id, neighborId) : hit.id);
+        if (seenPairs.contains(pairKey)) continue;
+        seenPairs.insert(pairKey);
         seen.insert(hit.text);
         excerpts.append(QString("[Saved chat: %1]\n%2")
-                            .arg(hit.title, pairedRecallExcerpt(
-                                m_db, hit.session, hit.id, hit.role, hit.text)));
+                            .arg(hit.title, paired));
     }
     return excerpts.join('\n');
 }
@@ -353,13 +363,20 @@ QString SessionStore::historicalExcerpts(const QString &session,
     });
     QStringList excerpts;
     QSet<QString> duplicates;
+    QSet<qint64> seenPairs;
     for (const Hit &hit : matches) {
         if (excerpts.size() >= std::clamp(maxResults, 1, 4)) break;
         if (duplicates.contains(hit.text)) continue;
+        qint64 neighborId = 0;
+        const QString paired = pairedRecallExcerpt(
+            m_db, session, hit.id, hit.role, hit.text, &neighborId);
+        const qint64 pairKey = neighborId > 0
+            ? std::min(hit.id, neighborId) : hit.id;
+        if (seenPairs.contains(pairKey)) continue;
+        seenPairs.insert(pairKey);
         duplicates.insert(hit.text);
         excerpts.append(QString("[Earlier saved conversation]\n%1")
-            .arg(pairedRecallExcerpt(m_db, session, hit.id,
-                                     hit.role, hit.text)));
+            .arg(paired));
     }
     return excerpts.join('\n').left(1550);
 }
