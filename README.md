@@ -48,8 +48,16 @@ experiments on compatible Qwen3.5 checkpoints; carefully tested merging of
 compatible adapters; and separately trained/conditioned English female TTS.
 The local-only `tools/ember_mind_studio.py` validates training examples and
 creates grouped train/eval JSONL without any network access or model downloads.
-**It does not train or merge weights.** Never check private datasets into Git or
-treat successful synthetic CI as proof of intelligence, speech or model quality.
+`tools/ember_mind_qlora.py` can now generate a conservative *offline* Axolotl
+Qwen3.5-4B QLoRA recipe from pinned, already present Hugging Face weights and
+datasets, and has an **explicit, separate one-shot train command** for a
+user-provided CUDA/Axolotl environment. `tools/ember_voice_corpus.py`
+validates consent-declared 24 kHz English single-speaker recordings and
+prepares the official Qwen3-TTS Base raw fine-tuning JSONL format. No
+training is launched from the application, and CI uses synthetic data only.
+**Neither custom EmberMind nor Ember Voice has trained or verified weights.**
+Never check private datasets into Git or treat synthetic CI as proof of
+intelligence, speech or model quality.
 
 ## Development state and downloads
 
