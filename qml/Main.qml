@@ -65,7 +65,9 @@ ApplicationWindow {
         width: Math.min(window.width - 70, 790)
         height: Math.min(window.height - 70, 570)
         modal: true
-        title: "Local source edit · review and apply"
+        title: window.localEditPreview.startsWith("NEW FILE (NOT WRITTEN)")
+               ? "New source file · review before creation"
+               : "Local source edit · review and apply"
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
             ember.applyStagedLocalCodeEdit()
@@ -87,7 +89,9 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
                 color: "#B2D6F1"
                 font.pixelSize: 12
-                text: "Apply this complete reviewed patch? One to three existing project source files may change, with separate private backups and per-file atomic writes. No shell/network commands. Multi-file changes are not power-failure atomic."
+                text: window.localEditPreview.startsWith("NEW FILE (NOT WRITTEN)")
+                      ? "Create this one NEW source file after reviewing all its contents? Existing files will never be overwritten. No other files or directories will change. No commands are executed. A disk failure may leave a partial new file."
+                      : "Apply this complete reviewed patch? One to three existing project source files may change, with separate private backups and per-file atomic writes. No shell/network commands. Multi-file changes are not power-failure atomic."
             }
             ScrollView {
                 Layout.fillWidth: true
