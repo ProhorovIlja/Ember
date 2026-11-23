@@ -6,6 +6,7 @@
 #include <QProcessEnvironment>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
 class QFile;
 namespace EmberCore {
 // Maximum streamed model text and the slightly larger on-screen/SQLite
@@ -13,6 +14,11 @@ namespace EmberCore {
 inline constexpr int kMaxVisibleChatCharacters = 65536;
 inline constexpr int kMaxArchivedChatCharacters = kMaxVisibleChatCharacters + 128;
 struct Turn { QString user; QString assistant; };
+// Merge one foreground SQLite history page into the live conversation UI.
+// Retain at most 300 entries. Older paging discards the newest visible
+// records; newer paging discards the oldest. SQLite archive stays intact.
+void mergeVisibleHistoryPage(QVariantList &visible,
+                             const QVariantList &page, bool older);
 // Non-persisted capture-energy inspection, not speech classification.
 struct AudioLevel { double rms = 0.0; double peak = 0.0; int durationMs = 0; };
 AudioLevel pcmLevel(const char *bytes, qsizetype length, const QAudioFormat &format);
