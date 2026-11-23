@@ -303,8 +303,11 @@ def self_test():
         assert x["schema"] == SCHEMA
         text = (target / "axolotl.yaml").read_text()
         assert "adapter: qlora" in text and "sample_packing: false" in text
-        assert str(base) in text and str(data / "train.jsonl") in text
-        assert str(data / "eval.jsonl") not in text
+        # JSON double-quoted YAML escapes Windows backslashes; compare the
+        # serialized value instead of its unescaped filesystem spelling.
+        assert yaml_string(str(base)) in text
+        assert yaml_string(str(data / "train.jsonl")) in text
+        assert yaml_string(str(data / "eval.jsonl")) not in text
         try:
             prepare(base, data, target, "a" * 40, 512, 1)
             raise AssertionError("Existing training config overwritten")
