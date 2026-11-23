@@ -545,3 +545,51 @@ no legal pinned GGUF asset inventory, no signed 17-gate acceptance,
 and no real-device audio validation. No scheduled task, automation,
 background monitor, GitHub Action or Release was started.
 
+## Part 50 — saved-chat search relevance and Russian casing
+
+The earlier SQLite search implementation matched the correct saved conversation
+but returned only the first 160 characters of the most recent matching message.
+For long voice transcripts, troubleshooting records and roleplay/stories the
+query text could be thousands of characters after the start, so the visible
+preview did not show why the conversation matched.
+
+Changes in the existing branch embermind-gguf-thinking-compat:
+- src/SessionStore.cpp: returned message text is bounded to the known maximum
+  archived length, then the native UI preview is centered around the queried
+  expression. UTF-16 excerpt edges avoid splitting surrogate pairs. The result
+  is short and clipped with ellipses when contextual text was omitted.
+- src/SessionStore.cpp: ordinary SQLite LIKE is ASCII-case-insensitive only.
+  For non-ASCII letter searches, a bounded list of lower/upper/initial-capital
+  query forms covers common Russian names and terms; each LIKE remains fully
+  parameterized and literal %/_/backslash escaping is retained.
+- qml/Main.qml: search sidebar items now display two lines of relevant context
+  and expose a hover tooltip rather than only an ellipsized unrelated prefix.
+  The user still opens the matched session; automatic jumping to an ancient
+  matching turn is not yet implemented.
+- tests/CoreTests.cpp: additional persisted SQLite scenarios for long
+  English/Russian messages, matched excerpts, uppercase/lowercase Russian
+  input, wildcard literals, separated sessions and negative matches.
+
+Commits:
+32719cbb20dc08aa0c45cac5f458bb74fab54e7a
+e2cf242b565e6c1e9905be12722980bd7ead8ee4
+e9a8fadb905816102e160f89eac783971a1792b8
+c05da216f8922fbe03ed1a3fb58fba924aef0bda
+2529447f16758fe215bf3909292352f8344ff865
+
+Verification boundary: GitHub connector readback confirms committed source.
+A Python standard-library sqlite3 reproduction of the generated query
+verified the SQL and variants against synthetic records: анна/Анна/АННА
+match the stored "Анна"; 100% matches a literal percent; 100_ does not
+act as a wildcard. This is NOT a compiled C++ QtTest, Windows GUI check,
+model inference, GPU benchmark or completed full Ember release. The build
+environment has no Qt6 toolchain, no target RTX 4070, and no real approved
+LLM/ASR/TTS weights. No GitHub Actions, scheduled jobs, monitors or
+background automation were started.
+
+The remaining project release gates include: a complete signed-off
+self-contained offline Windows distribution; natural EN female Ember Voice;
+RU/EN ASR and text model quality; concurrent GPU performance; fully
+permissioned GitHub/Drive/local-file workflows, and real Win10/11 manual
+functional acceptance. Never advertise these source improvements as
+finished EmberMind/Ember Voice weights or a stable public release.
