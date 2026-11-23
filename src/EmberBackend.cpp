@@ -3211,7 +3211,8 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
     // user temperature/top_p settings then take precedence. Other models
     // retain their original Ember conversational/coding/voice profiles.
     if (m_brainQwen35)
-        EmberCore::applyQwen35SamplingDefaults(payload, deep);
+        EmberCore::applyQwen35SamplingDefaults(
+            payload, deep, deep && m_chatMode == 3);
     // Per-request overrides never restart, modify, or merge model weights.
     // Keep Auto profile/native defaults for compatibility with new GGUFs.
     if (!payload.isEmpty() &&
