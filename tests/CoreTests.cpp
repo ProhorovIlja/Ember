@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QCryptographicHash>
 #include <QFile>
+#include <QDataStream>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QUrlQuery>
@@ -2776,35 +2777,95 @@ private slots:
         QVERIFY(!EmberLocalSearch::outlineDirectory(
             root.filePath("missing"), {}).ok());
     }
+    void qwenArchitectureFromGgufNotFilename() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        auto make = [&](const QString &filename, const QByteArray &architecture,
+                        bool leadingMetadata = false) {
+            QFile file(tmp.filePath(filename));
+            if (!file.open(QIODevice::WriteOnly)) return false;
+            QDataStream out(&file);
+            out.setByteOrder(QDataStream::LittleEndian);
+            auto writeString = [&](const QByteArray &value) {
+                out << quint64(value.size());
+                out.writeRawData(value.constData(), int(value.size()));
+            };
+            out.writeRawData("GGUF", 4);
+            out << quint32(3) << quint64(0)
+                << quint64(leadingMetadata ? 2 : 1);
+            if (leadingMetadata) {
+                writeString("general.name");
+                out << quint32(8); // GGUF_TYPE_STRING
+                writeString("Qwen3.5-looking filename and friendly label");
+            }
+            writeString("general.architecture");
+            out << quint32(8);
+            writeString(architecture);
+            return out.status() == QDataStream::Ok && file.flush();
+        };
+        QVERIFY(make("actual-qwen.gguf", "qwen35", true));
+        QVERIFY(make("moe.gguf", "qwen35moe"));
+        QVERIFY(make("earlier.gguf", "qwen3"));
+        QVERIFY(make("earlier-moe.gguf", "qwen3moe"));
+        QVERIFY(make("Qwen3.5-fake-llama.gguf", "llama", true));
+        QVERIFY(make("random.gguf", "qwen2"));
+        QVERIFY(EmberCore::ggufSupportsThinkingFlag(
+            tmp.filePath("actual-qwen.gguf")));
+        QVERIFY(EmberCore::ggufSupportsThinkingFlag(tmp.filePath("moe.gguf")));
+        QVERIFY(EmberCore::ggufSupportsThinkingFlag(tmp.filePath("earlier.gguf")));
+        QVERIFY(EmberCore::ggufSupportsThinkingFlag(
+            tmp.filePath("earlier-moe.gguf")));
+        QVERIFY(!EmberCore::ggufSupportsThinkingFlag(
+            tmp.filePath("Qwen3.5-fake-llama.gguf")));
+        QVERIFY(!EmberCore::ggufSupportsThinkingFlag(
+            tmp.filePath("random.gguf")));
+        QVERIFY(!EmberCore::ggufSupportsThinkingFlag(
+            tmp.filePath("nonexistent.gguf")));
+        QFile bad(tmp.filePath("bad-header.gguf"));
+        QVERIFY(bad.open(QIODevice::WriteOnly));
+        QCOMPARE(bad.write("GGUF\\0", 5), qint64(5));
+        bad.close();
+        QVERIFY(!EmberCore::ggufSupportsThinkingFlag(bad.fileName()));
+    }
     void localQwenChatTemplatesReceiveExplicitThinkingChoice() {
         const auto standard = EmberCore::chatGenerationProfile(3, false, false);
         const auto deep = EmberCore::chatGenerationProfile(3, false, true);
         QCOMPARE(standard.maxTokens, 2048);
         QCOMPARE(deep.maxTokens, 4096);
         const auto quickVoice = EmberCore::chatGenerationProfile(3, true, true);
-        QCOMPARE(quickVoice.maxTokens, 512); // voice remains concise
+        QCOMPARE(quickVoice.maxTokens, 512);
+        // Unknown model architecture: never send unsupported Qwen kwargs.
+        const auto generic = EmberCore::chatRequest(
+            "Be accurate", {}, "Hello", 2048, 0.73);
+        QVERIFY(!generic.contains("chat_template_kwargs"));
+        const auto nonQwenDeep = EmberCore::chatRequest(
+            "Be accurate", {}, "Debug this", 4096, 0.60,
+            {}, true, 8192, 8192, false);
+        QVERIFY(!nonQwenDeep.contains("chat_template_kwargs"));
+        // An architecture-verified Qwen3/3.5 may get exact boolean true
+        // for Deep and exact false for ordinary or low-latency speech.
         const auto request = EmberCore::chatRequest(
             "Be accurate", {}, "Find a race condition", deep.maxTokens,
-            deep.temperature, {}, true);
+            deep.temperature, {}, true, 8192, 8192, true);
         QCOMPARE(request.value("max_tokens").toInt(), 4096);
         QVERIFY(request.value("chat_template_kwargs").toObject()
                     .value("enable_thinking").toBool());
         const auto ordinary = EmberCore::chatRequest(
-            "Be accurate", {}, "Hello", 2048, 0.73);
-        QVERIFY(ordinary.contains("chat_template_kwargs"));
+            "Be accurate", {}, "Hello", 2048, 0.73,
+            {}, false, 8192, 8192, true);
         const QJsonObject normalOptions = ordinary.value("chat_template_kwargs").toObject();
         QVERIFY(normalOptions.contains("enable_thinking"));
         QCOMPARE(normalOptions.value("enable_thinking").toBool(), false);
         const auto voiceReply = EmberCore::chatRequest(
             "Speak naturally", {}, "Good morning", quickVoice.maxTokens,
-            quickVoice.temperature, {}, false);
+            quickVoice.temperature, {}, false, 8192, 8192, true);
         QVERIFY(voiceReply.value("chat_template_kwargs").toObject()
                     .contains("enable_thinking"));
         QCOMPARE(voiceReply.value("chat_template_kwargs").toObject()
                      .value("enable_thinking").toBool(), false);
-        // The clamping guard remains bounded even if the UI is changed.
         const auto bound = EmberCore::chatRequest(
-            "Be accurate", {}, "Hello", 1000000, 0.73, {}, true);
+            "Be accurate", {}, "Hello", 1000000, 0.73,
+            {}, true, 0, 0, true);
         QCOMPARE(bound.value("max_tokens").toInt(), 4096);
     }
     void scopedGithubIssueWriteRequiresExactRepositoryAndVerifiedResult() {
