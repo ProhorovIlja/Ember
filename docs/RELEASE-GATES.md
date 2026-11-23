@@ -346,3 +346,13 @@ no-VPN first-run tests remain separately mandatory release evidence.
 - [x] QtTest regression cases added for opaque ARGB, genuine alpha, small-image dimensions and tampered existing files.
 - [ ] Compile and execute the new tests under real Windows Qt 6 and exercise clipboard/screenshots at 100–200% DPI; source readback is not runtime acceptance.
 - [ ] Compare memory, latency, and on-disk Library size using representative screenshots and transparent artwork on the target RTX 4070 PC.
+
+## 23 November 2026 — long saved-chat search relevance (Part 50)
+
+- [x] Source fix: search results now display a bounded excerpt centered around the actual matching text, not an unrelated opening 160-character prefix.
+- [x] Source fix: common Russian lowercase, uppercase and initial-capital spellings are searched with parameterized SQLite LIKE patterns; literal %/_ search remains escaped. This is not an assertion of complete Unicode linguistic normalization.
+- [x] Source UX: two-line AMOLED chat sidebar search excerpts with a full context hover preview, preserving existing click-to-open conversation behavior.
+- [x] Added Qt regression scenarios for deep-message RU/EN hits, literal wildcards, source-session isolation and common Russian casing.
+- [x] A separate native Python sqlite3 reproduction confirmed SQL syntax, parameter order and matching for lowercase/titlecase/uppercase Russian and literal 100%/100_ in a synthetic database.
+- [ ] Run new QtTest on genuine Windows/Qt6 and verify long-history search navigation, rendering, responsiveness and resource use on a large local archive.
+- [ ] True jump-to-original-message navigation and full Unicode-insensitive search for arbitrary mixed-case words remain future work. No index, daemon or cloud history scan was added.
