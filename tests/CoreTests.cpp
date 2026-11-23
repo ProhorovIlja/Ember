@@ -1157,6 +1157,8 @@ private slots:
             QVERIFY(recalled.contains("bell tower"));
             QVERIFY(recalled.contains("Following Ember reply excerpt"));
             QVERIFY(recalled.contains("Leon carefully explained"));
+            QVERIFY(recalled.indexOf("[User excerpt]") <
+                    recalled.indexOf("[Following Ember reply excerpt]"));
             QVERIFY(!recalled.contains("Lantern"));
             const QString earlierAnswer = db.historicalExcerpts(
                 story, "What did Leon explain about the compass?");
@@ -1204,6 +1206,8 @@ private slots:
             current, "When did Mara promise Leon to return after midnight?");
         QVERIFY(assistantHit.contains("Preceding user request excerpt"));
         QVERIFY(assistantHit.contains("western bell tower"));
+        QVERIFY(assistantHit.indexOf("[Preceding user request excerpt]") <
+                assistantHit.indexOf("[Ember excerpt]"));
         QVERIFY(!assistantHit.contains("amber lighthouse"));
         QVERIFY(!recalled.contains("amber lighthouse"));
         QCOMPARE(db.relatedSavedExcerpts(current, "amber lighthouse"),
