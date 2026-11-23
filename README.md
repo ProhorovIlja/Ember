@@ -99,9 +99,15 @@ smoke. The complete build also runs
 [`tools/combined_runtime_acceptance.py`](tools/combined_runtime_acceptance.py):
 **both the real local LLM and English Qwen3-TTS stay loaded together**
 while Ember receives English text, synthesizes PCM, and receives Russian
-text. This catches a class of 12-GB GPU/resource failures that independent
-model tests miss. Its isolated mock self-test passed on Linux, but real
-RTX 4070/Windows co-residency has NOT been tested.
+text. With actual English and Russian WAV/reference inputs it ALSO runs
+multilingual Whisper speech recognition **without unloading either LLM
+or TTS**; stable packages cannot skip those real bilingual samples.
+This catches VRAM/RAM contention failures that independent engine tests
+would miss. The installer verification now uninstalls its isolated
+test-only install even when QML or model integrity fails, and refuses a
+passing smoke when model or runtime files survive uninstall.
+Its synthetic mock/rollback tests passed locally, but real RTX 4070,
+Windows audio or user-accepted voice quality have NOT been tested.
 **GitHub Releases separately limits each uploaded asset to less
 than 2 GiB**, so complete ZIPs require a verified large-file host for
 one-download distribution. An optional, manually invoked
