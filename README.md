@@ -80,6 +80,19 @@ It does not schedule anything, automatically download a catalog model or
 launch workers on Windows login. Independent expert controls remain under
 Settings. Kokoro and Whisper run only when speech/recording is explicitly used.
 
+**Qwen3-TTS speaker compatibility:** The official CustomVoice preset
+`vivian` and `serena` are Chinese-native **female** speakers; the model
+supports English synthesis and Ember explicitly requests `language=en`.
+Previous GGUF and live-model checks incorrectly required the individual
+speaker's native-language field to be `en`, which would reject these
+real checkpoints before audio could start. That preflight has been
+corrected: model-level English support and a verified female speaker
+are both required. This does **not** establish a native-English
+accent or naturalness; actual listening against English-native female
+alternatives and an eventual trained Ember Voice is still mandatory.
+The official Qwen3-TTS CustomVoice speaker table has no English-native
+female speaker.
+
 The full offline Windows **assembly pipeline** lives at
 [`release/build-complete-offline.ps1`](release/build-complete-offline.ps1).
 It requires existing, independently reviewed LLM/ASR/TTS weights and Windows
