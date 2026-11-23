@@ -40,7 +40,16 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 [Files]
-Source: "{#AppPayload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.ilk,*.exp,*.obj,*.lib,qml-smoke-report.txt"
+; Inno's default solid LZMA2 is useful for compact Qt/application code but
+; wastes significant compilation CPU/time on multi-gigabyte quantized model
+; weights. Avoid copying models TWICE: root's anchored exclude removes the
+; whole models subtree, handled once below with nocompression. Inno's documented
+; Excludes semantics interpret a leading backslash relative to source root.
+Source: "{#AppPayload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.ilk,*.exp,*.obj,*.lib,qml-smoke-report.txt,\models\*"
+; skipifsourcedoesntexist retains the historical text-only CI smoke which
+; intentionally has no model folder. Full release preflight elsewhere REQUIRES
+; genuine LLM/ASR/TTS assets and verifies installed hashes after install.
+Source: "{#AppPayload}\models\*"; DestDir: "{app}\models"; Flags: ignoreversion recursesubdirs createallsubdirs nocompression skipifsourcedoesntexist
 [Icons]
 Name: "{userprograms}\Ember"; Filename: "{app}\Ember.exe"; WorkingDir: "{app}"
 Name: "{userdesktop}\Ember"; Filename: "{app}\Ember.exe"; WorkingDir: "{app}"; Tasks: desktopicon
