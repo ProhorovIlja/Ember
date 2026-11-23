@@ -268,10 +268,41 @@ ApplicationWindow {
             spacing: 12
             Text {
                 Layout.fillWidth: true
-                text: "Keep essential characters, relationships, world rules or project facts across sessions. This text stays on your PC and belongs only to this chat."
+                text: "Pin characters, relationships, world rules or project facts in this saved chat. Notes stay on your PC. Optional recall from other saved chats is controlled below."
                 color: "#BACFE4"
                 wrapMode: Text.WordWrap
                 font.pixelSize: 13
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    Text {
+                        text: "Recall from other saved chats"
+                        color: "#E4F2FF"
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Off by default · local, on-demand · never used in Private Mode"
+                        color: "#93B0C9"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                PillButton {
+                    text: ember.crossChatRecall ? "Recall On" : "Recall Off"
+                    implicitWidth: 112
+                    implicitHeight: 34
+                    enabled: !ember.busy && !ember.listening
+                    onClicked: ember.setCrossChatRecall(!ember.crossChatRecall)
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 700
+                    ToolTip.text: "Search a bounded number of saved chat excerpts only when you send a new message. No background indexing."
+                }
             }
             ScrollView {
                 Layout.fillWidth: true
