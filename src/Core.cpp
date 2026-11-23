@@ -927,12 +927,13 @@ QJsonObject chatRequest(const QString &persona, const QList<Turn> &history,
                         {"max_tokens", outputTokens},
                         {"temperature", std::isfinite(temperature) ? std::clamp(temperature, 0.1, 1.5) : 0.8},
                         {"stream", false}};
-    if (enableThinking) {
-        // Explicit opt-in for compatible local llama.cpp/Qwen3 templates.
-        // Hidden reasoning stays excluded from the persisted/displayed chat.
-        request.insert("chat_template_kwargs",
-                       QJsonObject{{"enable_thinking", true}});
-    }
+    // Qwen3.5 defaults to generating hidden reasoning. Explicitly request
+    // non-thinking for ordinary/voice replies instead of silently inheriting
+    // the template's default; Deep Mode explicitly opts in. llama.cpp accepts
+    // chat_template_kwargs even when another model ignores this flag.
+    // The actual GGUF/template must still be tested on target hardware.
+    request.insert("chat_template_kwargs",
+                   QJsonObject{{"enable_thinking", enableThinking}});
     return request;
 }
 // A shared offline speech adapter deliberately has no configurable remote
