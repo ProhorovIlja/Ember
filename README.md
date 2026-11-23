@@ -95,7 +95,14 @@ entire installer ZIP; missing .bin slices make installation incomplete.
 The bundler is [tools/installer_bundle.py](tools/installer_bundle.py)
 (`--self-test` passed locally on synthetic slices), and the installer
 rechecks installed model/engine hashes after a per-user install/uninstall
-smoke. **GitHub Releases separately limits each uploaded asset to less
+smoke. The complete build also runs
+[`tools/combined_runtime_acceptance.py`](tools/combined_runtime_acceptance.py):
+**both the real local LLM and English Qwen3-TTS stay loaded together**
+while Ember receives English text, synthesizes PCM, and receives Russian
+text. This catches a class of 12-GB GPU/resource failures that independent
+model tests miss. Its isolated mock self-test passed on Linux, but real
+RTX 4070/Windows co-residency has NOT been tested.
+**GitHub Releases separately limits each uploaded asset to less
 than 2 GiB**, so complete ZIPs require a verified large-file host for
 one-download distribution. An optional, manually invoked
 [large release split/rejoin tool](tools/large_release_asset.py) can create
