@@ -177,33 +177,75 @@ try {
     $zipPath = Join-Path $publish $zipName
     Run-CheckedPython -Arguments @((Join-Path $root 'tools/portable_zip.py'),
         '--root', $payload, '--output', $zipPath, '--require-voice')
+    # A full 9B-class GGUF plus speech weights normally exceeds Windows'
+    # ~4 GB single-EXE ceiling. Inno creates a small Setup.exe and numbered
+    # model-data slices; the user receives those as ONE verified ZIP64 download.
     & (Join-Path $root 'release/build-dev-installer.ps1') `
         -PayloadDirectory $payload `
         -OutputDirectory $publish `
         -Version $Version `
         -RequireOfflineBundle `
         -RequireVoiceBundle `
+        -DiskSpanning `
         -VerifyInstall
     if (-not $?) { throw 'Inno Setup installation/uninstallation verification failed.' }
     $installerName = "Ember-$Version-Windows-x64.exe"
     $installerPath = Join-Path $publish $installerName
     if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf) -or
         -not (Test-Path -LiteralPath $zipPath -PathType Leaf)) {
-        throw 'Expected complete offline installer and ZIP are missing.'
+        throw 'Expected offline installer executable or portable ZIP is missing.'
     }
-    $installerHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $bundleName = "Ember-$Version-Windows-x64-installer-bundle.zip"
+    $bundlePath = Join-Path $publish $bundleName
+    Run-CheckedPython -Arguments @((Join-Path $root 'tools/installer_bundle.py'),
+        '--directory', $publish, '--version', $Version, '--output', $bundlePath)
+    if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
+        throw 'Validated complete installer bundle is missing.'
+    }
+    $bundleHash = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
     $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $checksums = @("$installerHash  $installerName", "$zipHash  $zipName") -join "`n"
+    $checksums = @("$bundleHash  $bundleName", "$zipHash  $zipName") -join "`n"
     [System.IO.File]::WriteAllText(
         (Join-Path $publish 'SHA256SUMS.txt'), $checksums + "`n",
         (New-Object System.Text.UTF8Encoding($false)))
-    # Keep exactly the two installable distributions plus their checksums,
-    # without another multi-GiB working copy of every GGUF.
+    # The validated installer download now contains the EXE and every
+    # numbered .bin slice. Remove the WORKING copies only from our private
+    # staging directory, avoiding duplicate multi-GB downloads. The existing
+    # standalone installer checksum references the removed raw EXE; only
+    # SHA256SUMS.txt is distributed.
+    $sliceRx = '^' + [regex]::Escape("Ember-$Version-Windows-x64") +
+               '-[1-9][0-9]*[.]bin
+    Write-Host 'Packaging/smoke success is NOT real model/voice/GPU acceptance.'
+} finally {
+    # This folder was created by this invocation with a fresh GUID; never
+    # delete an unrelated user path or a prior completed distribution.
+    if (Test-Path -LiteralPath $work) {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+if (-not $committed) { throw 'Offline distribution was not completed.' }
+
+    foreach ($slice in @(Get-ChildItem -LiteralPath $publish -File |
+            Where-Object { $_.Name -match $sliceRx })) {
+        Remove-Item -LiteralPath $slice.FullName -Force
+    }
+    Remove-Item -LiteralPath $installerPath -Force
+    $oldChecksum = if ($Version.EndsWith('-dev')) {
+        'Ember-dev-installer-SHA256.txt'
+    } else {
+        "Ember-$Version-SHA256.txt"
+    }
+    $oldChecksumPath = Join-Path $publish $oldChecksum
+    if (Test-Path -LiteralPath $oldChecksumPath -PathType Leaf) {
+        Remove-Item -LiteralPath $oldChecksumPath -Force
+    }
+    # Keep two complete, independently downloadable distributions (installer
+    # bundle ZIP and portable ZIP) plus checksums; no extra model copy.
     Remove-Item -LiteralPath $payload -Recurse -Force
     Move-Item -LiteralPath $publish -Destination $target -ErrorAction Stop
     $committed = $true
     Write-Host "Offline Ember package built locally: $target"
-    Write-Host 'Contains an installer, portable ZIP and SHA256SUMS.txt.'
+    Write-Host 'Contains complete installer-bundle ZIP, portable ZIP and SHA256SUMS.txt.'
     Write-Host 'Packaging/smoke success is NOT real model/voice/GPU acceptance.'
 } finally {
     # This folder was created by this invocation with a fresh GUID; never
