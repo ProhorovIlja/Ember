@@ -78,6 +78,7 @@ class EmberBackend final : public QObject {
     Q_PROPERTY(int voiceEngine READ voiceEngine WRITE setVoiceEngine NOTIFY configurationChanged)
     Q_PROPERTY(int speechDevice READ speechDevice WRITE setSpeechDevice NOTIFY configurationChanged)
     Q_PROPERTY(int deliveryStyle READ deliveryStyle WRITE setDeliveryStyle NOTIFY configurationChanged)
+    Q_PROPERTY(QString customDeliveryPrompt READ customDeliveryPrompt WRITE setCustomDeliveryPrompt NOTIFY configurationChanged)
     Q_PROPERTY(int outputVolume READ outputVolume WRITE setOutputVolume NOTIFY configurationChanged)
     Q_PROPERTY(bool earlySpeechEnabled READ earlySpeechEnabled WRITE setEarlySpeechEnabled NOTIFY configurationChanged)
     Q_PROPERTY(bool allowSpeechDownloads READ allowSpeechDownloads WRITE setAllowSpeechDownloads NOTIFY configurationChanged)
@@ -146,6 +147,7 @@ public:
     int voiceEngine() const { return m_voiceEngine; }
     int speechDevice() const { return m_speechDevice; }
     int deliveryStyle() const { return m_deliveryStyle; }
+    QString customDeliveryPrompt() const { return m_customDeliveryPrompt; }
     int outputVolume() const { return m_outputVolume; }
     bool earlySpeechEnabled() const { return m_earlySpeechEnabled; }
     bool allowSpeechDownloads() const { return m_allowSpeechDownloads; }
@@ -173,6 +175,7 @@ public:
     Q_INVOKABLE void setVoiceEngine(int index);
     Q_INVOKABLE void setSpeechDevice(int index);
     Q_INVOKABLE void setDeliveryStyle(int style);
+    Q_INVOKABLE void setCustomDeliveryPrompt(const QString &prompt);
     Q_INVOKABLE void setOutputVolume(int percent);
     Q_INVOKABLE void setEarlySpeechEnabled(bool value);
     Q_INVOKABLE void setAllowSpeechDownloads(bool value);
@@ -326,7 +329,7 @@ private:
     QString m_status = "Ready to configure local engines.";
     QString m_transcript, m_lastReply, m_pendingUser, m_persona;
     QString m_localVoice = "vivian", m_localModel = "qwen3-tts-0.6b";
-    QString m_voiceSample;
+    QString m_voiceSample, m_customDeliveryPrompt;
     QString m_sessionId, m_dictatedText, m_continuityNotes, m_recognitionHints;
     QString m_chatStreamText, m_chatStreamSession;
     EmberCore::VisibleAssistantStream m_visibleStream;

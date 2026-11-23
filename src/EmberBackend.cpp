@@ -260,7 +260,11 @@ EmberBackend::EmberBackend(QObject *parent)
     if (!EmberCore::englishFemaleKokoroSid(m_voiceId)) m_voiceId = 0;
     m_voiceEngine = qBound(0, m_settings.value("voice/engine", 0).toInt(), 1);
     m_speechDevice = qBound(0, m_settings.value("voice/speechDevice", 0).toInt(), 2);
-    m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 4);
+    m_deliveryStyle = qBound(0, m_settings.value("voice/deliveryStyle", 0).toInt(), 5);
+    m_customDeliveryPrompt = m_settings.value("voice/customDeliveryPrompt").toString();
+    if (!m_customDeliveryPrompt.isEmpty() &&
+        !EmberCore::validNativeDeliveryPrompt(m_customDeliveryPrompt))
+        m_customDeliveryPrompt.clear();
     m_outputVolume = qBound(0, m_settings.value("audio/outputVolume", 85).toInt(), 100);
     m_earlySpeechEnabled = m_settings.value("voice/earlySpeech", true).toBool();
     m_allowSpeechDownloads = m_settings.value("voice/allowDownloads", false).toBool();
@@ -810,7 +814,7 @@ void EmberBackend::setEarlySpeechEnabled(bool value) {
                     : "Early native speech disabled: use the full text answer before TTS.");
 }
 void EmberBackend::setDeliveryStyle(int style) {
-    if (style < 0 || style > 4 || style == m_deliveryStyle) return;
+    if (style < 0 || style > 5 || style == m_deliveryStyle) return;
     if (m_busy || m_listening || m_speaking) {
         setStatus("Finish the current voice turn before changing delivery style.");
         return;
@@ -822,6 +826,22 @@ void EmberBackend::setDeliveryStyle(int style) {
     setStatus(m_localModel == "qwen3-tts-1.7b"
         ? "Native Qwen3 1.7B delivery style updated for the next sentence."
         : "Delivery style saved. Expressive controls require native Qwen3-TTS 1.7B.");
+}
+void EmberBackend::setCustomDeliveryPrompt(const QString &prompt) {
+    if ((!prompt.isEmpty() && !EmberCore::validNativeDeliveryPrompt(prompt)) ||
+        prompt == m_customDeliveryPrompt) return;
+    if (m_busy || m_speaking || m_listening) {
+        setStatus("Finish the current voice turn before changing delivery instructions.");
+        return;
+    }
+    m_customDeliveryPrompt = prompt;
+    if (prompt.isEmpty()) m_settings.remove("voice/customDeliveryPrompt");
+    else m_settings.setValue("voice/customDeliveryPrompt", prompt);
+    m_settings.sync();
+    emit configurationChanged();
+    setStatus(prompt.isEmpty()
+        ? "Custom native delivery cleared; model default used for Custom style."
+        : "English voice delivery saved locally for native Qwen3-TTS 1.7B.");
 }
 void EmberBackend::setOutputVolume(int percent) {
     const int safe = qBound(0, percent, 100);
@@ -3941,7 +3961,8 @@ void EmberBackend::synthesizeStreamingPcm(const QString &text) {
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Accept", "audio/pcm");
     QJsonObject payload = EmberCore::streamingPcmSpeechRequest(
-        m_localModel, m_localVoice, text, m_deliveryStyle);
+        m_localModel, m_localVoice, text, m_deliveryStyle,
+        m_customDeliveryPrompt);
     if (m_speechTtsPathMode) payload.remove("model");
     auto *reply = m_network.post(
         request, QJsonDocument(payload).toJson(QJsonDocument::Compact));

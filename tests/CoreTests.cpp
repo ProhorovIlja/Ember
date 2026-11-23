@@ -3677,6 +3677,42 @@ private slots:
         QVERIFY(!EmberCore::validPcmSampleRate(192000));
         QVERIFY(!payload.contains("url"));
     }
+    void customNativeDeliveryPromptStaysBoundedAndModelScoped() {
+        using EmberCore::validNativeDeliveryPrompt;
+        const QString instruction = "Speak with warm, natural pacing and light curiosity.";
+        const QString sentence = "Hello. What would you like to discuss?";
+        QVERIFY(validNativeDeliveryPrompt(instruction));
+        QVERIFY(validNativeDeliveryPrompt(QString(240, QLatin1Char('x'))));
+        QVERIFY(!validNativeDeliveryPrompt({}));
+        QVERIFY(!validNativeDeliveryPrompt("   "));
+        QVERIFY(!validNativeDeliveryPrompt(" Leading"));
+        QVERIFY(!validNativeDeliveryPrompt("Trailing "));
+        QVERIFY(!validNativeDeliveryPrompt(QString(241, QLatin1Char('x'))));
+        QVERIFY(!validNativeDeliveryPrompt(QString("Speak slowly.\nNext line")));
+        QVERIFY(!validNativeDeliveryPrompt(QStringLiteral("Speak gently.") +
+                                          QChar(0x202E)));
+        const auto custom = EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-1.7b", "serena", sentence, 5, instruction);
+        QCOMPARE(custom.value("instructions").toString(), instruction);
+        QCOMPARE(custom.value("language").toString(), QString("en"));
+        QVERIFY(!EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-0.6b", "vivian", sentence, 5, instruction)
+            .contains("instructions"));
+        QVERIFY(!EmberCore::streamingPcmSpeechRequest(
+            "third-party-tts", "alice", sentence, 5, instruction)
+            .contains("instructions"));
+        QVERIFY(!EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-1.7b", "serena", sentence, 5,
+            QString(241, QLatin1Char('x'))).contains("instructions"));
+        QVERIFY(!EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-1.7b", "serena", sentence, 5, "")
+            .contains("instructions"));
+        // Selecting a built-in delivery preset cannot leak stale custom text.
+        QCOMPARE(EmberCore::streamingPcmSpeechRequest(
+            "qwen3-tts-1.7b", "serena", sentence, 1, instruction)
+            .value("instructions").toString(),
+            EmberCore::nativeDeliveryInstructions(1));
+    }
     void expressiveNativeVoiceStylesAreModelSafe() {
         const QString sentence = "Hello there. How are you today?";
         const auto lightweight = EmberCore::streamingPcmSpeechRequest(

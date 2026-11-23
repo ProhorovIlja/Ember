@@ -2608,7 +2608,8 @@ ApplicationWindow {
                                                     "Warm conversation",
                                                     "Soft and gentle",
                                                     "Bright and curious",
-                                                    "Expressive narrator"
+                                                    "Expressive narrator",
+                                                    "Custom · your delivery description"
                                                 ]
                                                 currentIndex: ember.deliveryStyle
                                                 enabled: !ember.busy && !ember.speaking
@@ -2644,8 +2645,44 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        RowLayout {
+                                            visible: ember.localModel === "qwen3-tts-1.7b" &&
+                                                     ember.deliveryStyle === 5
+                                            Layout.fillWidth: true
+                                            spacing: 14
+                                            Text {
+                                                text: "Custom delivery"
+                                                Layout.preferredWidth: 94
+                                                color: window.silver
+                                                font.pixelSize: 13
+                                            }
+                                            TextField {
+                                                id: customDeliveryInput
+                                                Layout.fillWidth: true
+                                                implicitHeight: 38
+                                                text: ember.customDeliveryPrompt
+                                                maximumLength: 240
+                                                enabled: !ember.busy && !ember.speaking && !ember.listening
+                                                placeholderText: "Warm, natural pauses, gentle curiosity, not theatrical."
+                                                color: "#EAF5FF"
+                                                font.pixelSize: 12
+                                                selectByMouse: true
+                                                onEditingFinished: {
+                                                    ember.customDeliveryPrompt = text
+                                                    text = ember.customDeliveryPrompt
+                                                }
+                                                ToolTip.visible: hovered
+                                                ToolTip.delay: 750
+                                                ToolTip.text: "Local 1.7B only, 240 characters maximum, one line. Listening tests determine quality."
+                                                background: Rectangle {
+                                                    color: "#0A192D"
+                                                    radius: 9
+                                                    border.color: "#254A73"
+                                                }
+                                            }
+                                        }
                                         Text {
-                                            text: "Qwen3-TTS 1.7B supports delivery instructions; 0.6B does not. Native speech.cpp streams PCM16, other compatible local servers use validated WAV."
+                                            text: "Qwen3-TTS 1.7B supports presets and a custom delivery description; 0.6B does not. These adjust voice prosody, not text creativity. Naturalness requires real listening tests."
                                             color: "#86A4BD"
                                             font.pixelSize: 11
                                             Layout.fillWidth: true

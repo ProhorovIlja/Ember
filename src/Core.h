@@ -98,8 +98,11 @@ QStringList whisperCliArguments(const QString &model, const QString &wav,
 QString decodeLocalAsrUtf8(const QByteArray &raw, bool *valid = nullptr);
 QJsonObject speechRequest(const QString &model, const QString &voice, const QString &text);
 QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice,
-                                      const QString &text, int deliveryStyle = 0);
+                                      const QString &text, int deliveryStyle = 0,
+                                      const QString &customDelivery = {});
 QString nativeDeliveryInstructions(int style);
+// Bounded single-line user-authored native 1.7B TTS style, not an LLM prompt.
+bool validNativeDeliveryPrompt(const QString &prompt);
 bool pcmPlaybackDrained(qint64 submittedBytes, int sampleRate, qint64 processedUsecs,
                         int channels = 1);
 // Abort a queued Windows PCM stream if the native sink has made no writable

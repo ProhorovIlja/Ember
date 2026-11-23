@@ -1174,8 +1174,21 @@ bool Pcm16OutputConverter::finish(QByteArray &output) {
     }
     return true;
 }
+bool validNativeDeliveryPrompt(const QString &prompt) {
+    if (prompt.isEmpty() || prompt.size() > 240 ||
+        prompt.trimmed() != prompt) return false;
+    for (const QChar c : prompt) {
+        const auto category = c.category();
+        if (category == QChar::Other_Control ||
+            category == QChar::Other_Format ||
+            category == QChar::Separator_Line ||
+            category == QChar::Separator_Paragraph) return false;
+    }
+    return true;
+}
 QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice,
-                                     const QString &text, int deliveryStyle) {
+                                     const QString &text, int deliveryStyle,
+                                     const QString &customDelivery) {
     auto request = speechRequest(model, voice, text);
     request.insert("response_format", "pcm");
     request.insert("stream_format", "audio");
@@ -1183,7 +1196,9 @@ QJsonObject streamingPcmSpeechRequest(const QString &model, const QString &voice
     // The 0.6B CustomVoice model does NOT support natural-language delivery
     // instructions, and speech.cpp rejects unknown fields rather than ignoring.
     if (model == "qwen3-tts-1.7b") {
-        const QString instruction = nativeDeliveryInstructions(deliveryStyle);
+        const QString instruction = deliveryStyle == 5
+            ? (validNativeDeliveryPrompt(customDelivery) ? customDelivery : QString())
+            : nativeDeliveryInstructions(deliveryStyle);
         if (!instruction.isEmpty()) request.insert("instructions", instruction);
     }
     return request;

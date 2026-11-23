@@ -1034,3 +1034,16 @@ QtTest covers the exact seven-to-eight-second boundary, empty-queue
 exemption, invalid state, and long blocked queues. A green CI cannot
 prove actual Windows device hotplug, WASAPI underrun behavior or final
 headphone output: test those on the physical Windows 10/RTX 4070 host.
+
+
+### 23 November 2026 — explicit custom native 1.7B delivery
+
+Qwen3-TTS 1.7B CustomVoice now has a sixth style, user-authored Custom,
+alongside the five built-in presets. Its single-line, 240-character
+locally persisted instruction passes through managed loopback PCM only
+with exactly `qwen3-tts-1.7b`; empty/invalid values emit no instruction,
+and earlier preset choices override any saved custom text. Qwen3-TTS 0.6B
+and generic WAV TTS adapters never receive unsupported fields. A custom
+instruction can influence prosody but does not train weights or modify
+LLM response sampling. Verify speaker identity, audible emotion/pauses,
+no-clipping output, latency and VRAM before claiming Maya-like quality.

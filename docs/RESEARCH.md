@@ -83,3 +83,28 @@ speaker/style settings, audio sample rate, real first audible sample, RTF,
 VRAM, concurrent llama.cpp load, blind English female voice rating and
 license provenance. NONE are integrated or shipped by this research note.
 Do not enable runtime model registry downloads by default.
+
+
+## 23 November 2026 — Qwen4 open-weights status versus Sesame voice
+
+Official Alibaba announcement dated November 16, 2026 confirms cloud/API
+**Qwen4-Max**. It says *smaller open-weight Qwen4 models are forthcoming*;
+no local Qwen4-Max GGUF or 12GB RTX 4070-ready Max weights are provided.
+https://www.alibabacloud.com/en/press-room/alibaba-unveils-qwen4-max
+https://www.alibabacloud.com/help/en/model-studio/qwen4-max
+
+Offline Qwen3.5-9B (Apache 2.0) is a *candidate* for text, coding, and roleplay,
+not a measured Ember winner: check compatible GGUF, actual model quality,
+RTX4070 VRAM, latency and tool calling. https://huggingface.co/Qwen/Qwen3.5-9B
+
+**Neither text LLM controls the sound itself.** Sesame's published base CSM-1B
+is distinct from the fine-tuned CSM variant behind the Maya voice demo.
+Downloading CSM-1B cannot guarantee Maya's naturalness, voice identity,
+latency or conversational turn-taking. https://github.com/SesameAILabs/csm
+
+This version adds optional custom English delivery instructions for managed
+Qwen3-TTS 1.7B, bounded to a single 240-character line, using its documented
+local `instructions` field. Other TTS models keep their existing request
+shapes. These are acoustic direction controls, NOT a proven Maya-equivalent
+voice or TTS fine-tune. Repeat actual blind listening, WER, first-audible-
+sound, VRAM and GPU/CPU measurements on real Windows 10 RTX4070 hardware.
