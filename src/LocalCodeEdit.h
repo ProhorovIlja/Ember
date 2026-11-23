@@ -57,6 +57,22 @@ NewFilePlan planNewFileWithinProject(const QString &selectedRoot,
                                      const QString &relativePath,
                                      const QString &contents);
 EditResult applyApprovedNewFile(const NewFilePlan &plan);
+// A short human-reviewed batch of NEW source files: e.g. index.html,
+// styles.css and app.js. No directory creation or overwrite is permitted.
+struct NewFileSource { QString relativePath, content; };
+struct NewFileBatchPlan {
+    QVector<NewFilePlan> files;
+    QString displayPreview, error;
+    bool ok() const { return error.isEmpty() && !files.isEmpty(); }
+};
+struct NewFileBatchResult {
+    QStringList createdPaths;
+    QString error;
+    bool ok() const { return error.isEmpty(); }
+};
+NewFileBatchPlan planNewFilesWithinProject(
+    const QString &selectedRoot, const QVector<NewFileSource> &files);
+NewFileBatchResult applyApprovedNewFiles(const NewFileBatchPlan &batch);
 
 // Explicitly approved, bounded 1-3 distinct existing UTF-8 source files.
 // Planning only stages immutable snapshots; no source is written.
