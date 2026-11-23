@@ -421,3 +421,59 @@ pass belongs to a different branch/commit. No CI workflows,
 automations, timed tasks, Release artifacts or background monitoring
 were created or started in this work.
 
+## Part 47 — full voice session ASR and failed-installer rollback (23 November)
+
+Product focus: the finished native Ember must answer and **hear** the user
+on the target 12-GB RTX 4070, with simultaneous text + speech workloads,
+and must remain installable/uninstallable with multi-gigabyte model
+assets. Source integration improves; no public complete binary exists.
+
+**Real runtime gap corrected in source:** The previous one-shot
+`combined_runtime_acceptance.py` verified only text and TTS simultaneously.
+Separate Whisper EN/RU dictation tests ran when text/TTS were unloaded.
+That could miss memory contention during a full spoken turn.
+
+This turn added `validated_bilingual_inputs`, local
+`--en-wav`, `--en-reference`, `--ru-wav`, `--ru-reference`
+and `--max-wer` to that same combined acceptance script.
+With actual real WAV+reference pairs, Whisper transcribes English and
+Russian while the *same* two approved LLM and Qwen3-TTS workers remain
+loaded, and the runner verifies both listener PIDs after each
+recognition. A later Russian text turn confirms the language model
+survived synthesis + ASR. Scores (WER, CER, runtime, WAV bytes) contain
+no private transcript. Missing WAV sets are `NOT_TESTED`, never
+`PASS`; stable packaging cannot omit them. The full
+`build-complete-offline.ps1` now forwards those inputs into the
+new combined test as well as the separate bilingual ASR check.
+
+**Actual local evidence:** the Python 3 source passed
+`python -m py_compile` and an isolated self-test exercising
+nonmatching/incomplete inputs, mocked simultaneous LLM/TTS,
+two mock Whisper invocations, mock ASR OOM, mock TTS OOM and
+verified cleanup of both simulated child processes. The exact
+Git blob of tested source is
+`770167e94f7a84bf077709487d0863c0df1b11e5`.
+It was uploaded to Drive before updating the GitHub branch.
+No Whisper executable or GPU was actually run in these tests.
+
+**Installer lifecycle gap corrected:** The full Inno smoke previously
+uninstalled only after all initial QML, integrity and privacy checks
+passed. If installed model hashes differed, a smoke launch failed or
+a privacy check found an app-local directory, the test exited before
+uninstalling, potentially leaving multiple gigabytes of temporary
+test-only data. `release/build-dev-installer.ps1` now uses an outer
+`try/finally` to attempt the product's uninstaller regardless of success
+or failure, while restoring Qt headless environment and removing only
+its own temporary diagnostic file. It then checks that `Ember.exe`
+and ALL other installed model/runtime files were removed.
+Unexpected residual paths are reported without destructive recursive
+deletion. User's real install, imported models and SQLite chats are
+never targeted by this smoke.
+
+**Important evidence boundary:** No native Windows Qt/MSVC/Inno
+execution was possible in this environment, and no genuine
+LLM/TTS/Whisper weight bundle, CUDA performance, natural voice
+listening, full 17-check release acceptance or final installer
+was created. These are source changes and mock tests only.
+No workflows, scheduled tasks, background searches or automation
+were run or created.
