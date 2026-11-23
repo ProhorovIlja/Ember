@@ -3399,6 +3399,14 @@ bool EmberBackend::submit(const QString &raw, bool voice) {
         m_lastReplyIncomplete = false;
         emit lastReplyChanged();
     }
+    // A search jump may be displaying an old bounded window. Preserve the
+    // latest LLM context prepared above, but return the UI to the newest
+    // messages BEFORE adding this turn; never append it to an ancient scene.
+    if (hasNewerMessages()) {
+        m_messages = m_store->messages(m_sessionId);
+        rebuildConversationHistory();
+        emit messagesChanged();
+    }
     m_pendingUser = text;
     m_voicePending = voice;
     appendMessage("you", text + (selected.isEmpty() ? QString() :
@@ -4864,16 +4872,50 @@ void EmberBackend::loadEarlierMessages() {
         return;
     }
     if (!hasOlderMessages()) return;
-    const QVariantList older = m_store->messages(
-        m_sessionId, 100, m_messages.size());
+    const qint64 oldestId = m_messages.first().toMap()
+                                .value("id").toLongLong();
+    const QVariantList older = m_store->messagesBefore(
+        m_sessionId, oldestId, 100);
     if (older.isEmpty()) {
         setStatus("No earlier archived messages found.");
         return;
     }
+    // Both lists arrive in ascending database ID order. A bounded
+    // foreground page does not drag years of chat into the UI or GPU.
     for (int i = older.size() - 1; i >= 0; --i)
         m_messages.prepend(older.at(i));
     emit messagesChanged();
     setStatus(QString("Loaded %1 earlier local messages.").arg(older.size()));
+}
+void EmberBackend::loadNewerMessages() {
+    if (m_privateMode || m_busy || m_listening || m_speaking ||
+        !m_store || !m_store->ready() || m_sessionId.isEmpty()) {
+        setStatus("Finish current work before retrieving newer local messages.");
+        return;
+    }
+    if (!hasNewerMessages()) return;
+    const qint64 latestVisibleId = m_messages.last().toMap()
+                                       .value("id").toLongLong();
+    const QVariantList newer = m_store->messagesAfter(
+        m_sessionId, latestVisibleId, 100);
+    if (newer.isEmpty()) {
+        setStatus("No newer archived messages found.");
+        return;
+    }
+    m_messages.append(newer);
+    emit messagesChanged();
+    setStatus(QString("Loaded %1 newer local messages.").arg(newer.size()));
+}
+void EmberBackend::showLatestMessages() {
+    if (m_privateMode || m_busy || m_listening || m_speaking ||
+        !m_store || !m_store->ready() || m_sessionId.isEmpty()) {
+        setStatus("Finish current work before returning to the latest messages.");
+        return;
+    }
+    m_messages = m_store->messages(m_sessionId);
+    rebuildConversationHistory();
+    emit messagesChanged();
+    setStatus("Showing the latest messages from this local conversation.");
 }
 void EmberBackend::rebuildConversationHistory() {
     m_history.clear();
@@ -4935,6 +4977,37 @@ void EmberBackend::openSession(const QString &id) {
     emit transcriptChanged();
     refreshSessions();
     setStatus("Local conversation loaded. No text was uploaded.");
+}
+int EmberBackend::openSessionAtMessage(const QString &sessionId,
+                                      const QString &messageId) {
+    if (!m_store || !m_store->ready() || sessionId.isEmpty()) return -1;
+    bool validId = false;
+    const qint64 target = messageId.toLongLong(&validId);
+    if (!validId || target <= 0) return -1;
+    // Validate target membership and build at most 81 rows before changing
+    // the active chat. Invalid/stale hits must not discard the current view.
+    const QVariantList window = m_store->messagesAround(sessionId, target, 40, 40);
+    if (window.isEmpty()) {
+        setStatus("Saved search match no longer exists in this conversation.");
+        return -1;
+    }
+    int selectedIndex = -1;
+    for (int i = 0; i < window.size(); ++i) {
+        if (window.at(i).toMap().value("id").toLongLong() == target) {
+            selectedIndex = i;
+            break;
+        }
+    }
+    if (selectedIndex < 0) return -1;
+    // openSession constructs the CURRENT generation history from the most
+    // recent messages. Historic browsing must never make an old reply the
+    // context for a new LLM question.
+    openSession(sessionId);
+    m_messages = window;
+    emit messagesChanged();
+    setStatus("Opened the matching archived message and its nearby turns. "
+              "Use Newer or Latest to return to the current conversation.");
+    return selectedIndex;
 }
 void EmberBackend::clearConversation() {
     cancelWork();
