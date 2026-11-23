@@ -195,6 +195,10 @@ public:
     void setVoiceTemperaturePercent(int percent);
     void setTextTopPPercent(int percent);
     Q_INVOKABLE QString inspectOfflineSetup() const;
+    // One explicit user click starts/stops the selected local components;
+    // there is no background auto-start, scheduled refresh or remote fallback.
+    Q_INVOKABLE void startLocalEngines();
+    Q_INVOKABLE void stopLocalEngines();
     Q_INVOKABLE void startBrain();
     Q_INVOKABLE void stopBrain();
     Q_INVOKABLE void startSpeechServer();
