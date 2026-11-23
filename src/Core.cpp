@@ -71,7 +71,8 @@ bool skipGgufMetadataValue(QFile &file, QDataStream &input,
 }
 } // namespace
 
-bool ggufSupportsThinkingFlag(const QString &modelPath) {
+bool ggufSupportsThinkingFlag(const QString &modelPath, bool *isQwen35) {
+    if (isQwen35) *isQwen35 = false;
     QFile file(modelPath);
     if (modelPath.isEmpty() || !file.open(QIODevice::ReadOnly) ||
         file.read(4) != QByteArrayLiteral("GGUF")) return false;
@@ -93,9 +94,10 @@ bool ggufSupportsThinkingFlag(const QString &modelPath) {
             QByteArray architecture;
             if (type != 8 || !readGgufSmallString(file, input, &architecture))
                 return false;
-            return architecture == QByteArrayLiteral("qwen35") ||
-                   architecture == QByteArrayLiteral("qwen35moe") ||
-                   architecture == QByteArrayLiteral("qwen3") ||
+            const bool qwen35 = architecture == QByteArrayLiteral("qwen35") ||
+                                architecture == QByteArrayLiteral("qwen35moe");
+            if (isQwen35) *isQwen35 = qwen35;
+            return qwen35 || architecture == QByteArrayLiteral("qwen3") ||
                    architecture == QByteArrayLiteral("qwen3moe");
         }
         if (!skipGgufMetadataValue(file, input, type)) return false;
@@ -903,6 +905,17 @@ bool applySamplingOverrides(QJsonObject &request, int temperaturePercent,
     if (topPPercent > 0)
         request.insert("top_p", double(topPPercent) / 100.0);
     return true;
+}
+void applyQwen35SamplingDefaults(QJsonObject &request, bool thinking) {
+    if (request.isEmpty()) return;
+    // Qwen's model card distinguishes these two distributions. These are
+    // conservative published baselines, not proven optimum conversational
+    // settings. Manual temperature/top_p overrides are applied afterward.
+    request.insert("temperature", thinking ? 0.6 : 0.7);
+    request.insert("top_p", thinking ? 0.95 : 0.8);
+    request.insert("top_k", 20);
+    request.insert("min_p", 0.0);
+    request.insert("presence_penalty", thinking ? 0.0 : 1.5);
 }
 ChatGenerationProfile chatGenerationProfile(int mode, bool voice, bool deep) {
     if (voice) return {512, 0.65};
