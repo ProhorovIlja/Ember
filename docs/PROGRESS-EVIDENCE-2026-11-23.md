@@ -355,3 +355,69 @@ References:
 https://jrsoftware.org/inno-setup/documentation/topic_setup_diskspanning.htm
 https://jrsoftware.org/inno-setup/documentation/topic_filessection.htm
 https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
+
+## Part 46 — repaired full-build script and real simultaneous model capacity gate (23 November)
+
+**Critical blocker actually discovered:** The previous last committed
+`release/build-complete-offline.ps1` was **syntactically broken**. After
+constructing the installer ZIP, the `$sliceRx` regex was truncated,
+followed by prematurely repeated `finally` and cleanup blocks.
+A complete model installer could not be built from that source at all.
+The section was rewritten into one coherent conditional publication
+path and one `try/finally`. Its final staging folder contains only
+the verified installer-bundle ZIP, full portable ZIP and SHA256SUMS.txt.
+No existing destination is overwritten.
+
+**Verified source-level checks** (not a Windows build):
+- Four PowerShell files
+  (`build-complete-windows.ps1`,
+  `build-complete-offline.ps1`,
+  `build-dev-installer.ps1`, `stage-msvc-applocal.ps1`)
+  passed a local quote/comment/delimiter lexical check after repair;
+  actual Windows PowerShell ParseFile runtime remains UNTESTED.
+- The manual source-to-release entrypoint now invokes
+  `System.Management.Automation.Language.Parser::ParseFile`
+  on all four scripts before CMake. It also verifies local offline
+  model/engine hashes + redistribution license approval and, for stable
+  SemVer builds, 17 approved release gates **before** expensive native
+  compilation. The native PowerShell gate is source only; not tested
+  with MSVC/Qt in this container.
+- Existing `tools/installer_bundle.py` and
+  `tools/large_release_asset.py` were executed again with the exact
+  GitHub-committed bytes from the mounted local files. Python
+  `py_compile` passed for both; all existing synthetic
+  packaging/round-trip/tamper tests passed. Git blobs match:
+  `4c64cccfe4a738c4b7054458879a7e464446e770` and
+  `a53b3886242784911cc8e2f7d0fff444c42acf0e`.
+- A new **foreground, user-invoked** co-residency tool
+  `tools/combined_runtime_acceptance.py` was written,
+  syntax-checked and self-tested locally. Its mock-only
+  self-test used stubbed sibling imports and actual
+  `unittest.mock` replacements to cover invalid launch settings,
+  two simultaneously resident simulated children, successful
+  English/Russian text + TTS progression, and simulated speech
+  startup OOM with both processes stopped in `finally`.
+  No real model or Windows executable was run.
+  The tool was uploaded as exact source bytes to Drive and GitHub,
+  with a matching locally tested Git blob:
+  `9362aa8cbed227b90eda420d45e6ee609d0f8954`.
+- The combined live path keeps real approved `llama-server.exe`
+  and `speech.exe` **both loaded** for two Qwen3.5
+  nonthinking SSE replies in English and Russian, separated by
+  native PCM synthesis. It verifies both local listener PIDs and
+  worker survival throughout, then shuts down both.
+  This source path is now mandatory before full
+  `build-complete-offline.ps1` packaging whenever live engine
+  checks are enabled. Stable versions cannot skip live checks.
+  The voice device is `auto`; a pass would not prove GPU placement
+  or precise peak VRAM. There is no production hardware result.
+
+**Current reality:** A stable installable release, trained personal
+EmberMind and Ember Voice, legal pinned model distributions, real
+Qt/MSVC build for this branch, concurrent RTX 4070 VRAM metrics,
+actual long-form conversation/ASR and audible voice validation
+are all still missing. The last known historical Windows CI
+pass belongs to a different branch/commit. No CI workflows,
+automations, timed tasks, Release artifacts or background monitoring
+were created or started in this work.
+
