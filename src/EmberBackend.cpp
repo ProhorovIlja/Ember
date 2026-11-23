@@ -1557,6 +1557,12 @@ void EmberBackend::startSpeechServer() {
         : "Loading pre-installed speech GGUF; no catalog download requested.");
 }
 void EmberBackend::stopSpeechServer() {
+    // An EXPLICIT per-engine stop is different from a crashed speech worker.
+    // Keep the text brain available for chat, as the Settings UI promises.
+    // Only an UNEXPECTED process finished/error callback should stop the
+    // peer of an active combined Start Ember session.
+    m_combinedStartPending = false;
+    m_combinedSessionActive = false;
     ++m_speechServerSession;
     m_speechStartupTimedOut = false;
     m_speechInventoryPending = false;
@@ -1667,6 +1673,11 @@ void EmberBackend::pollSpeechServer() {
     });
 }
 void EmberBackend::stopBrain() {
+    // Explicit expert Stop brain may intentionally leave offline dictation
+    // or voice available. Do not let its QProcess::finished handler treat
+    // this deliberate action as a combined-session crash.
+    m_combinedStartPending = false;
+    m_combinedSessionActive = false;
     m_brainStartupTimedOut = false;
     m_brainVisionMode = false;
     m_brainSupportsThinking = false;
