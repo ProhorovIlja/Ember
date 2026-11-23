@@ -415,6 +415,7 @@ private:
     bool m_publicGitHubOversize = false;
     EmberDrive::Client m_driveClient;
     std::unique_ptr<EmberLocalEdit::EditBatchPlan> m_stagedCodeEdit;
+    std::unique_ptr<EmberLocalEdit::NewFilePlan> m_stagedNewFile;
     QSet<QString> m_agentInspectedSourcePaths;
     QNetworkAccessManager m_wikipediaNetwork;
     QPointer<QNetworkReply> m_wikipediaReply;
@@ -430,6 +431,7 @@ private:
     bool m_agentAuthenticatedGitHub = false;
     bool m_agentMayProposeEdit = false;
     bool m_agentStagedEdit = false;
+    bool m_agentProjectMapObserved = false; // valid foreground project_map result
     int m_agentCalls = 0;
     QProcess m_projectTestProcess;
     QString m_projectTestOutput;
