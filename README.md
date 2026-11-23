@@ -38,6 +38,19 @@ windeployqt --qmldir qml --release build\Release\Ember.exe
 
 Copy the deployed executable and Qt DLLs into `D:\Games\Ember`; place external engine binaries under `engines` and separately downloaded models under `models` following [SETUP.md](docs/SETUP.md). Then open **Settings**, verify all paths, start the local brain, and test the selected voice.
 
+### Custom EmberMind / Ember Voice research (no trained weights yet)
+
+The intended product is **one user-facing assistant**, not a menu of unrelated
+models. A private custom model path is documented in
+[EmberMind and Ember Voice — custom model lab](docs/CUSTOM-MODEL-LAB.md):
+curated legal EN/RU dialogue, coding, debugging and story examples; QLoRA/SFT
+experiments on compatible Qwen3.5 checkpoints; carefully tested merging of
+compatible adapters; and separately trained/conditioned English female TTS.
+The local-only `tools/ember_mind_studio.py` validates training examples and
+creates grouped train/eval JSONL without any network access or model downloads.
+**It does not train or merge weights.** Never check private datasets into Git or
+treat successful synthetic CI as proof of intelligence, speech or model quality.
+
 ## Development state and downloads
 
 GitHub Actions compiles the native Qt app and **tests** a versioned Inno Setup installer with silent installation, real QML startup and uninstall. Developer build files stay inside CI and are **not uploaded as previews**, by request. The public [Releases](https://github.com/ProhorovIlja/Ember/releases) page is reserved for accepted final installers with checksums, detailed notes, tested model inventory and GitHub source archives. The separate `.github/workflows/stable-release.yml` enforces reviewed hardware/quality/security gates, matching SemVer and clean installer acceptance before publication.
