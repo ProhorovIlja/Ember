@@ -814,3 +814,51 @@ Independent synthetic Python ZIP and namespace reproductions passed in
 the engineering container. The actual four-suite source preflight and
 Windows installer still require a trusted checkout and real Windows host.
 No finished Ember installer or public stable release was produced.
+
+## Part 54 — installed and portable history placement (24 November 2026)
+
+A single assembled Ember Qt payload is used for two different user-facing
+distribution types, but their private data now has intentionally distinct
+lifecycle semantics:
+
+- **Complete portable ZIP64** contains Ember.exe, all approved offline
+  engines/models, their license evidence and NO
+  `ember-installed.marker`. SQLite, configuration, image Library and
+  temporary voice scratch are created in `data/` and `cache/` next to
+  the EXE so moving the whole directory preserves history.
+- **Complete Inno installer bundle** includes the same approved runtime
+  payload plus a small `release/ember-installed.marker` that Inno installs
+  under `{app}` as a separately tracked file. A new installed profile
+  stores user data under the current account's
+  `QStandardPaths::AppLocalDataLocation`, not in the installation directory.
+  Model weights and Qt DLLs stay under the selected app install location.
+  Neither the installer nor Ember creates a model download task.
+- **Existing installations:** source first checks whether the installed
+  per-user data profile exists. If not, pre-existing legacy
+  `{app}/data/ember-chats.sqlite`, `data/ember.ini` or Library keeps
+  using its original location; there is no automatic migration. If both
+  pre-existing locations contain state, user-profile state takes precedence.
+  The live root is resolved once per process, avoiding a split between
+  SQLite and QSettings if another instance creates a profile concurrently.
+  Native Settings displays the selected current data path.
+- The asset inventory and ZIP64 builder explicitly reject any installed
+  marker in a portable payload, with negative synthetic fixtures.
+  `release/build-dev-installer.ps1 -VerifyInstall` also checks the
+  opposite condition: a real test installation MUST contain that marker,
+  and the test-only uninstaller must remove its installed runtime.
+
+The Inno marker source is resolved relative to the `.iss` file's
+directory. See Inno Setup's documented [Files] Source rule:
+https://jrsoftware.org/inno-setup/documentation/topic_filessection.htm .
+
+This is a source-level compatibility change, NOT a proof of successful
+Windows Qt6 compilation or real UAC/NTFS permission behavior. Acceptance
+must include a non-admin per-user install, protected Program Files launch
+tested separately with appropriate installation permissions, read/write
+and restart for chats/image Library/audio, an old app-side profile
+upgrade, uninstall/reinstall persistence, portable drive relocation and
+verification that both distribution packages contain their correct
+installation-mode marker state. Installed LocalAppData user data must not
+be silently erased by the Inno uninstaller. Neither branch uses a
+scheduled migration, background monitor, network sync, or automatic task.
+
