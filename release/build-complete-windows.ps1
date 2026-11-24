@@ -79,6 +79,13 @@ if ($target.StartsWith(($build.TrimEnd([char[]]@('\','/')) +
 # hashing and metadata checks; no model is downloaded or launched.
 $py = Get-Command python.exe -ErrorAction SilentlyContinue
 if (-not $py) { throw 'Python 3 is required on the manual Windows build machine.' }
+# A single user-started, foreground fixture suite. Catch a broken ZIP64
+# serializer or installer wrapper BEFORE compiling the native GUI or hashing
+# multi-gigabyte real model weights. This does not launch any real model.
+& $py.Source (Join-Path $root 'tools/packaging_preflight.py')
+if ($LASTEXITCODE -ne 0) {
+    throw 'Portable/offline/installer package self-tests failed before native build.'
+}
 $approvedManifest = (Resolve-Path -LiteralPath $ApprovedManifest -ErrorAction Stop).Path
 & $py.Source (Join-Path $root 'tools/offline_bundle.py') verify `
     --root $assetPath --manifest $approvedManifest `
