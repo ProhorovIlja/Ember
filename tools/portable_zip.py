@@ -95,7 +95,7 @@ def archive(root, output, *, require_voice=False):
         with tempfile.NamedTemporaryFile(prefix=".ember-zip64-", suffix=".zip",
                                          dir=dest.parent, delete=False) as handle:
             temporary = Path(handle.name)
-        with zipfile.ZipFile(temporary, "w", allowZip64=True) as file:
+        with zipfile.ZipFile(temporary, "w", allowZip64=True, compresslevel=6) as file:
             for relative, path in files:
                 # Normalize ZIP timestamps, Unix modes and member order so
                 # source filesystem mtime/location cannot silently alter a
@@ -110,8 +110,6 @@ def archive(root, output, *, require_voice=False):
                 metadata.compress_type = (zipfile.ZIP_STORED if path.suffix.lower()
                                           in (".gguf", ".onnx", ".bin")
                                           else zipfile.ZIP_DEFLATED)
-                if metadata.compress_type == zipfile.ZIP_DEFLATED:
-                    metadata.compresslevel = 6
                 digest = hashlib.sha256()
                 copied = 0
                 with path.open("rb") as input_file, file.open(
