@@ -630,6 +630,10 @@ EmberBackend::~EmberBackend() {
     }
 }
 
+QString EmberBackend::privateDataLocation() const {
+    // Current private storage only. No directory scanning or migration.
+    return QDir(privateStorageFolder()).filePath("data");
+}
 QString EmberBackend::configPath(const QString &key) const {
     if (defaultPath(key).isEmpty()) return {};
     return m_settings.value("paths/" + key, defaultPath(key)).toString();
