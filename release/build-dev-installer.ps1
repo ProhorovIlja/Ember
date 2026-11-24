@@ -88,6 +88,10 @@ if (!$compiler) {
     throw 'Inno Setup 6 ISCC.exe not found. Install a trusted compiler manually before offline packaging; no automatic dependency downloads.'
 }
 $iss = Join-Path $PSScriptRoot 'ember.iss'
+$profileMarker = Join-Path $PSScriptRoot 'ember-installed.marker'
+if (-not (Test-Path -LiteralPath $profileMarker -PathType Leaf)) {
+    throw 'Inno-only installed profile marker source is missing.'
+}
 $defines = @("/DAppPayload=$payload", "/DAppOutput=$output",
              "/DBuildVersion=$Version", "/DBuildNumericVersion=$numericVersion")
 if ($DiskSpanning) { $defines += '/DAppDiskSpanning=1' }
@@ -131,6 +135,10 @@ if ($VerifyInstall) {
         if ($setup.ExitCode -ne 0) { throw "Silent install failed: $($setup.ExitCode)" }
         if (!(Test-Path -LiteralPath $installedExe -PathType Leaf)) {
             throw 'Ember.exe missing after install.'
+        }
+        $installedProfileMarker = Join-Path $install 'ember-installed.marker'
+        if (!(Test-Path -LiteralPath $installedProfileMarker -PathType Leaf)) {
+            throw 'Installed Ember lacks the per-user data-mode marker.'
         }
         if ($RequireOfflineBundle) {
             # Rehash actual installed model, runtime and license bytes.
