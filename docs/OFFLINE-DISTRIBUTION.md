@@ -767,3 +767,50 @@ female alternatives such as licensed Kokoro voices or an appropriate
 custom-voice checkpoint; no acoustic superiority is claimed.
 
 Source: https://github.com/QwenLM/Qwen3-TTS/blob/main/README.md .
+
+## Part 53 — deterministic ZIP64 replay verification (24 November 2026)
+
+The prior `tools/portable_zip.py` checked archive member **names** after
+packaging but did not read their bytes back. It could therefore miss a model
+or Qt DLL corrupted during a long copy after the initial manifest check.
+The revised one-shot packager writes every file in bounded streaming chunks,
+hashes the written source, compares every approved engine/model/license
+against `offline-assets.json` again, and reads **every stored/deflated ZIP64
+member** to completion to verify size, CRC and SHA-256. The global ZIP digest
+is computed before atomic move from private temporary path to completed
+output. Invalid members do not result in a finished ZIP.
+
+ZIP member timestamps and file modes are fixed, and member ordering is
+stable. A repeated assembly on the same Python/zlib platform with the same
+file bytes should produce the same ZIP SHA-256, regardless of source file
+mtime. Python/zlib version differences can still change compressed bytes.
+GGUF, ONNX and BIN entries are stored uncompressed to avoid wasted CPU.
+
+The approved inventory also refuses case-insensitive Windows file/directory
+namespace conflicts (such as a file at `models/llm/MODEL.gguf` and a
+directory at `models/llm/model.gguf/`) **before** costly staging. A ZIP
+may not be written inside its own input tree. No file deletion or data
+migration happens in the installed user's history.
+
+Every **manual** complete assembly starts with source-file fixture checks:
+
+```powershell
+python tools/packaging_preflight.py
+```
+
+The script runs the local offline-bundle, Windows PE-import, portable ZIP64
+and Inno slice-package self-test suites. It is not a scheduled task and
+does not open the network or start models. Both foreground Windows scripts
+invoke this check before expensive build/copy steps, and fail closed on any
+error. It is NOT a replacement for actual Windows 10/11 install tests,
+genuine licensed GGUF/Whisper/speech.cpp components, end-to-end inference or
+human listening quality verification.
+
+The Python zipfile API choice follows the documented
+`ZipFile.open(..., mode="w", force_zip64=True)`, with a fixed `ZipInfo`
+and a normal `ZipFile(..., compresslevel=6)` for cross-version
+compatibility: https://docs.python.org/3.13/library/zipfile.html .
+Independent synthetic Python ZIP and namespace reproductions passed in
+the engineering container. The actual four-suite source preflight and
+Windows installer still require a trusted checkout and real Windows host.
+No finished Ember installer or public stable release was produced.
