@@ -23,6 +23,10 @@ QString privateStorageRoot(const QString &applicationRoot,
                            bool installerMarkerPresent,
                            bool legacyAppProfilePresent,
                            bool perUserProfilePresent);
+// Filesystem-backed variant used by EmberBackend and tested with isolated
+// fake install folders. Never copies user data or changes the source tree.
+QString detectWindowsStorageRoot(const QString &applicationRoot,
+                                 const QString &perUserRoot);
 // Merge one foreground SQLite history page into the live conversation UI.
 // Retain at most 300 entries. Older paging discards the newest visible
 // records; newer paging discards the oldest. SQLite archive stays intact.
