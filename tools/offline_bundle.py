@@ -79,6 +79,28 @@ def safe_path(value):
     return path
 
 
+def validate_windows_asset_namespace(names):
+    """Reject case-insensitive file-vs-directory aliases before staging.
+
+    Linux source files can contain models/ASSET.bin as a file and
+    models/asset.bin/part as a directory. The second name would shadow
+    the first on Windows and must fail before any multi-gigabyte copying.
+    """
+    files = set()
+    ancestors = set()
+    for name in names:
+        safe_path(name)
+        segments = name.casefold().split("/")
+        key = "/".join(segments)
+        if key in files:
+            raise ValueError("Duplicate/colliding Windows asset paths")
+        files.add(key)
+        for i in range(1, len(segments)):
+            ancestors.add("/".join(segments[:i]))
+    if files.intersection(ancestors):
+        raise ValueError("Windows asset file/directory namespace collision")
+
+
 def local_file(root, relative):
     path = safe_path(relative)
     base = Path(root).resolve(strict=True)
@@ -189,7 +211,9 @@ def present_files(root):
 def inventory(root, output):
     items = []
     seen = set()
-    for relative in present_files(root):
+    candidates = present_files(root)
+    validate_windows_asset_namespace(candidates)
+    for relative in candidates:
         folded = relative.casefold()
         if folded in seen:
             raise ValueError("Case-insensitive Windows path collision")
@@ -273,7 +297,10 @@ def verify(root, manifest_path, approved=False, require_voice=False):
                         license_name not in [z.get("path") for z in entries
                                              if isinstance(z, dict)]):
                     raise ValueError(f"License file missing from manifest: {name}")
-    actual = {name.casefold() for name in present_files(root)}
+    validate_windows_asset_namespace(items.keys())
+    present = present_files(root)
+    validate_windows_asset_namespace(present)
+    actual = {name.casefold() for name in present}
     if paths != actual:
         raise ValueError("Unlisted or missing files under engines/, models/, licenses/")
     if approved:
@@ -420,6 +447,20 @@ def fake_whisper():
 
 def self_test():
     speech_metadata_self_test()
+    validate_windows_asset_namespace([
+        "engines/llama/llama-server.exe", "models/llm/model.gguf",
+        "models/stt/ggml-base.bin"
+    ])
+    for names in (
+        ["models/llm/Model.gguf", "models/llm/model.GGUF"],
+        ["models/llm/MODEL.gguf", "models/llm/model.gguf/shadow.bin"],
+        ["models/llm/MODEL.gguf/shadow.bin", "models/llm/model.gguf"],
+    ):
+        try:
+            validate_windows_asset_namespace(names)
+            raise AssertionError("Windows file/directory asset collision accepted")
+        except ValueError:
+            pass
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         payload = root / "source"
