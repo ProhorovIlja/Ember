@@ -383,3 +383,18 @@ No automatic task, scheduled search, GitHub Actions, public preview release or c
 - [ ] Measure actual on-device memory/paint cost for 300 rich-text messages and 50k+ archived records. This source-level bound does not establish the total Ember RAM/GPU footprint.
 
 No scheduled tasks, cloud indexing, background history monitoring, GitHub Actions runs or public releases were created.
+
+## 24 November 2026 — offline Windows distribution integrity (Part 53)
+
+- [x] Source: portable ZIP64 no longer accepts central-directory-only verification. It streams every member into the archive, hashes each payload, then reads it back through the ZIP decompressor in bounded 1-MiB blocks to validate size, CRC and SHA-256.
+- [x] Source: each engine, GGUF, multilingual Whisper weight and license is compared AGAIN with the exact human-approved manifest after writing, catching changes since the initial preflight. Archive-level SHA-256 is calculated before the verified temporary file is moved to its final path.
+- [x] Source: deterministic file order, DOS-safe 2026-01-01 member timestamps and stable member modes; model formats (.gguf, .onnx, .bin) use ZIP_STORED to avoid redundant quantized-weight compression. Exact ZIP bytes still depend on Python and zlib versions for compressed files.
+- [x] Source: refuse ZIP output inside the input payload tree, unapproved private data, reparse links and unsafe case-insensitive Windows file/directory collisions at the earliest manifest stage.
+- [x] Source: synthetic regression cases now include ZIP member corruption, repeated deterministic packaging, the old corrupt-model-metadata filename attack, source namespace aliases and unsafe in-tree output.
+- [x] Source: a user-invoked foreground `tools/packaging_preflight.py` runs four offline fixture test suites for manifest/staging, x64 PE imports, portable ZIP and Inno multi-slice archive, blocking if Python is in optimized `-O` mode. Both manual full build entrypoints invoke it before expensive native build/asset copy. No scheduler, model download or network.
+- [x] Independent local Python 3.13 synthetic reproduction passed ZIP64 streamed writes, fixed metadata determinism, SHA member replay, corrupt-byte CRC failure, and case-folded path collision checks. This is NOT execution of the GitHub source self-test suite.
+- [ ] Execute `python tools/packaging_preflight.py` on an actual checkout with all companion source modules and verify its full end-to-end source fixtures. Current tool container does not hold the connected GitHub repo, Windows toolchain or licensed model assets.
+- [ ] Build offline installer and portable ZIP with real approved weights on Windows, run native Qt6 tests, verify downloaded final ZIP SHA256SUMS, extraction, Inno slice installation/uninstallation and clean first launch with network physically disconnected.
+- [ ] Run LLM + TTS + RU/EN ASR concurrently on RTX 4070 12 GiB, inspect natural English female voice and dictation accuracy. Integrity alone is not voice or model quality.
+
+No GitHub Actions workflow, scheduled task, watcher, cloud monitoring or public release was started.
