@@ -51,22 +51,32 @@ QString appFolder() {
     return QCoreApplication::applicationDirPath();
 }
 QString privateStorageFolder() {
-    // Only the explicit --smoke-test entrypoint may use a temporary root.
-    // An arbitrary inherited environment variable cannot redirect real chats.
-    if (QCoreApplication::arguments().contains("--smoke-test")) {
-        const QString isolated = qEnvironmentVariable("EMBER_INTERNAL_SMOKE_ROOT");
-        const QFileInfo root(isolated);
-        if (!isolated.isEmpty() && root.isDir() && !root.isSymLink() &&
-            !root.isJunction())
-            return root.canonicalFilePath();
-    }
+    // Resolve this once for the ENTIRE process. If another installed copy
+    // creates an alternate profile during startup, QSettings, SQLite,
+    // image Library and temporary microphone files must NOT split across
+    // two different directories within the same live Ember session.
+    static const QString chosen = [] {
+        // Only the explicit smoke-test entrypoint may redirect private data;
+        // an arbitrary inherited variable alone is not authorization.
+        if (QCoreApplication::arguments().contains("--smoke-test")) {
+            const QString isolated =
+                qEnvironmentVariable("EMBER_INTERNAL_SMOKE_ROOT");
+            const QFileInfo root(isolated);
+            if (!isolated.isEmpty() && root.isDir() &&
+                !root.isSymLink() && !root.isJunction())
+                return root.canonicalFilePath();
+        }
 #ifdef Q_OS_WIN
-    return EmberCore::detectWindowsStorageRoot(
-        appFolder(), QStandardPaths::writableLocation(
-            QStandardPaths::AppLocalDataLocation));
+        return EmberCore::detectWindowsStorageRoot(
+            appFolder(), QStandardPaths::writableLocation(
+                QStandardPaths::AppLocalDataLocation));
+#else
+        return appFolder();
 #endif
-    return appFolder();
+    }();
+    return chosen;
 }
+
 void cleanupOldVoiceScratch() {
     const QDir cache(QDir(privateStorageFolder()).filePath("cache"));
     if (!cache.exists()) return;
