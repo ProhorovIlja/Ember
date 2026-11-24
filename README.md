@@ -141,7 +141,7 @@ References and licensing: [docs/RESEARCH.md](docs/RESEARCH.md). Technical archit
 
 ### Local chat and transcription functionality under development
 
-Ember now includes a private **SQLite text-only chat archive** at `data/ember-chats.sqlite`; each conversation has its own local ID and title, and previous chats can be reopened from the sidebar. The UI loads up to 300 recent messages per session while SQLite keeps the complete text archive. Audio recordings are transient and never inserted into chat history.
+Ember now includes a private **SQLite text-only chat archive** at `data/ember-chats.sqlite` beneath its active private-data root; each conversation has its own local ID and title, and previous chats can be reopened from the sidebar. The UI loads up to 300 recent messages per session while SQLite keeps the complete text archive. Audio recordings are transient and never inserted into chat history.
 The **Conversation Memory** dialog also offers **Recall from other saved chats**:
 explicitly disabled by default, it performs a bounded lexical search of
 other saved SQLite conversations only when a new message is submitted,
@@ -149,7 +149,7 @@ and shares at most a couple of short, explicitly unverified reference
 excerpts with the same local LLM. The current conversation is excluded,
 Private Mode never performs cross-chat retrieval, and no index, embeddings,
 background service, new automation or external request is started.
-The archive is currently **plaintext**, not encrypted; there is no automatic Google Drive synchronization. Deleting a selected conversation is explicit, and the installer intentionally does not erase the SQLite database on uninstall.
+The archive is currently **plaintext**, not encrypted; there is no automatic Google Drive synchronization. Installed Inno builds place **new** chats, settings, images and audio scratch in the current Windows user's Qt `AppLocalDataLocation`, not under the installation folder; portable ZIP builds retain self-contained app-side data. An existing legacy app-side archive remains in use until a per-user archive already exists; no files are automatically migrated or deleted. Settings shows the currently selected data path. The installer-only `ember-installed.marker` is never packaged in the portable archive. Deleting a selected conversation is explicit, and the installer intentionally does not erase the SQLite database on uninstall.
 
 The Chat composer provides **click-to-start dictation with Cancel, To draft and Transcribe & send** with offline Whisper recognition in English or Russian (auto-detect, English, Russian). Speech capture is disk-backed and resampled in bounded ~25-second jobs; there is no 30-second dictation time limit, but there is a safety limit of **1 GiB of temporary raw capture**. The transcript is inserted into the composer for review and is **not automatically sent**. If a later ASR chunk fails during a long dictation, already recognized segments are recovered into the editable composer with an explicit incomplete-transcription warning; voice requests are never automatically sent from incomplete recognition. Voice conversations, meanwhile, use natural **English output** even after Russian speech input; the application interface is English-only. Text mode works in English/Russian and includes Conversation, Story studio, Troubleshooting and Development profiles.
 
