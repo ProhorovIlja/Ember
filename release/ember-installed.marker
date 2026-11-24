@@ -1,0 +1,2 @@
+EMBER-INNO-INSTALLED-PROFILE-V1
+This file identifies an Inno-installed Ember. New chat and audio data use the current Windows user's LocalAppData; portable ZIP installs omit this marker.
