@@ -70,7 +70,50 @@ using the native Settings Browse controls; public redistribution is different.
 
 
 
-**Target computer:** Ryzen 5 5600 / NVIDIA RTX 4070 (12 GB VRAM) / 32 GB RAM / two SSDs. Preferred installation `D:\Games\Ember`. This path is *recommended*, not hardcoded: the application uses its executable folder for portable settings and private audio scratch data.
+**Target computer:** Ryzen 5 5600 / NVIDIA RTX 4070 (12 GB VRAM) / 32 GB RAM / two SSDs. Preferred installation `D:\Games\Ember`. This path is *recommended*, not hardcoded. The portable ZIP uses its executable folder for user data; the Inno-installed application uses the current Windows user's LocalAppData for new chats, settings, image Library and temporary voice scratch.
+
+## Installed versus portable private storage (Part 54, 2026-11-24)
+
+**Installed Ember (Inno Setup)** now includes `ember-installed.marker` beside
+`Ember.exe`. On a fresh installation, the native app writes its SQLite
+conversations (`data/ember-chats.sqlite`), settings (`data/ember.ini`), image
+Library (`data/library`), and transient microphone scratch (`cache`) beneath
+the **current Windows account's** Qt
+`QStandardPaths::AppLocalDataLocation`. This is separate from the selected
+`D:\\Games\\Ember` or `Program Files` application directory and avoids
+requiring write access to its installed binaries.
+
+**Portable Ember (ZIP64)** never includes `ember-installed.marker`; all
+its `data/` and `cache/` stay beside `Ember.exe`. Move the entire folder
+to another drive to keep the portable chats and settings. Do not extract the
+portable ZIP over an existing Inno installation: that folder contains an
+installer-only marker by design.
+
+**Existing legacy profiles are not migrated.** If an older Inno installation
+already has `data/ember-chats.sqlite`, `data/ember.ini` or an image Library
+beside the EXE and there is not yet an installed per-user profile, Ember
+continues using those original files. If *both* an established per-user
+profile and app-side legacy profile exist, Ember prefers the per-user profile
+and does not merge them silently. The old folder is not deleted; use the
+manual local backup/restore controls to transfer chats safely. The native
+Settings screen displays the **actual current private data directory** so it
+can be located and backed up before any manual cleanup. The ZIP archive
+itself rejects an Inno marker so the two installation modes cannot be
+accidentally combined by the build tools.
+
+Uninstall must remove application executables and licensed model files but
+must **not** delete the user's SQLite/history/settings/image Library, whether
+stored in LocalAppData or left behind from an older app-side installation.
+Personal files remain unencrypted; use Windows disk encryption and manual
+local backups as appropriate. Nothing is auto-uploaded, auto-migrated,
+monitored, scheduled or downloaded.
+
+This source behavior still requires Windows 10/11 real-device testing:
+a non-administrator installation under a protected folder, first-run
+writability, restart and upgrade, real chat persistence, reinstall and
+uninstall, existing legacy history, portable-folder move, and the Windows
+Inno marker being present while absent from portable ZIP. A successful
+synthetic Qt test is not evidence those scenarios have passed on Windows.
 
 ## Portable folder layout
 
