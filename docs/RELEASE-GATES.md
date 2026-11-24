@@ -408,7 +408,7 @@ No GitHub Actions workflow, scheduled task, watcher, cloud monitoring or public 
 - [x] Source: `offline_bundle.py` and `portable_zip.py` forbid an accidentally bundled Inno marker, with explicit negative fixtures. The installer smoke source requires the marker to be present after a real Inno install; the uninstaller remains responsible for removing installed app files without erasing personal data.
 - [x] New QtTest source: direct pure selection policy plus file-backed tests with isolated directories, marker, old SQLite and profile INI; no migration/erasure.
 - [ ] Compile and run Qt6 C++ tests and verify `ember-installed.marker` is actually found by Inno in its script source directory on real Windows.
-- [ ] Non-admin fresh install in `Program Files` (read-only app directory), first chat and settings write to LocalAppData, image import, recording scratch, restart, and uninstall/reinstall retaining personal data.
+- [ ] Non-admin fresh Inno install under the per-user Programs location, plus a separately authorized test of Ember launched without elevation from a protected Program Files installation. Confirm first chat, settings, image Library and recording scratch write only to the current user's LocalAppData, and restart/uninstall/reinstall retain personal data.
 - [ ] Verify upgrade with only legacy app-side data; then conflict with both profiles present; ensure UI displays correct path and a manual backup/restore retains chat IDs/content.
 - [ ] Extract portable ZIP to two different drives, confirm app-side data follows, remains unaffected by installer marker, and no profile data is created.
 - [ ] Verify no private data under Qt runtime installer payload or downloaded ZIP; run an actual clean Windows offline install before claiming completion.
