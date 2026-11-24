@@ -47,6 +47,7 @@ WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {
 # microphone scratch, local credentials, tokens or development secrets.
 PRIVATE_PARTS = {"data", "cache", ".git", ".ssh", ".aws", ".env",
                  "qml-smoke-report.txt", "ember.ini", "credentials.json",
+                 "ember-installed.marker",
                  "id_rsa", "id_ed25519"}
 PRIVATE_SUFFIXES = (".sqlite", ".sqlite3", ".pem", ".key", ".p12", ".pfx")
 
@@ -663,7 +664,8 @@ def self_test():
         # A stray private file anywhere in the clean application tree is
         # forbidden even if its directory is not named data/ or cache/.
         for relative in ("nested/credentials.json", "logs/session.pem",
-                         "qml-smoke-report.txt", ".env"):
+                         "qml-smoke-report.txt", ".env",
+                         "nested/ember-installed.marker"):
             secret = app / relative
             secret.parent.mkdir(parents=True, exist_ok=True)
             secret.write_bytes(b"PRIVATE")
