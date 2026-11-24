@@ -30,6 +30,26 @@
 class CoreTests : public QObject {
     Q_OBJECT
 private slots:
+    void portableAndInstalledWindowsDataRootsStayCompatible() {
+        // These are pure path choices; no files are moved, deleted or
+        // written. Verify all legacy/current precedence combinations.
+        const QString appRoot = "D:/Games/Ember";
+        const QString profile = "C:/Users/Test/AppData/Local/Ember Local/Ember";
+        const auto choose = EmberCore::privateStorageRoot;
+        QCOMPARE(choose(appRoot, profile, false, false, false), appRoot);
+        QCOMPARE(choose(appRoot, profile, false, true, true), appRoot);
+        // A fresh installer must never require write permission beside EXE.
+        QCOMPARE(choose(appRoot, profile, true, false, false), profile);
+        // Existing local portable/old-installed history survives an upgrade.
+        QCOMPARE(choose(appRoot, profile, true, true, false), appRoot);
+        // Once a current-user installed profile exists, keep using it.
+        QCOMPARE(choose(appRoot, profile, true, false, true), profile);
+        QCOMPARE(choose(appRoot, profile, true, true, true), profile);
+        // Invalid/missing Windows profile path must not create "data" in an
+        // arbitrary working directory or hide legacy app-side sessions.
+        QCOMPARE(choose(appRoot, {}, true, true, false), appRoot);
+        QCOMPARE(choose(appRoot, {}, true, false, false), appRoot);
+    }
     void authenticatesManagedLoopbackListenersByOwnerPid() {
         // A working localhost health endpoint can belong to any process.
         // The exact TCP listener must be 127.0.0.1 AND owned by the expected
