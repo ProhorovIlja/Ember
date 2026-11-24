@@ -59,6 +59,10 @@ Source: "{#AppPayload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 ; intentionally has no model folder. Full release preflight elsewhere REQUIRES
 ; genuine LLM/ASR/TTS assets and verifies installed hashes after install.
 Source: "{#AppPayload}\models\*"; DestDir: "{app}\models"; Flags: ignoreversion recursesubdirs createallsubdirs nocompression skipifsourcedoesntexist
+; The installer alone supplies this marker. Portable ZIP64 does not.
+; New per-user SQLite history and temporary audio reside in LocalAppData.
+; Legacy application-side data remains untouched; no implicit migration.
+Source: "ember-installed.marker"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{userprograms}\Ember"; Filename: "{app}\Ember.exe"; WorkingDir: "{app}"
 Name: "{userdesktop}\Ember"; Filename: "{app}\Ember.exe"; WorkingDir: "{app}"; Tasks: desktopicon
