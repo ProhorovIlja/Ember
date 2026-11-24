@@ -167,6 +167,14 @@ def archive(root, output, *, require_voice=False):
         # Read all archived bytes, not just metadata. The helper is also
         # exercised against deliberately corrupted ZIP members in self-test.
         verify_portable_members(temporary, [name for name, _ in files], captured)
+        # Commit only AFTER the final distribution-level digest has also
+        # been read successfully. Failure must not expose an unverified ZIP
+        # at the requested finished output path.
+        digest = hashlib.sha256()
+        with temporary.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        full_sha = digest.hexdigest()
         if dest.exists() or is_link_or_junction(dest):
             raise ValueError("Refusing concurrent output replacement")
         os.replace(temporary, dest)
@@ -174,11 +182,7 @@ def archive(root, output, *, require_voice=False):
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
-    digest = hashlib.sha256()
-    with dest.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return len(files), digest.hexdigest()
+    return len(files), full_sha
 
 def self_test():
     # These are pure string tests so they run on Windows, where invalid
