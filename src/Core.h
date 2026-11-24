@@ -14,6 +14,15 @@ namespace EmberCore {
 inline constexpr int kMaxVisibleChatCharacters = 65536;
 inline constexpr int kMaxArchivedChatCharacters = kMaxVisibleChatCharacters + 128;
 struct Turn { QString user; QString assistant; };
+// Select one on-device private-data root without moving or deleting files.
+// Portable installations keep their data beside Ember.exe. An Inno-installed
+// build uses per-user LocalAppData for a fresh profile; a legacy app-side
+// profile is retained rather than silently hiding pre-existing chats.
+QString privateStorageRoot(const QString &applicationRoot,
+                           const QString &perUserRoot,
+                           bool installerMarkerPresent,
+                           bool legacyAppProfilePresent,
+                           bool perUserProfilePresent);
 // Merge one foreground SQLite history page into the live conversation UI.
 // Retain at most 300 entries. Older paging discards the newest visible
 // records; newer paging discards the oldest. SQLite archive stays intact.
