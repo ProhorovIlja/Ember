@@ -322,7 +322,8 @@ def self_test():
         except ValueError:
             pass
         for name in ("data/ember-chats.sqlite", "qml-smoke-report.txt",
-                     "settings/credentials.json", "logs/session.pem"):
+                     "settings/credentials.json", "logs/session.pem",
+                     "ember-installed.marker"):
             candidate = complete / name
             candidate.parent.mkdir(parents=True, exist_ok=True)
             candidate.write_bytes(b"private information")
