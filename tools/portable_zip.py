@@ -9,8 +9,8 @@ import os
 from pathlib import Path
 import tempfile
 import zipfile
-from offline_bundle import (verify, is_link_or_junction, private_payload_path,
-                            WINDOWS_RESERVED)
+from offline_bundle import (verify, load_manifest, is_link_or_junction,
+                            private_payload_path, WINDOWS_RESERVED)
 
 
 def validate_portable_members(names):
@@ -44,9 +44,22 @@ def validate_portable_members(names):
 
 
 def archive(root, output, *, require_voice=False):
-    folder = Path(root).resolve(strict=True)
+    """Create a deterministic ZIP64 archive with source and ZIP member SHA-256 checks.
+
+    Each model/engine/license member must still equal the independently
+    approved asset manifest AFTER copying. Re-read every completed ZIP member
+    in bounded blocks to catch corruption that the central directory cannot.
+    """
+    supplied = Path(root)
+    if is_link_or_junction(supplied):
+        raise ValueError("Portable payload root must not be a junction or symlink")
+    folder = supplied.resolve(strict=True)
     expected = folder / "offline-assets.json"
     verify(folder, expected, approved=True, require_voice=require_voice)
+    approved_assets = {
+        item["path"]: (item["bytes"], item["sha256"])
+        for item in load_manifest(expected)
+    }
     for required in ("Ember.exe", "Qt6Core.dll", "LICENSE"):
         if not (folder / required).is_file():
             raise ValueError(f"Missing complete native app: {required}")
@@ -67,35 +80,93 @@ def archive(root, output, *, require_voice=False):
     validate_portable_members([name for name, _ in files])
     files.sort(key=lambda pair: pair[0].casefold())
     dest = Path(output)
-    if dest.exists():
+    if dest.exists() or is_link_or_junction(dest):
         raise ValueError("Refusing to overwrite existing ZIP")
+    # Staging a ZIP inside the input tree can accidentally include earlier
+    # complete distributions in a later build and inflate a multi-GB release.
+    if dest.resolve(strict=False).is_relative_to(folder):
+        raise ValueError("Portable ZIP output must be outside its source tree")
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if is_link_or_junction(dest.parent):
+        raise ValueError("Portable ZIP output parent must not be a link")
     temporary = None
+    captured = {}
     try:
         with tempfile.NamedTemporaryFile(prefix=".ember-zip64-", suffix=".zip",
                                          dir=dest.parent, delete=False) as handle:
             temporary = Path(handle.name)
-        with zipfile.ZipFile(temporary, "w", allowZip64=True,
-                             compression=zipfile.ZIP_DEFLATED, compresslevel=6) as file:
+        with zipfile.ZipFile(temporary, "w", allowZip64=True) as file:
             for relative, path in files:
+                # Normalize ZIP timestamps, Unix modes and member order so
+                # source filesystem mtime/location cannot silently alter a
+                # reproducibly built Windows release archive.
+                source_stat = path.stat()
+                metadata = zipfile.ZipInfo(relative, date_time=(2026, 1, 1, 0, 0, 0))
+                metadata.create_system = 3
+                metadata.external_attr = 0o100644 << 16
+                metadata.file_size = source_stat.st_size
                 # Large quantized weights are often incompressible. Avoid
-                # wasting memory, CPU and installation time recompressing them.
-                compression = (zipfile.ZIP_STORED if path.suffix.lower()
-                               in (".gguf", ".onnx", ".bin") else zipfile.ZIP_DEFLATED)
-                file.write(path, arcname=relative, compress_type=compression)
+                # wasting CPU/time recompressing them.
+                metadata.compress_type = (zipfile.ZIP_STORED if path.suffix.lower()
+                                          in (".gguf", ".onnx", ".bin")
+                                          else zipfile.ZIP_DEFLATED)
+                if metadata.compress_type == zipfile.ZIP_DEFLATED:
+                    metadata.compresslevel = 6
+                digest = hashlib.sha256()
+                copied = 0
+                with path.open("rb") as input_file, file.open(
+                        metadata, mode="w", force_zip64=True) as member:
+                    opened_stat = os.fstat(input_file.fileno())
+                    if (opened_stat.st_size != source_stat.st_size or
+                            opened_stat.st_mtime_ns != source_stat.st_mtime_ns or
+                            opened_stat.st_ino != source_stat.st_ino):
+                        raise ValueError(f"Source changed before archive copy: {relative}")
+                    for block in iter(lambda: input_file.read(1024 * 1024), b""):
+                        member.write(block)
+                        digest.update(block)
+                        copied += len(block)
+                final_stat = path.stat()
+                if (copied != source_stat.st_size or
+                        final_stat.st_size != source_stat.st_size or
+                        final_stat.st_mtime_ns != source_stat.st_mtime_ns or
+                        final_stat.st_ino != source_stat.st_ino):
+                    raise ValueError(f"Source changed during ZIP assembly: {relative}")
+                file_sha = digest.hexdigest()
+                # This check is critical: verify() ran BEFORE the ZIP started.
+                # A large GGUF may change while other members are copied.
+                if (relative in approved_assets and
+                        (copied, file_sha) != approved_assets[relative]):
+                    raise ValueError(f"Approved asset changed during ZIP assembly: {relative}")
+                captured[relative] = (copied, file_sha)
+        # Read the ZIP payload, not merely its central directory. Replaying
+        # SHA-256 in 1-MiB chunks also exercises zipfile's per-member CRC.
+        # No multi-gigabyte model is ever materialized in process RAM.
         with zipfile.ZipFile(temporary, "r", allowZip64=True) as file:
-            if set(file.namelist()) != {name for name, _ in files}:
+            if file.namelist() != [name for name, _ in files]:
                 raise ValueError("ZIP directory table verification failed")
-        temporary.rename(dest)
+            for relative, _ in files:
+                entry = file.getinfo(relative)
+                copied, source_sha = captured[relative]
+                if entry.file_size != copied:
+                    raise ValueError(f"ZIP member size mismatch: {relative}")
+                replay = hashlib.sha256()
+                with file.open(relative, "r") as archived:
+                    for block in iter(lambda: archived.read(1024 * 1024), b""):
+                        replay.update(block)
+                if replay.hexdigest() != source_sha:
+                    raise ValueError(f"ZIP member integrity mismatch: {relative}")
+        if dest.exists() or is_link_or_junction(dest):
+            raise ValueError("Refusing concurrent output replacement")
+        os.replace(temporary, dest)
+        temporary = None
     finally:
-        if temporary is not None and temporary.exists():
-            temporary.unlink()
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     digest = hashlib.sha256()
     with dest.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return len(files), digest.hexdigest()
-
 
 def self_test():
     # These are pure string tests so they run on Windows, where invalid
