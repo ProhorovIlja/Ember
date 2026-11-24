@@ -398,3 +398,19 @@ No scheduled tasks, cloud indexing, background history monitoring, GitHub Action
 - [ ] Run LLM + TTS + RU/EN ASR concurrently on RTX 4070 12 GiB, inspect natural English female voice and dictation accuracy. Integrity alone is not voice or model quality.
 
 No GitHub Actions workflow, scheduled task, watcher, cloud monitoring or public release was started.
+
+## 24 November 2026 — installed-versus-portable user data roots (Part 54)
+
+- [x] Source fix: Inno Setup installs an `ember-installed.marker` that is NOT present in a portable ZIP. A fresh installed launch selects `QStandardPaths::AppLocalDataLocation` for `data/ember-chats.sqlite`, `data/ember.ini`, image Library and audio cache instead of assuming the app folder is writable.
+- [x] Source: portable ZIP without marker still retains its portable `data/` and `cache/` alongside Ember.exe, including manual folder moves.
+- [x] Source: existing application-side legacy chats or settings take precedence during old Inno upgrades **if** there is no established per-user profile. If both locations contain established state, the per-user profile takes precedence; neither location is overwritten, deleted or silently merged. The chosen root is cached once per process to prevent QSettings/SQLite/audio from splitting across locations.
+- [x] Source: Settings exposes the active private data path so users can manually back up the correct folder; the feature does not browse or upload history.
+- [x] Source: `offline_bundle.py` and `portable_zip.py` forbid an accidentally bundled Inno marker, with explicit negative fixtures. The installer smoke source requires the marker to be present after a real Inno install; the uninstaller remains responsible for removing installed app files without erasing personal data.
+- [x] New QtTest source: direct pure selection policy plus file-backed tests with isolated directories, marker, old SQLite and profile INI; no migration/erasure.
+- [ ] Compile and run Qt6 C++ tests and verify `ember-installed.marker` is actually found by Inno in its script source directory on real Windows.
+- [ ] Non-admin fresh install in `Program Files` (read-only app directory), first chat and settings write to LocalAppData, image import, recording scratch, restart, and uninstall/reinstall retaining personal data.
+- [ ] Verify upgrade with only legacy app-side data; then conflict with both profiles present; ensure UI displays correct path and a manual backup/restore retains chat IDs/content.
+- [ ] Extract portable ZIP to two different drives, confirm app-side data follows, remains unaffected by installer marker, and no profile data is created.
+- [ ] Verify no private data under Qt runtime installer payload or downloaded ZIP; run an actual clean Windows offline install before claiming completion.
+
+No automatic migration, scheduled task, monitoring, GitHub Actions run or release was created in Part 54.
