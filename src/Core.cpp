@@ -39,6 +39,28 @@ QString privateStorageRoot(const QString &applicationRoot,
     if (legacyAppProfilePresent) return applicationRoot;
     return perUserRoot.isEmpty() ? applicationRoot : perUserRoot;
 }
+QString detectWindowsStorageRoot(const QString &applicationRoot,
+                                 const QString &perUserRoot) {
+    if (applicationRoot.isEmpty()) return {};
+    const QDir application(applicationRoot);
+    const QFileInfo installedMarker(
+        application.filePath("ember-installed.marker"));
+    const bool installed = installedMarker.isFile() &&
+                           !installedMarker.isSymLink() &&
+                           !installedMarker.isJunction();
+    // Keep the check restricted to known files owned by Ember. A random
+    // folder named "data" must not force legacy mode or shadow new chats.
+    const auto hasProfile = [](const QString &root) {
+        if (root.isEmpty()) return false;
+        const QDir directory(root);
+        return QFileInfo::exists(directory.filePath("data/ember-chats.sqlite")) ||
+               QFileInfo::exists(directory.filePath("data/ember.ini")) ||
+               QFileInfo::exists(directory.filePath("data/library"));
+    };
+    return privateStorageRoot(
+        applicationRoot, perUserRoot, installed,
+        hasProfile(applicationRoot), hasProfile(perUserRoot));
+}
 // Keep Qt's live model bounded even after arbitrarily many manually
 // requested history pages. The complete archive remains in SQLite.
 void mergeVisibleHistoryPage(QVariantList &visible,
