@@ -61,24 +61,9 @@ QString privateStorageFolder() {
             return root.canonicalFilePath();
     }
 #ifdef Q_OS_WIN
-    const QString application = appFolder();
-    // Only the actual Inno installer adds this marker. Standalone ZIP64
-    // portable builds deliberately omit it and remain fully transferable.
-    const QFileInfo marker(QDir(application).filePath("ember-installed.marker"));
-    if (marker.isFile() && !marker.isSymLink() && !marker.isJunction()) {
-        const QString perUser = QStandardPaths::writableLocation(
-            QStandardPaths::AppLocalDataLocation);
-        const auto existingProfile = [](const QString &root) {
-            if (root.isEmpty()) return false;
-            const QDir directory(root);
-            return QFileInfo::exists(directory.filePath("data/ember-chats.sqlite")) ||
-                   QFileInfo::exists(directory.filePath("data/ember.ini")) ||
-                   QFileInfo::exists(directory.filePath("data/library"));
-        };
-        return EmberCore::privateStorageRoot(
-            application, perUser, true,
-            existingProfile(application), existingProfile(perUser));
-    }
+    return EmberCore::detectWindowsStorageRoot(
+        appFolder(), QStandardPaths::writableLocation(
+            QStandardPaths::AppLocalDataLocation));
 #endif
     return appFolder();
 }
