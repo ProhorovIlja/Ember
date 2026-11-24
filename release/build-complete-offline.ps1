@@ -63,6 +63,11 @@ function Under-Directory([string]$Candidate, [string]$Parent) {
         [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+# This entrypoint can also be invoked without the top-level Windows builder.
+# Fail fast on local fixture self-tests before copying large approved weights.
+# Tests run only in the foreground of the explicit packaging command.
+Run-CheckedPython -Arguments @((Join-Path $root 'tools/packaging_preflight.py'))
+
 $app = Must-BeRealDirectory $ApplicationDirectory 'Clean deployed Qt app'
 $assets = Must-BeRealDirectory $AssetsDirectory 'Manually collected offline assets'
 if (-not (Test-Path -LiteralPath $ApprovedManifest -PathType Leaf)) {
