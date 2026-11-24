@@ -1800,7 +1800,7 @@ ApplicationWindow {
                                 spacing: 16
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    implicitHeight: 85
+                                    implicitHeight: 105
                                     radius: 16
                                     color: "#0B203B"
                                     border.color: "#24578E"
