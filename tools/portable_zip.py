@@ -43,6 +43,34 @@ def validate_portable_members(names):
         raise ValueError("Windows portable archive has file/directory name collision")
 
 
+def verify_portable_members(archive_path, ordered_names, captured):
+    """Read every ZIP64 member from disk and check CRC, size and SHA-256.
+
+    captured maps a validated relative member name to (byte count, sha256).
+    ZIP metadata alone cannot establish the bytes of a large copied GGUF.
+    """
+    with zipfile.ZipFile(archive_path, "r", allowZip64=True) as file:
+        if file.namelist() != ordered_names:
+            raise ValueError("ZIP directory table verification failed")
+        for relative in ordered_names:
+            entry = file.getinfo(relative)
+            copied, source_sha = captured[relative]
+            if entry.file_size != copied:
+                raise ValueError(f"ZIP member size mismatch: {relative}")
+            expected_compression = (zipfile.ZIP_STORED if
+                                    Path(relative).suffix.lower() in
+                                    (".gguf", ".onnx", ".bin")
+                                    else zipfile.ZIP_DEFLATED)
+            if entry.compress_type != expected_compression:
+                raise ValueError(f"Unexpected ZIP compression method: {relative}")
+            replay = hashlib.sha256()
+            with file.open(relative, "r") as archived:
+                for block in iter(lambda: archived.read(1024 * 1024), b""):
+                    replay.update(block)
+            if replay.hexdigest() != source_sha:
+                raise ValueError(f"ZIP member integrity mismatch: {relative}")
+
+
 def archive(root, output, *, require_voice=False):
     """Create a deterministic ZIP64 archive with source and ZIP member SHA-256 checks.
 
@@ -136,23 +164,9 @@ def archive(root, output, *, require_voice=False):
                         (copied, file_sha) != approved_assets[relative]):
                     raise ValueError(f"Approved asset changed during ZIP assembly: {relative}")
                 captured[relative] = (copied, file_sha)
-        # Read the ZIP payload, not merely its central directory. Replaying
-        # SHA-256 in 1-MiB chunks also exercises zipfile's per-member CRC.
-        # No multi-gigabyte model is ever materialized in process RAM.
-        with zipfile.ZipFile(temporary, "r", allowZip64=True) as file:
-            if file.namelist() != [name for name, _ in files]:
-                raise ValueError("ZIP directory table verification failed")
-            for relative, _ in files:
-                entry = file.getinfo(relative)
-                copied, source_sha = captured[relative]
-                if entry.file_size != copied:
-                    raise ValueError(f"ZIP member size mismatch: {relative}")
-                replay = hashlib.sha256()
-                with file.open(relative, "r") as archived:
-                    for block in iter(lambda: archived.read(1024 * 1024), b""):
-                        replay.update(block)
-                if replay.hexdigest() != source_sha:
-                    raise ValueError(f"ZIP member integrity mismatch: {relative}")
+        # Read all archived bytes, not just metadata. The helper is also
+        # exercised against deliberately corrupted ZIP members in self-test.
+        verify_portable_members(temporary, [name for name, _ in files], captured)
         if dest.exists() or is_link_or_junction(dest):
             raise ValueError("Refusing concurrent output replacement")
         os.replace(temporary, dest)
@@ -250,6 +264,47 @@ def self_test():
         voice_count, voice_sha = archive(
             complete, base / "voice-approved.zip", require_voice=True)
         assert voice_count == count and len(voice_sha) == 64
+        # No source timestamps or absolute build paths should alter the
+        # resulting ZIP64 bytes on the same Python/zlib implementation.
+        os.utime(voice_file, (1_600_000_000, 1_600_000_000))
+        copied_count, copied_sha = archive(
+            complete, base / "voice-approved-repeat.zip", require_voice=True)
+        assert copied_count == voice_count and copied_sha == voice_sha
+
+        with zipfile.ZipFile(base / "voice-approved.zip") as original:
+            member_names = original.namelist()
+            expected_members = {
+                name: (original.getinfo(name).file_size,
+                       hashlib.sha256(original.read(name)).hexdigest())
+                for name in member_names
+            }
+            stored = original.getinfo("models/llm/model.gguf")
+            # Source test payload is ~1 MiB, not gigabytes.
+            assert stored.compress_type == zipfile.ZIP_STORED
+            assert stored.date_time == (2026, 1, 1, 0, 0, 0)
+            data_at = (stored.header_offset + 30 +
+                       len(stored.filename.encode("utf-8")) + len(stored.extra))
+        corrupted = base / "corrupted-portable.zip"
+        corrupted.write_bytes((base / "voice-approved.zip").read_bytes())
+        with corrupted.open("r+b") as damaged:
+            damaged.seek(data_at + 64)
+            bit = damaged.read(1)
+            assert bit
+            damaged.seek(data_at + 64)
+            damaged.write(bytes([bit[0] ^ 0x01]))
+        try:
+            verify_portable_members(corrupted, member_names, expected_members)
+            raise AssertionError("Corrupted archived model bytes passed ZIP integrity")
+        except (ValueError, zipfile.BadZipFile):
+            pass
+        verify_portable_members(base / "voice-approved.zip",
+                                member_names, expected_members)
+        try:
+            archive(complete, complete / "unsafe-self-archive.zip",
+                    require_voice=True)
+            raise AssertionError("ZIP output inside input tree was accepted")
+        except ValueError:
+            pass
         with zipfile.ZipFile(base / "voice-approved.zip") as approved_zip:
             assert approved_zip.read(voice_name)[:4] == b"GGUF"
         with zipfile.ZipFile(base / "portable.zip") as zipped:
@@ -274,7 +329,7 @@ def self_test():
             except ValueError:
                 pass
             candidate.unlink()
-    print("portable_zip ZIP64 packaging self-test passed (synthetic headers and private-file exclusions)")
+    print("portable_zip ZIP64 packaging self-test passed (deterministic hashes, full member replay, corruption, model integrity, private files)")
 
 
 def main():
