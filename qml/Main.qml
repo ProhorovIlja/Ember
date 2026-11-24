@@ -1808,13 +1808,50 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: 17
                                         spacing: 6
-                                        Text { text: "PORTABLE LOCAL SETUP"; color: window.mint; font.pixelSize: 12; font.bold: true; font.letterSpacing: 1 }
+                                        Text { text: "NATIVE WINDOWS · OFFLINE SETUP"; color: window.mint; font.pixelSize: 12; font.bold: true; font.letterSpacing: 1 }
                                         Text {
                                             width: parent.width
-                                            text: "Default installation: D:\\Games\\Ember. Choose trusted local engines and models; optional model downloads begin only when you explicitly start a service."
+                                            text: "Portable ZIP keeps chats beside Ember.exe. Installed Ember keeps new private data in your Windows user profile. Models remain local; no download starts without your action."
                                             color: "#CFDFF1"
                                             wrapMode: Text.WordWrap
                                             font.pixelSize: 13
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 100
+                                    radius: 13
+                                    color: window.cardColor
+                                    border.color: window.borderColor
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        spacing: 7
+                                        Text {
+                                            text: "PRIVATE LOCAL DATA · CURRENT LOCATION"
+                                            color: "#CDE7FF"
+                                            font.pixelSize: 12
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: ember.privateDataLocation()
+                                            textFormat: Text.PlainText
+                                            color: "#DCEBFB"
+                                            font.pixelSize: 12
+                                            elide: Text.ElideMiddle
+                                            ToolTip.visible: dataPathHover.hovered
+                                            ToolTip.text: ember.privateDataLocation()
+                                            ToolTip.delay: 600
+                                            HoverHandler { id: dataPathHover }
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: "Chats, settings and image Library stay on this PC. No automatic cloud backup or migration."
+                                            color: "#8EAAC4"
+                                            font.pixelSize: 11
+                                            wrapMode: Text.Wrap
                                         }
                                     }
                                 }
