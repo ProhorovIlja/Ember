@@ -50,6 +50,42 @@ private slots:
         QCOMPARE(choose(appRoot, {}, true, true, false), appRoot);
         QCOMPARE(choose(appRoot, {}, true, false, false), appRoot);
     }
+    void detectsActualInnoMarkerAndPreservesLegacyLocalFiles() {
+        QTemporaryDir sandbox;
+        QVERIFY(sandbox.isValid());
+        const QString app = sandbox.filePath("app");
+        const QString user = sandbox.filePath("per-user");
+        QVERIFY(QDir().mkpath(app));
+        QVERIFY(QDir().mkpath(user));
+        const auto detect = EmberCore::detectWindowsStorageRoot;
+        // No marker: an extracted portable ZIP always uses app-side data.
+        QCOMPARE(detect(app, user), app);
+        QFile marker(QDir(app).filePath("ember-installed.marker"));
+        QVERIFY(marker.open(QIODevice::WriteOnly));
+        QCOMPARE(marker.write("EMBER-INNO-INSTALLED-PROFILE-V1\n"),
+                 qint64(32));
+        marker.close();
+        QCOMPARE(detect(app, user), user); // new installation
+        // An empty data directory is not yet an established legacy profile.
+        QVERIFY(QDir().mkpath(QDir(app).filePath("data")));
+        QCOMPARE(detect(app, user), user);
+        QFile legacy(QDir(app).filePath("data/ember-chats.sqlite"));
+        QVERIFY(legacy.open(QIODevice::WriteOnly));
+        QVERIFY(legacy.write("existing saved history") > 0);
+        legacy.close();
+        QCOMPARE(detect(app, user), app); // keep existing legacy history
+        QVERIFY(QDir().mkpath(QDir(user).filePath("data")));
+        QFile modern(QDir(user).filePath("data/ember.ini"));
+        QVERIFY(modern.open(QIODevice::WriteOnly));
+        QVERIFY(modern.write("existing per-user preferences") > 0);
+        modern.close();
+        QCOMPARE(detect(app, user), user); // existing per-user profile wins
+        QVERIFY(QFile::remove(modern.fileName()));
+        QCOMPARE(detect(app, user), app);
+        QVERIFY(QFile::remove(marker.fileName()));
+        QCOMPARE(detect(app, user), app); // marker absent again: portable
+        QVERIFY(QFileInfo::exists(legacy.fileName())); // never moved or erased
+    }
     void authenticatesManagedLoopbackListenersByOwnerPid() {
         // A working localhost health endpoint can belong to any process.
         // The exact TCP listener must be 127.0.0.1 AND owned by the expected
