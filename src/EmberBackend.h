@@ -172,6 +172,9 @@ public:
     QVariantList audioOutputs() const;
     int selectedInputIndex() const;
     int selectedOutputIndex() const;
+    // Read-only user-visible path: the current SQLite/settings/image folder
+    // is never migrated, uploaded or deleted just by inspecting it.
+    Q_INVOKABLE QString privateDataLocation() const;
     Q_INVOKABLE QString pathFor(const QString &key) const;
     Q_INVOKABLE void choosePath(const QString &key);
     // Manual local GGUF selection does not copy model weights or access a CDN.
