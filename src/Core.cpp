@@ -25,6 +25,20 @@
 #include <windows.h>
 #endif
 namespace EmberCore {
+QString privateStorageRoot(const QString &applicationRoot,
+                           const QString &perUserRoot,
+                           bool installerMarkerPresent,
+                           bool legacyAppProfilePresent,
+                           bool perUserProfilePresent) {
+    // Prefer the existing installed-user profile, then legacy app-side
+    // settings/chats, to avoid silently hiding or overwriting conversations.
+    // No automatic migration and no storage inside a protected install root
+    // for brand-new installed profiles.
+    if (!installerMarkerPresent) return applicationRoot;
+    if (perUserProfilePresent && !perUserRoot.isEmpty()) return perUserRoot;
+    if (legacyAppProfilePresent) return applicationRoot;
+    return perUserRoot.isEmpty() ? applicationRoot : perUserRoot;
+}
 // Keep Qt's live model bounded even after arbitrarily many manually
 // requested history pages. The complete archive remains in SQLite.
 void mergeVisibleHistoryPage(QVariantList &visible,
