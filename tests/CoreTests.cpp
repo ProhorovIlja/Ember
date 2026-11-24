@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QCryptographicHash>
 #include <QFile>
+#include <QFileInfo>
 #include <QDataStream>
 #include <QJsonArray>
 #include <QJsonDocument>
