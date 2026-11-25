@@ -1,0 +1,208 @@
+name: Ember native Windows development
+
+on:
+  push:
+    branches: [voice-foundation]
+  workflow_dispatch:
+
+concurrency:
+  group: ember-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-native:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regression-test stable release gates before building
+        shell: pwsh
+        run: |
+          python release/verify_release.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Release gate tests failed.' }
+          if (Test-Path 'release/acceptance.json') { throw 'Development branch unexpectedly contains a stable release approval.' }
+      - name: Validate local-only speech benchmark protocol
+        shell: pwsh
+        run: |
+          python tools/voice_benchmark.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Local voice benchmark self-test failed.' }
+      - name: Validate sanitized private native worker environment
+        shell: pwsh
+        run: |
+          python tools/private_worker_env.py
+          if ($LASTEXITCODE -ne 0) { throw 'Private local model environment tests failed.' }
+      - name: Validate one-shot real native speech acceptance safety (no model)
+        shell: pwsh
+        run: |
+          python tools/native_speech_acceptance.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Native speech acceptance preflight self-test failed.' }
+      - name: Validate paired local TTS comparison constraints
+        shell: pwsh
+        run: |
+          python tools/compare_voice_profiles.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Paired voice profile comparison mock failed.' }
+      - name: Validate optional native ASR protocol and text metrics
+        shell: pwsh
+        run: |
+          python tools/asr_benchmark.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Local Qwen3-ASR mock protocol test failed.' }
+      - name: Validate private EN/RU ASR corpus scoring
+        shell: pwsh
+        run: |
+          python tools/asr_corpus.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Local ASR corpus traversal and WER self-test failed.' }
+      - name: Regression-test paired local Whisper vs Qwen RU/EN ASR comparison
+        shell: pwsh
+        run: |
+          python tools/compare_asr_engines.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Paired private ASR comparison test failed.' }
+      - name: Validate local-only text streaming benchmark
+        shell: pwsh
+        run: |
+          python tools/text_benchmark.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Local text benchmark self-test failed.' }
+      - name: Validate private blind text A/B quality protocol
+        shell: pwsh
+        run: |
+          python tools/blind_text_ab.py self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Local blind A/B quality lab self-test failed.' }
+      - name: Validate private blinded human voice listening protocol
+        shell: pwsh
+        run: |
+          python tools/voice_listening_ab.py self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Human TTS blind A/B comparison self-test failed.' }
+      - name: Validate custom EmberMind SFT dataset boundaries
+        shell: pwsh
+        run: |
+          python tools/ember_mind_studio.py self-test
+          if ($LASTEXITCODE -ne 0) { throw 'EmberMind local SFT dataset self-test failed.' }
+      - name: Verify pinned LoRA adapter merge preflight (synthetic only)
+        shell: pwsh
+        run: |
+          python tools/adapter_merge_preflight.py self-test
+          if ($LASTEXITCODE -ne 0) { throw 'EmberMind adapter compatibility preflight failed.' }
+      - name: Validate actual Qwen3 speech GGUF identity metadata (synthetic only)
+        shell: pwsh
+        run: |
+          python tools/native_gguf_metadata.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Qwen3 GGUF metadata validation self-test failed.' }
+      - name: Check offline asset manifest tooling (no network)
+        shell: pwsh
+        run: |
+          python tools/offline_bundle.py self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Offline asset inventory self-test failed.' }
+      - name: Test complete offline assembly and ZIP64 packaging
+        shell: pwsh
+        run: |
+          python tools/portable_zip.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Offline ZIP64 packaging test failed.' }
+      - name: Test manual offline text-first staging without network
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/text-first-preparation.test.ps1
+      - name: Validate native Windows PE dependency audit (synthetic only)
+        shell: pwsh
+        run: |
+          python tools/windows_pe_audit.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Native Windows dependency audit fixtures failed.' }
+      - name: Install Qt 6.8.3 dynamic development modules
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
+      - name: Configure CMake / MSVC x64
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+      - name: Compile application and core tests
+        shell: pwsh
+        run: cmake --build build --config Release --parallel 2
+      - name: Execute core regressions
+        shell: pwsh
+        run: |
+          # CTest already reports test success/failure. Never print an entire
+          # failing QCOMPARE payload, which may be tens of kilobytes of chat.
+          ctest --test-dir build -C Release
+          $code = $LASTEXITCODE
+          $report = 'build/ember-test-report.txt'
+          if (Test-Path -LiteralPath $report) {
+            # Only the test function, source location, and totals. Never
+            # include Actual/Expected strings, source content or user text.
+            $lines = @(Select-String -LiteralPath $report -Pattern '^(FAIL!|Totals:|\s+Loc:)' |
+              Select-Object -First 32 | ForEach-Object { $_.Line })
+            if ($lines.Count -eq 0) { $lines = @('No QtTest failure details found.') }
+            $summary = [string]::Join("`n", $lines)
+            # 4,000 UTF-16 units cannot exceed 16 KiB UTF-8 plus header.
+            if ($summary.Length -gt 4000) { $summary = $summary.Substring(0, 4000) }
+            Set-Content -LiteralPath 'build/ember-test-summary.txt' -Value $summary -Encoding utf8
+            Write-Host $summary
+          }
+          if ($code -ne 0) { throw "QtTest failed with code $code" }
+      - name: Upload bounded CoreTests failure summary
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ember-core-failure-summary
+          path: build/ember-test-summary.txt
+          retention-days: 1
+          if-no-files-found: ignore
+      - name: Deploy dynamic Qt runtime
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path 'build/Release/Ember.exe'
+          windeployqt --release --qmldir qml $exe
+          if (!(Test-Path $exe)) { throw 'Native EXE missing' }
+          if (!(Test-Path 'build/Release/Qt6Core.dll')) { throw 'Dynamic Qt deployment missing' }
+      - name: Stage Microsoft-signed app-local CRT and trim unused Qt plugins
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File release/stage-msvc-applocal.ps1 -PayloadDirectory build/Release -PruneDevelopmentTools
+          if ($LASTEXITCODE -ne 0) { throw 'Local Microsoft CRT staging or Qt plugin trim failed.' }
+      - name: Audit deployed Windows x64 DLL closure without executing binaries
+        shell: pwsh
+        run: |
+          python tools/windows_pe_audit.py --root build/Release
+          if ($LASTEXITCODE -ne 0) { throw 'Missing compiler/Qt native DLL dependency in portable payload.' }
+      - name: Headless native QML launch and runtime resource smoke test
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $env:QT_QUICK_BACKEND = 'software'
+          $env:QT_OPENGL = 'software'
+          $exe = (Resolve-Path 'build/Release/Ember.exe').Path
+          $log = Join-Path $env:RUNNER_TEMP 'ember-qml-stderr.txt'
+          $stdout = Join-Path $env:RUNNER_TEMP 'ember-qml-stdout.txt'
+          $diagnostic = Join-Path $env:RUNNER_TEMP ('ember-qml-smoke-' + [guid]::NewGuid().ToString('N') + '.txt')
+          $env:EMBER_SMOKE_REPORT_PATH = $diagnostic
+          $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru -RedirectStandardError $log -RedirectStandardOutput $stdout
+          if (-not $process.WaitForExit(20000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Get-Content $log -ErrorAction SilentlyContinue
+            throw 'Ember headless window did not exit within 20 seconds.'
+          }
+          Get-Content $log -ErrorAction SilentlyContinue
+          Get-Content $stdout -ErrorAction SilentlyContinue
+          Get-Content $diagnostic -ErrorAction SilentlyContinue
+          Remove-Item Env:\EMBER_SMOKE_REPORT_PATH -ErrorAction SilentlyContinue
+          if ($process.ExitCode -ne 0) { throw "Native QML smoke test failed with exit code $($process.ExitCode)" }
+          if (Test-Path 'build/Release/data') { throw 'QML smoke seeded private data into the deployable Qt folder.' }
+          if (Test-Path 'build/Release/cache') { throw 'QML smoke seeded audio scratch into the deployable Qt folder.' }
+          if (Test-Path 'build/Release/qml-smoke-report.txt') { throw 'QML smoke seeded report into deployable Qt folder.' }
+      - name: Package unsigned development build
+        shell: pwsh
+        run: |
+          Copy-Item README.md build/Release/README.md
+          Copy-Item LICENSE build/Release/LICENSE
+          Copy-Item docs/SETUP.md build/Release/SETUP.md
+          Copy-Item docs/TEXT-FIRST-MILESTONE.md build/Release/TEXT-FIRST-MILESTONE.md
+          Copy-Item release/prepare-text-first.ps1 build/Release/prepare-text-first.ps1
+          Compress-Archive -Path 'build/Release/*' -DestinationPath 'Ember-dev-win64.zip' -CompressionLevel Optimal
+      - name: Compile and validate unsigned developer installer
+        shell: pwsh
+        run: pwsh -NoProfile -File release/build-dev-installer.ps1 -VerifyInstall
+      # No user-facing preview is uploaded. Release artifacts are published only\n      # through the separately gated stable-release.yml workflow.\n

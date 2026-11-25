@@ -1,0 +1,110 @@
+name: Ember stable Windows Release (acceptance gated)
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verified-windows-release:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify signed-off acceptance before installing build dependencies
+        shell: pwsh
+        run: |
+          python release/verify_release.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Acceptance validator self-tests failed.' }
+          python release/verify_release.py --tag $env:GITHUB_REF_NAME
+          if ($LASTEXITCODE -ne 0) { throw 'Release acceptance gates not met.' }
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
+      - name: Compile and validate the actual Windows desktop application
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed.' }
+          cmake --build build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'C++ compilation failed.' }
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Native unit tests failed.' }
+          windeployqt --release --qmldir qml build/Release/Ember.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Qt dependency deployment failed.' }
+          # Stage only official signed VS 2022 app-local CRT DLLs locally;
+          # do not assume a clean Windows 10 machine has MSVC installed.
+          pwsh -NoProfile -File release/stage-msvc-applocal.ps1 -PayloadDirectory build/Release -PruneDevelopmentTools
+          if ($LASTEXITCODE -ne 0) { throw 'Stable release blocked: official app-local VC CRT runtime missing.' }
+          # Stable distribution must be COMPLETE. Until licensed engine and
+          # weights assets are staged, deliberately FAIL rather than publish
+          # an EXE that tries to fetch geoblocked weights at first launch.
+          $manifest = 'build/Release/offline-assets.json'
+          if (!(Test-Path $manifest)) {
+            throw 'Stable release blocked: approved complete offline asset manifest missing.'
+          }
+          python tools/offline_bundle.py verify --root build/Release --manifest $manifest --redistribution-required --require-voice
+          if ($LASTEXITCODE -ne 0) { throw 'Stable release blocked: offline assets not approved or complete.' }
+          # A valid model hash is not proof that its Windows native DLL
+          # imports were packaged. Check the real complete payload before
+          # ZIP64/installer/publication, not only on a developer machine.
+          python tools/windows_pe_audit.py --root build/Release
+          if ($LASTEXITCODE -ne 0) { throw 'Stable release blocked: missing native Windows x64 runtime DLLs.' }
+          Copy-Item README.md build/Release/README.md
+          Copy-Item LICENSE build/Release/LICENSE
+          Copy-Item docs/SETUP.md build/Release/SETUP.md
+          Copy-Item ("release/notes/" + $env:GITHUB_REF_NAME + ".md") build/Release/RELEASE-NOTES.md
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $env:QT_QUICK_BACKEND = 'software'
+          $env:QT_OPENGL = 'software'
+          $exe = (Resolve-Path 'build/Release/Ember.exe').Path
+          $diagnostic = Join-Path $env:RUNNER_TEMP ('ember-release-smoke-' + [guid]::NewGuid().ToString('N') + '.txt')
+          $env:EMBER_SMOKE_REPORT_PATH = $diagnostic
+          try {
+            $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru -Wait
+          } finally {
+            Remove-Item Env:\EMBER_SMOKE_REPORT_PATH -ErrorAction SilentlyContinue
+          }
+          Get-Content $diagnostic -ErrorAction SilentlyContinue
+          if ($process.ExitCode -ne 0) { throw 'Native QML startup failed.' }
+          foreach ($private in @('data', 'cache', 'qml-smoke-report.txt')) {
+            if (Test-Path (Join-Path 'build/Release' $private)) {
+              throw "Stable package contains private smoke state: $private"
+            }
+          }
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          # Python zipfile uses ZIP64 for multi-gigabyte GGUF/ONNX weight files.
+          # PowerShell Compress-Archive has per-file limitations for large models.
+          python tools/portable_zip.py --root build/Release --output dist/Ember-win64-portable.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Complete offline ZIP64 packaging failed.' }
+      - name: Build versioned installer and prove install / launch / uninstall
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          pwsh -NoProfile -File release/build-dev-installer.ps1 -Version $version -VerifyInstall -RequireOfflineBundle -RequireVoiceBundle
+          if ($LASTEXITCODE -ne 0) { throw 'Installer acceptance failed.' }
+          $hash = (Get-FileHash -Path 'dist/Ember-win64-portable.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path 'dist/Ember-portable-SHA256.txt' -Value ($hash + '  Ember-win64-portable.zip') -Encoding ascii
+      - name: Publish release with verified installer, SHA256, notes and source archives
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $notes = "release/notes/$($env:GITHUB_REF_NAME).md"
+          gh release create $env:GITHUB_REF_NAME --verify-tag --title "Ember $($env:GITHUB_REF_NAME)" --notes-file $notes "dist/Ember-$version-Windows-x64.exe" "dist/Ember-$version-SHA256.txt" "dist/Ember-win64-portable.zip" "dist/Ember-portable-SHA256.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }

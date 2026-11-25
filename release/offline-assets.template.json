@@ -1,0 +1,50 @@
+{
+  "schema": "ember-offline-assets-v1",
+  "assets": [
+    {
+      "path": "engines/llama/llama-server.exe",
+      "bytes": 0,
+      "sha256": "",
+      "component": "llm",
+      "source_url": "",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "models/llm/model.gguf",
+      "bytes": 0,
+      "sha256": "",
+      "component": "llm",
+      "source_url": "",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "engines/whisper/whisper-cli.exe",
+      "bytes": 0,
+      "sha256": "",
+      "component": "asr",
+      "source_url": "",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "models/stt/ggml-base.bin",
+      "bytes": 0,
+      "sha256": "",
+      "component": "asr",
+      "source_url": "",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "licenses/review-required.txt",
+      "bytes": 0,
+      "sha256": "",
+      "component": "license",
+      "source_url": "",
+      "license_path": "",
+      "redistribution_approved": false
+    }
+  ]
+}

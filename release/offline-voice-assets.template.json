@@ -1,0 +1,69 @@
+{
+  "schema": "ember-offline-assets-v1",
+  "note": "PLANNING TEMPLATE ONLY: replace all zero sizes/empty hashes, review licenses and approve each file after locally obtaining real assets. This JSON cannot pass verification or publish a release.",
+  "assets": [
+    {
+      "path": "engines/llama/llama-server.exe",
+      "bytes": 0,
+      "sha256": "",
+      "component": "llm",
+      "source_url": "https://github.com/ggml-org/llama.cpp",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "models/llm/model.gguf",
+      "bytes": 0,
+      "sha256": "",
+      "component": "llm",
+      "source_url": "",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "engines/whisper/whisper-cli.exe",
+      "bytes": 0,
+      "sha256": "",
+      "component": "asr",
+      "source_url": "https://github.com/ggml-org/whisper.cpp",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "models/stt/ggml-base.bin",
+      "bytes": 0,
+      "sha256": "",
+      "component": "asr",
+      "source_url": "https://huggingface.co/ggerganov/whisper.cpp",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "engines/speech/speech.exe",
+      "bytes": 0,
+      "sha256": "",
+      "component": "tts",
+      "source_url": "https://github.com/nyosegawa/speech.cpp/releases/tag/v0.11.2",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "models/speech/qwen3-tts-0.6b.gguf",
+      "bytes": 0,
+      "sha256": "",
+      "component": "tts",
+      "source_url": "https://huggingface.co/sakasegawa/Qwen3-TTS-12Hz-0.6B-CustomVoice-GGUF",
+      "license_path": "licenses/review-required.txt",
+      "redistribution_approved": false
+    },
+    {
+      "path": "licenses/review-required.txt",
+      "bytes": 0,
+      "sha256": "",
+      "component": "license",
+      "source_url": "",
+      "license_path": "",
+      "redistribution_approved": false
+    }
+  ]
+}

@@ -1,0 +1,385 @@
+#!/usr/bin/env python3
+"""Manual, blocking Windows acceptance of an already assembled offline Ember payload.
+
+The default action is READ-ONLY PREFLIGHT. Only --run starts user-supplied
+executables. No downloads, registry edits, scheduled tasks or background
+monitoring. Python stdlib and sibling Ember tooling only. It is NOT a
+substitute for human release, license and network-isolation review.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import wave
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+
+from offline_bundle import verify
+from asr_benchmark import metrics
+from text_benchmark import ENDPOINT, measure
+from private_worker_env import private_worker_environment as restricted_environment
+
+PORT = 43821
+HEALTH = "http://127.0.0.1:43821/health"
+MAX_WAV = 25 * 1024 * 1024
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+NO_PROXY = build_opener(ProxyHandler({}), NoRedirect())
+
+
+def netstat_listening_pids(output):
+    """Read only IPv4 loopback LISTEN socket owners; ignore connected sockets.
+
+    Windows' netstat state text is localized; the zero remote endpoint is
+    independent of whether LISTENING is translated.
+    """
+    found = set()
+    for line in output.splitlines():
+        parts = line.split()
+        if (len(parts) >= 5 and parts[0].upper() == "TCP" and
+                parts[1] == f"127.0.0.1:{PORT}" and
+                parts[2] == "0.0.0.0:0" and parts[-1].isdigit()):
+            found.add(int(parts[-1]))
+    return found
+
+
+def listener_owners():
+    done = subprocess.run(["netstat", "-ano", "-p", "tcp"],
+                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, check=False, timeout=10)
+    if done.returncode:
+        raise RuntimeError("Cannot inspect Windows listening socket ownership")
+    return netstat_listening_pids(done.stdout.decode("ascii", "ignore"))
+
+
+def valid_text_health_reply(status, content_type, body):
+    """Require documented llama.cpp ready JSON, not merely HTTP 200."""
+    if (status != 200 or not isinstance(body, bytes) or
+            not 0 < len(body) <= 4096 or
+            content_type.split(";", 1)[0].strip().lower() != "application/json"):
+        return False
+    try:
+        state = json.loads(body.decode("utf-8", "strict"))
+    except (ValueError, UnicodeError):
+        return False
+    return isinstance(state, dict) and state.get("status") == "ok"
+
+
+def wait_for_server(process, seconds):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError("The native llama-server stopped during model loading")
+        owners = listener_owners()
+        if owners and owners != {process.pid}:
+            raise RuntimeError("Port 43821 is owned by another process: refusing HTTP")
+        if owners == {process.pid}:
+            try:
+                with NO_PROXY.open(Request(HEALTH, method="GET"), timeout=3) as result:
+                    if result.status == 200:
+                        body = result.read(4097)
+                        if len(body) > 4096:
+                            raise RuntimeError("Local health response is oversized")
+                        if valid_text_health_reply(
+                                result.status,
+                                result.headers.get("Content-Type", ""), body):
+                            if listener_owners() != {process.pid}:
+                                raise RuntimeError(
+                                    "Text model port owner changed during readiness")
+                            return
+            except (HTTPError, URLError, TimeoutError):
+                pass  # 503 while the GGUF is still being loaded
+        time.sleep(1)
+    raise RuntimeError("Local model was not ready before the bounded timeout")
+
+
+def parse_token_ids(doc):
+    """Exact llama.cpp /tokenize JSON shape; refuse empty/oversized results."""
+    if not isinstance(doc, dict) or not isinstance(doc.get("tokens"), list):
+        raise ValueError("Local tokenizer returned no tokens list")
+    ids = doc["tokens"]
+    if not 0 < len(ids) <= 32768 or any(
+            type(item) is not int or item < 0 for item in ids):
+        raise ValueError("Local tokenizer returned malformed token IDs")
+    return len(ids)
+
+
+def post_model_json(path, payload, owner_pid):
+    """Read-only llama.cpp inspection: hardcoded 127.0.0.1, no proxies/redirects.
+
+    A foreign local server must never receive test prompts. This is a
+    diagnostic helper for the user's explicit --run acceptance invocation,
+    not a standing service.
+    """
+    if path not in ("/apply-template", "/tokenize") or (
+            listener_owners() != {owner_pid}):
+        raise RuntimeError("Local token inspection endpoint ownership invalid")
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    if len(data) > 32768:
+        raise ValueError("Model-token inspection payload too large")
+    request = Request("http://127.0.0.1:43821" + path,
+                      data=data, method="POST",
+                      headers={"Content-Type": "application/json",
+                               "Accept": "application/json"})
+    with NO_PROXY.open(request, timeout=20) as result:
+        if result.status != 200 or not result.headers.get(
+                "Content-Type", "").lower().startswith("application/json"):
+            raise ValueError("Local tokenizer did not return JSON/200")
+        body = result.read(262145)
+    if not body or len(body) > 262144:
+        raise ValueError("Local token inspection reply missing or oversized")
+    if listener_owners() != {owner_pid}:
+        raise RuntimeError("Model listener changed during tokenizer probe")
+    doc = json.loads(body.decode("utf-8", errors="strict"))
+    if not isinstance(doc, dict):
+        raise ValueError("Invalid tokenizer JSON object")
+    return doc
+
+
+def verify_real_prompt_tokens(owner_pid, context):
+    """Count tokens via llama.cpp's real model-specific chat template.
+
+    These fixed synthetic prompts contain no private user conversations.
+    Counts are diagnostic for these inputs, NOT proof that every possible
+    chat will fit; the model's actual tokenizer/template can vary.
+    """
+    fixtures = {
+        "english": ("Explain why the graphics card's twelve gigabytes of "
+                    "video memory limit long local conversations. ") * 10,
+        "russian": ("Объясни, почему контекст локальной модели ограничен "
+                    "объёмом памяти видеокарты и длиной диалога. ") * 10,
+    }
+    results = {}
+    for language, prompt in fixtures.items():
+        templated = post_model_json("/apply-template", {
+            "messages": [
+                {"role": "system", "content": "Be concise and accurate."},
+                {"role": "user", "content": prompt},
+            ],
+        }, owner_pid)
+        formatted = templated.get("prompt")
+        if not isinstance(formatted, str) or not 0 < len(formatted) <= 65536:
+            raise ValueError("Model returned invalid chat-template text")
+        count = parse_token_ids(post_model_json("/tokenize", {
+            "content": formatted, "add_special": False,
+            "parse_special": True, "with_pieces": False,
+        }, owner_pid))
+        # Leave 512 tokens for reply plus 128 for template/endpoint variation.
+        if count + 512 + 128 >= context:
+            raise ValueError("Real model's sample prompt exceeds configured context")
+        results[language + "_prompt_tokens"] = count
+    results["configured_context_tokens"] = context
+    results["minimum_reserved_output_tokens"] = 512
+    return results
+
+
+def smoke_text(root, context, gpu_layers, seconds):
+    if listener_owners():
+        raise RuntimeError("Local text port 43821 is already in use; stop that server first")
+    exe = root / "engines/llama/llama-server.exe"
+    weights = root / "models/llm/model.gguf"
+    args = [str(exe), "--model", str(weights), "--alias", "ember",
+            "--host", "127.0.0.1", "--port", str(PORT),
+            "--ctx-size", str(context), "--n-gpu-layers", str(gpu_layers),
+            "--parallel", "1", "--jinja"]
+    proc = subprocess.Popen(args, cwd=str(exe.parent),
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            env=restricted_environment())
+    try:
+        wait_for_server(proc, seconds)
+        if listener_owners() != {proc.pid}:
+            raise RuntimeError("Text endpoint lost its owner identity")
+        # This is the same streaming /v1/chat/completions transport Ember uses.
+        # The sibling probe rejects absent [DONE], redirects, malformed SSE.
+        result = measure(ENDPOINT, "instruction",
+                         "Reply with exactly the word READY.")
+        if listener_owners() != {proc.pid} or not result["instruction_exact_match"]:
+            raise RuntimeError("Model's streamed instruction-following test failed")
+        token_report = verify_real_prompt_tokens(proc.pid, context)
+        return {"stream_complete": True,
+                "template_and_tokenizer_probe": token_report,
+                "exact_instruction": True,
+                "time_to_first_token_ms": result["ttft_ms"],
+                "total_response_ms": result["full_response_ms"]}
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=8)
+
+
+def validate_local_wav(path):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("The selected WAV must be a regular local file")
+    size = path.stat().st_size
+    if not 44 <= size <= MAX_WAV:
+        raise ValueError("WAV is missing or exceeds the 25 MiB limit")
+    with wave.open(str(path), "rb") as source:
+        if (source.getcomptype() != "NONE" or source.getnchannels() != 1 or
+                source.getsampwidth() != 2 or source.getframerate() != 16000 or
+                source.getnframes() <= 0):
+            raise ValueError("Expected 16-kHz mono PCM16 WAV")
+        if source.getnframes() * 2 > size:
+            raise ValueError("WAV declares more frames than file can contain")
+    return size
+
+
+def smoke_whisper(root, wav_path, ref_path, lang, max_wer):
+    validate_local_wav(wav_path)
+    if ref_path.is_symlink() or not ref_path.is_file() or ref_path.stat().st_size > 16000:
+        raise ValueError("Expected a local UTF-8 reference transcript <=16 KiB")
+    reference = ref_path.read_text(encoding="utf-8").strip()
+    if not 1 <= len(reference) <= 4000:
+        raise ValueError("Reference transcript must have 1-4000 characters")
+    executable = root / "engines/whisper/whisper-cli.exe"
+    weights = root / "models/stt/ggml-base.bin"
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="ember-once-asr-") as tmp:
+        prefix = Path(tmp) / "recognized"
+        args = [str(executable), "-m", str(weights), "-f", str(wav_path),
+                "-l", lang, "-otxt", "-of", str(prefix), "-np"]
+        completed = subprocess.run(args, cwd=str(executable.parent),
+                                   env=restricted_environment(),
+                                   stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   timeout=240, check=False)
+        if completed.returncode:
+            raise RuntimeError(f"Native Whisper {lang} process failed")
+        output = prefix.with_suffix(".txt")
+        if not output.is_file() or output.stat().st_size > 16000:
+            raise RuntimeError(f"Native Whisper {lang} produced no bounded transcript")
+        prediction = output.read_text(encoding="utf-8").strip()
+    if not prediction:
+        raise RuntimeError(f"Native Whisper {lang} recognized no speech")
+    score = metrics(reference, prediction)
+    if score["wer"] > max_wer:
+        raise RuntimeError(f"Native Whisper {lang} WER exceeds selected limit")
+    return {"language": lang, "wer": score["wer"], "cer": score["cer"],
+            "latency_ms": round((time.monotonic() - started) * 1000, 2),
+            "wav_bytes": wav_path.stat().st_size}
+
+
+def self_test():
+    fixture = """Active Connections
+      Proto  Local Address          Foreign Address        State           PID
+      TCP    127.0.0.1:43821       0.0.0.0:0             LISTENING       1234
+      TCP    127.0.0.1:43821       127.0.0.1:6000        ESTABLISHED    1234
+      TCP    0.0.0.0:43821         0.0.0.0:0             LISTENING       9999
+      TCP    127.0.0.1:43822       0.0.0.0:0             LISTENING       8888
+    """
+    assert netstat_listening_pids(fixture) == {1234}
+    assert netstat_listening_pids("") == set()
+    assert valid_text_health_reply(200, "application/json", b'{"status":"ok"}')
+    assert valid_text_health_reply(
+        200, "application/json; charset=utf-8", b'{"status":"ok"}')
+    assert not valid_text_health_reply(200, "application/json", b'[]')
+    assert not valid_text_health_reply(200, "application/json", b'{"status":"loading"}')
+    assert not valid_text_health_reply(200, "text/html", b'{"status":"ok"}')
+    assert not valid_text_health_reply(503, "application/json", b'{"status":"ok"}')
+    assert not valid_text_health_reply(200, "application/json", b'x' * 4097)
+    from private_worker_env import self_test as verify_private_env
+    verify_private_env()
+    assert netstat_listening_pids(fixture.replace("1234", "9999")) == {9999}
+    assert parse_token_ids({"tokens": [10, 42, 5000]}) == 3
+    for invalid in ({"tokens": []}, {"tokens": [1, -1]},
+                    {"tokens": [1, "2"]}, {"tokens": [True]}, {}, []):
+        try:
+            parse_token_ids(invalid)
+            raise AssertionError("Malformed tokenizer result passed")
+        except ValueError:
+            pass
+    from asr_benchmark import silent_wav
+    with tempfile.TemporaryDirectory() as tmp:
+        sample = Path(tmp) / "silent.wav"
+        sample.write_bytes(silent_wav())
+        assert validate_local_wav(sample) == sample.stat().st_size
+        sample.write_bytes(b"RIFF" + bytes(200))
+        try:
+            validate_local_wav(sample)
+            raise AssertionError("Malformed WAV was accepted")
+        except (ValueError, wave.Error, EOFError):
+            pass
+    print("offline_acceptance read-only fixture tests passed; no inference executed")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--root", type=Path, help="Fully assembled offline Ember app folder")
+    parser.add_argument("--run", action="store_true",
+                        help="Explicitly execute native models now; blocks until complete")
+    parser.add_argument("--context", type=int, choices=(4096, 8192, 16384, 32768),
+                        default=8192)
+    parser.add_argument("--gpu-layers", type=int, choices=(0, 20, 50, 99), default=0)
+    parser.add_argument("--startup-seconds", type=int, default=180)
+    for lang in ("en", "ru"):
+        parser.add_argument(f"--{lang}-wav", type=Path)
+        parser.add_argument(f"--{lang}-reference", type=Path)
+    parser.add_argument("--max-wer", type=float, default=0.25)
+    parser.add_argument("--report", type=Path,
+                        help="Optional metrics-only JSON; never transcripts or audio")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return
+    if args.root is None:
+        parser.error("--root is required except during --self-test")
+    if not 30 <= args.startup_seconds <= 600 or not 0 <= args.max_wer <= 1:
+        parser.error("Invalid startup time or WER threshold")
+    root = args.root.resolve(strict=True)
+    verify(root, root / "offline-assets.json", approved=True)
+    for relative in ("Ember.exe", "Qt6Core.dll", "LICENSE"):
+        if not (root / relative).is_file():
+            raise ValueError("Missing native application payload: " + relative)
+    print("Approved manifest, required paths, header shapes and SHA-256: PASS")
+    if not args.run:
+        print("PREFLIGHT ONLY: no executable, model or microphone was started.")
+        return
+    if os.name != "nt":
+        parser.error("Live native executable acceptance requires Windows")
+    audio_inputs = [args.en_wav, args.en_reference, args.ru_wav, args.ru_reference]
+    if any(x is not None for x in audio_inputs) and not all(
+            x is not None for x in audio_inputs):
+        parser.error("Provide all four EN/RU WAV + reference files, or none")
+    result = {"native_text": smoke_text(root, args.context,
+                                        args.gpu_layers, args.startup_seconds),
+              "native_ru_en_dictation": "NOT TESTED",
+              "two_sample_asr_checked": False,
+              "release_approved": False,
+              "network_note": ("The Python HTTP probe contacts 127.0.0.1 only; "
+                               "network isolation of third-party binaries was "
+                               "not independently proven.")}
+    if all(x is not None for x in audio_inputs):
+        result["native_ru_en_dictation"] = [
+            smoke_whisper(root, args.en_wav, args.en_reference, "en", args.max_wer),
+            smoke_whisper(root, args.ru_wav, args.ru_reference, "ru", args.max_wer),
+        ]
+        result["two_sample_asr_checked"] = True
+    content = json.dumps(result, ensure_ascii=False, indent=2)
+    if args.report:
+        if args.report.exists():
+            raise ValueError("Refusing to overwrite an existing report")
+        args.report.write_text(content + "\n", encoding="utf-8")
+    print(content)
+    print("Manual test finished. Human license, clean-PC, GPU, privacy and UI gates remain.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired,
+            HTTPError, URLError, json.JSONDecodeError, wave.Error) as exc:
+        sys.exit("Offline acceptance failed: " + type(exc).__name__ + ": " + str(exc))
